@@ -379,8 +379,21 @@ export function HomeScreen({
         </Card>
       )}
 
-      {user.features.vector && (onOpenAssessments || onOpenDevelopment) && (
-        <Card gradient onClick={onOpenAssessments ?? onOpenDevelopment} style={{ padding: "1.05rem" }}>
+      {user.features.vector && onOpenDevelopment && (
+        <Card onClick={onOpenDevelopment} style={{ padding: "1.05rem" }}>
+          <MonoLabel>Мой вектор</MonoLabel>
+          <strong style={{ display: "block", marginTop: ".3rem" }}>Интересы и направление роста</strong>
+          <p style={{ margin: ".3rem 0 0", color: "var(--era-text-secondary)", fontSize: ".85rem" }}>
+            Личные ответы остаются в вашем профиле.
+          </p>
+          <span style={{ display: "block", marginTop: ".55rem", color: "var(--era-cyan)", fontWeight: 800, fontSize: ".85rem" }}>
+            Открыть мой вектор →
+          </span>
+        </Card>
+      )}
+
+      {user.features.vector && onOpenAssessments && (
+        <Card gradient onClick={onOpenAssessments} style={{ padding: "1.05rem" }}>
           <strong style={{ display: "block", fontSize: "1.05rem" }}>Узнай свой профиль · 3 мин</strong>
           <span style={{ display: "block", marginTop: ".55rem", color: "var(--era-cyan)", fontWeight: 800, fontSize: ".85rem" }}>
             Пройти →

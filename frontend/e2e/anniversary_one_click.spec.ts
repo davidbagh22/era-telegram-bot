@@ -71,13 +71,14 @@ async function mockAnniversary(page: Page, organization: string | null) {
 test("orbit card opens detail where anniversary registers in one click", async ({ page }) => {
   const requests = await mockAnniversary(page, "ЭРА");
   await page.goto("/app/?devTelegramId=900001");
-  await page.getByRole("button", { name: new RegExp(event.title) }).first().click();
+  await page.getByRole("region", { name: "Ближайшее" }).getByRole("button", { name: new RegExp(event.title) }).click();
   await expect(page.getByRole("heading", { name: event.title })).toBeVisible();
   await page.getByRole("button", { name: "Зарегистрироваться", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Вы зарегистрированы" })).toBeVisible();
   expect(requests).toEqual([{}]);
+  // Reload keeps the detail hash; status must survive without re-opening from home.
   await page.reload();
-  await page.getByRole("button", { name: new RegExp(event.title) }).first().click();
+  await expect(page.getByRole("heading", { name: event.title })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Вы зарегистрированы" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Зарегистрироваться", exact: true })).toHaveCount(0);
 });
