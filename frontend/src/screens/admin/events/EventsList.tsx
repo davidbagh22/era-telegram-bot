@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { EventDetailsEditor } from "./EventDetailsEditor";
 import { Card } from "../../../components/Card";
 import { EmptyState } from "../../../components/EmptyState";
 import { StatusBadge } from "../../../components/StatusBadge";
@@ -14,9 +15,12 @@ interface EventsListProps {
 // Events already approved/published — the entry point into per-event
 // attendance and points, distinct from the moderation queue above.
 export function EventsList({ onSelect, onEditPoster }: EventsListProps) {
+  const [editor, setEditor] = useState<number | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const state = useAsync(() => fetchOperationalEvents(), [refreshVersion]);
   const refresh = () => setRefreshVersion((version) => version + 1);
+
+  if (editor !== null) return <EventDetailsEditor eventId={editor} onClose={() => { setEditor(null); refresh(); }} />;
 
   if (state.status === "loading") {
     return <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>;
@@ -59,6 +63,7 @@ export function EventsList({ onSelect, onEditPoster }: EventsListProps) {
               Записано: {event.registered} · Свободно: {event.free} · За визит: +{event.points_for_visit}
             </p>
           </button>
+          {onEditPoster && <button onClick={() => setEditor(event.id)}>Редактировать мероприятие</button>}
           {onEditPoster && (
             <button type="button" onClick={() => onEditPoster(event.id)} style={{ marginTop: ".6rem" }}>
               Изменить афишу

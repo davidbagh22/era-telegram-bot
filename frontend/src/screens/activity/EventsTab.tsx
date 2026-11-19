@@ -9,6 +9,7 @@ import {
   sendEventCalendarToChat,
   registerForEvent,
 } from "../../api/client";
+import { EventDetailsEditor } from "../admin/events/EventDetailsEditor";
 import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
@@ -572,11 +573,13 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
 }
 
 interface EventsTabProps {
+  canEdit?: boolean;
   initialItemId?: number | null;
   initialScope?: EventScope;
 }
 
-export function EventsTab({ initialItemId, initialScope }: EventsTabProps = {}) {
+export function EventsTab({ initialItemId, initialScope, canEdit }: EventsTabProps = {}) {
+  const [editing, setEditing] = useState(false);
   const [scope, setScope] = useState<EventScope>(initialItemId ? "all" : initialScope ?? "for_me");
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchEvents(scope), [scope, refreshKey]);
@@ -729,8 +732,16 @@ export function EventsTab({ initialItemId, initialScope }: EventsTabProps = {}) 
       );
     }
     if (selected) {
+      if (canEdit && editing) {
+        return <EventDetailsEditor key={selected.id} eventId={selected.id} onClose={() => {
+          setEditing(false);
+          setSelectedOverride(null);
+          refresh();
+        }} />;
+      }
       return (
         <>
+          {canEdit && <button onClick={() => setEditing(true)}>Редактировать мероприятие</button>}
           <EventDetail
             event={selected}
             pending={pendingId === selected.id}

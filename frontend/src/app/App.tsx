@@ -274,6 +274,7 @@ function renderTab(
     }
     return (
       <EventsScreen
+        canEdit={user.is_admin || user.permissions.includes("events.manage")}
         key={initialEventScope ?? "all"}
         initialItemId={isDeepLinkedTab ? initialItemId : null}
         initialScope={initialEventScope ?? undefined}

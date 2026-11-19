@@ -25,15 +25,13 @@ test("participant gets AURA orbit UI, opens event details, and registers", async
   await expect(page.getByRole("button", { name: "Отказаться" })).toBeVisible();
 });
 
-test("orbit nodes open people, ideas, and teams catalogs", async ({ page }) => {
+test("orbit nodes open assessments, ideas, and teams catalogs", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
   await expect(page.getByRole("heading", { name: "Твоя орбита" })).toBeVisible();
 
-  await page.getByRole("navigation", { name: "Твоя орбита" }).getByRole("button", { name: /Люди/ }).click();
-  await expect(page.getByRole("heading", { name: "Люди", exact: true })).toBeVisible();
-  await expect(page).toHaveURL(/#\/people/);
-
-  await page.getByRole("button", { name: "← Орбита" }).click();
+  await page.getByRole("navigation", { name: "Твоя орбита" }).getByRole("button", { name: /Мой вектор/ }).click();
+  await expect(page).toHaveURL(/development\/assessments/);
+  await page.goBack();
   await page.getByRole("navigation", { name: "Твоя орбита" }).getByRole("button", { name: /Идеи/ }).click();
   await expect(page.getByRole("heading", { name: "Идеи", exact: true })).toBeVisible();
   await expect(page).toHaveURL(/#\/ideas/);

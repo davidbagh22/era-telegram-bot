@@ -153,8 +153,8 @@ export function HomeScreen({
     && nearestCards.some((event) => event.id === data.next_step?.entity_id);
 
   const handleOrbitNode = (node: OrbitNodeKey) => {
-    if (node === "people") {
-      if (window.location.hash !== "#/people") window.location.hash = "#/people";
+    if (node === "vector") {
+      onOpenAssessments?.();
       return;
     }
     if (node === "events") {
@@ -272,7 +272,7 @@ export function HomeScreen({
           <div style={{ display: "grid", gap: "0.55rem" }}>
             {(
               [
-                { key: "people" as const, label: "Люди", hint: "Участники и профили" },
+                { key: "vector" as const, label: "Мой вектор", hint: "Психологические тесты" },
                 { key: "events" as const, label: "События", hint: "Афиша и записи" },
                 { key: "ideas" as const, label: "Идеи", hint: "Предложить проект" },
                 { key: "teams" as const, label: "Команды", hint: "Проектные команды" },
