@@ -37,9 +37,9 @@ export function ActionCell({
         gap: "0.875rem",
         textAlign: "left",
         borderRadius: "var(--era-radius-card)",
-        border: active ? "1px solid rgba(99, 44, 255, 0.4)" : "1px solid var(--era-border)",
+        border: active ? "1px solid var(--era-border-strong)" : "1px solid var(--era-border)",
         background: active
-          ? "linear-gradient(135deg, rgba(99, 44, 255, 0.12), rgba(255, 100, 0, 0.06)), var(--era-surface)"
+          ? "linear-gradient(135deg, rgba(36, 85, 255, 0.16), rgba(117, 221, 255, 0.06)), var(--era-surface)"
           : "var(--era-surface)",
         boxShadow: "var(--era-shadow-soft)",
         color: "var(--era-text)",

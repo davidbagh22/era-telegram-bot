@@ -143,7 +143,7 @@ export function VectorHomeScreen({
             Обновляется после каждой отметки · {monthLabel(development.profile?.last_checkin_at)}
           </p>
         </Card>
-        <Card onClick={() => onNavigate("checkin")} style={{ borderLeft: "3px solid var(--era-teal, #0f766e)" }}>
+        <Card onClick={() => onNavigate("checkin")} style={{ borderLeft: "3px solid var(--era-cyan, #75ddff)" }}>
           <strong>
             {development.current_checkin?.status === "completed"
               ? "Посмотреть результат месяца"

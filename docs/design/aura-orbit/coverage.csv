@@ -14,5 +14,5 @@ Teams catalog,#/teams,participant,projects mine/open,TeamsScreen TypographyFeedC
 Ideas catalog,#/ideas,participant,createProject + mine drafts,IdeasScreen constructor entry,loading/error/empty/create,CODE COMPLETE,one path into project builder
 Project proposed_date,public cards,participant,Project.proposed_date/time,Предварительно / Дата уточняется,—,CODE COMPLETE,ProjectSummaryOut + feedDate adapter
 Local Onest WOFF2,/fonts/onest.css,all,Google Fonts CDN,local latin+cyrillic 400–800 + OFL.txt,—,CODE COMPLETE,frontend/public/fonts
-Light islands,AchievementOverlay/Auctions/mediaRichEditor,all,hardcoded #fff fallbacks,AURA surfaces,—,IN_PROGRESS,P0 darkened; admin accent debt remains
+Light islands,shared components + Открытия/Я/admin,all,purple/orange/teal washes,#fff islands,AURA primary/cyan/selected,—,CODE COMPLETE,Stage D accent pass on shared UI
 Device Telegram iOS/Android,—,participant,—,—,—,NOT STARTED,E14

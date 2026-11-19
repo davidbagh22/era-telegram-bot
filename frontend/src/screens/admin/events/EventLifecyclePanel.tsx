@@ -116,7 +116,7 @@ export function EventLifecyclePanel({ eventId, onChanged }: EventLifecyclePanelP
   const completed = Boolean(item.completed_at);
 
   return (
-    <Card style={{ borderColor: item.confirmation_open ? "rgba(255,100,0,.32)" : "var(--era-border)" }}>
+    <Card style={{ borderColor: item.confirmation_open ? "var(--era-border-strong)" : "var(--era-border)" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: ".8rem" }}>
         <button type="button" onClick={() => setRefreshKey((key) => key + 1)} style={{ alignSelf: "flex-start" }}>Обновить управление</button>
         <div>
@@ -132,7 +132,7 @@ export function EventLifecyclePanel({ eventId, onChanged }: EventLifecyclePanelP
         </div>
 
         {item.attendance_code && (
-          <div style={{ border: "1px solid rgba(255,100,0,.24)", borderRadius: "1rem", padding: ".9rem", background: "rgba(255,100,0,.055)" }}>
+          <div style={{ border: "1px solid var(--era-border-strong)", borderRadius: "1rem", padding: ".9rem", background: "var(--era-selected)" }}>
             <span style={{ display: "block", color: "var(--era-text-muted)", fontSize: ".72rem", fontWeight: 800, letterSpacing: ".06em" }}>КОД ДЛЯ ВЕДУЩИХ</span>
             <div style={{ marginTop: ".35rem", fontSize: "clamp(1.6rem,8vw,2.25rem)", fontWeight: 950, letterSpacing: ".12em", color: "var(--era-gold-ink)" }}>
               {formatCode(item.attendance_code)}

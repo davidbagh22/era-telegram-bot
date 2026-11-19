@@ -72,7 +72,7 @@ export function ChatsPanel() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-      <Card style={{ background: "linear-gradient(135deg, rgba(255,48,72,0.10), rgba(107,60,255,0.12)), var(--era-surface)", border: "1px solid rgba(255,48,72,0.16)" }}>
+      <Card style={{ background: "linear-gradient(135deg, rgba(36,85,255,0.14), rgba(117,221,255,0.08)), var(--era-surface)", border: "1px solid var(--era-border-strong)" }}>
         <strong>Чаты привязываются из самого Telegram</strong>
         <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
           Добавьте бота администратором нужного чата и отправьте указанную команду прямо там. ЭРА сохранит идентификатор чата автоматически.

@@ -447,7 +447,7 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
       )}
 
       {event.participant_value && (
-        <Card style={{ background: "linear-gradient(145deg, rgba(99,44,255,.12), rgba(255,100,0,.06))" }}>
+        <Card style={{ background: "linear-gradient(145deg, rgba(36,85,255,.14), rgba(117,221,255,.06))" }}>
           <strong>Что вы получите</strong>
           <p style={{ whiteSpace: "pre-wrap", margin: "0.45rem 0 0", lineHeight: 1.5 }}>{event.participant_value}</p>
         </Card>

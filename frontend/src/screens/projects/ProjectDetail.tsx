@@ -337,14 +337,14 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
           </div>
 
           <div key={currentQuestion.key} className="era-question-step" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            <Card style={{ borderColor: "rgba(99,44,255,0.22)" }}>
+            <Card style={{ borderColor: "var(--era-border-strong)" }}>
               <p style={{ margin: "0 0 0.25rem", color: "var(--era-red-bright)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>{currentQuestion.block}</p>
               <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>{currentQuestion.title}</h2>
               <p style={{ margin: "0.6rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{currentQuestion.prompt}</p>
             </Card>
 
             {currentHint && (
-              <Card style={{ background: "linear-gradient(135deg, rgba(99,44,255,.08), rgba(255,100,0,.05)), var(--era-surface)", borderColor: "rgba(99,44,255,.16)" }}>
+              <Card style={{ background: "linear-gradient(135deg, rgba(36,85,255,.12), rgba(117,221,255,.05)), var(--era-surface)", borderColor: "var(--era-border)" }}>
                 <p style={{ margin: "0 0 0.45rem", color: "var(--era-violet)", fontSize: "var(--era-text-xs)", fontWeight: 850, textTransform: "uppercase" }}>Теория шага</p>
                 <strong style={{ display: "block", lineHeight: 1.45 }}>{currentHint.what}</strong>
                 <p style={{ margin: "0.55rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.55 }}>{currentHint.why}</p>
@@ -355,7 +355,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
               </Card>
             )}
 
-            <button type="button" onClick={() => setHintOpen(true)} style={{ width: "100%", textAlign: "left", padding: "0.8rem 0.9rem", borderRadius: "var(--era-radius-control)", border: "1px solid rgba(99,44,255,.22)", background: "var(--era-tint-violet)", color: "var(--era-violet)", fontWeight: 800 }}>
+            <button type="button" onClick={() => setHintOpen(true)} style={{ width: "100%", textAlign: "left", padding: "0.8rem 0.9rem", borderRadius: "var(--era-radius-control)", border: "1px solid var(--era-border-strong)", background: "var(--era-selected)", color: "var(--era-cyan)", fontWeight: 800 }}>
               Получить подсказку
             </button>
 
@@ -418,7 +418,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
         </div>
       ) : (
         <>
-          <Card style={constructorComplete ? { borderColor: "rgba(255,100,0,.28)" } : undefined}>
+          <Card style={constructorComplete ? { borderColor: "var(--era-border-strong)" } : undefined}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem" }}>
               <div>
                 <p style={{ margin: "0 0 .2rem", color: constructorComplete ? "var(--era-gold-ink)" : "var(--era-text-muted)", fontSize: ".72rem", fontWeight: 850, textTransform: "uppercase" }}>{constructorComplete ? "Финальный preview" : "Паспорт проекта"}</p>
@@ -469,7 +469,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
 
 function HintBlock({ title, text, emphasis = false }: { title: string; text: string; emphasis?: boolean }) {
   return (
-    <div style={{ padding: "0.85rem", borderRadius: "var(--era-radius-md)", background: emphasis ? "var(--era-tint-violet)" : "var(--era-surface-2)", border: emphasis ? "1px solid rgba(99,44,255,.18)" : "1px solid var(--era-border)" }}>
+    <div style={{ padding: "0.85rem", borderRadius: "var(--era-radius-md)", background: emphasis ? "var(--era-selected)" : "var(--era-surface-2)", border: emphasis ? "1px solid var(--era-border-strong)" : "1px solid var(--era-border)" }}>
       <strong style={{ display: "block", marginBottom: "0.3rem" }}>{title}</strong>
       <p style={{ margin: 0, color: emphasis ? "var(--era-text)" : "var(--era-text-muted)", lineHeight: 1.5 }}>{text}</p>
     </div>
