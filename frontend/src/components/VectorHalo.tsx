@@ -5,10 +5,10 @@
 // wherever it appears, not two different visual languages.
 const AREA_ORDER = ["energy", "support", "autonomy", "connection", "direction"] as const;
 const AREA_COLORS: Record<(typeof AREA_ORDER)[number], string> = {
-  energy: "#75ddff",
-  support: "#2455ff",
-  autonomy: "#9ae8ff",
-  connection: "#a9b4ff",
+  energy: "#ffa5ea",
+  support: "#bc2184",
+  autonomy: "#ffd7f2",
+  connection: "#ff8edb",
   direction: "#6ce8ba",
 };
 const AREA_LABELS: Record<(typeof AREA_ORDER)[number], string> = {

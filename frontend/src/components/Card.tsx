@@ -16,7 +16,7 @@ export function Card({ children, gradient = false, dark = false, style, onClick 
   const sharedStyle: CSSProperties = {
     borderRadius: "var(--era-radius-card)",
     padding: "1rem",
-    border: dark ? undefined : gradient ? "1px solid rgba(36,85,255,0.22)" : "1px solid var(--era-border)",
+    border: dark ? undefined : gradient ? "1px solid rgba(188, 33, 132,0.22)" : "1px solid var(--era-border)",
     background: dark ? undefined : gradient ? "var(--era-hero-bg)" : "var(--era-surface)",
     boxShadow: dark ? "var(--era-shadow-lift)" : gradient ? "var(--era-shadow-lift)" : "var(--era-shadow-soft)",
     color: dark ? "#f8fafc" : "var(--era-text)",

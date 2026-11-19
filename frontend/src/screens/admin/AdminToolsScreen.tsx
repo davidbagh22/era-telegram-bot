@@ -34,7 +34,7 @@ export function AdminToolsScreen() {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "1rem", minWidth: 0 }}>
         <Card gradient style={{ position: "relative", overflow: "hidden", minHeight: 166 }}>
-          <div aria-hidden="true" style={{ position: "absolute", width: 190, height: 190, borderRadius: "50%", right: -72, top: -76, background: "radial-gradient(circle, rgba(117,221,255,0.22), rgba(36,85,255,0.06) 66%, transparent 70%)" }} />
+          <div aria-hidden="true" style={{ position: "absolute", width: 190, height: 190, borderRadius: "50%", right: -72, top: -76, background: "radial-gradient(circle, rgba(255, 165, 234,0.22), rgba(188, 33, 132,0.06) 66%, transparent 70%)" }} />
           <div style={{ position: "relative" }}>
             <p style={{ margin: "0 0 0.3rem", color: "var(--era-text-secondary)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Центр связи</p>
             <h2 style={{ margin: 0, fontSize: "var(--era-text-3xl)", lineHeight: 1.05 }}>Управляйте голосом ЭРА</h2>

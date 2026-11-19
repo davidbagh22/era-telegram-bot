@@ -1,7 +1,7 @@
 .era-analytics { --analytics-accent: var(--era-red); }
 .era-analytics-report {
   padding: 1.25rem; border: 1px solid var(--era-border); border-radius: var(--era-radius-card);
-  background: radial-gradient(ellipse at top right, rgba(36,85,255,.14), transparent 65%), var(--era-surface);
+  background: radial-gradient(ellipse at top right, rgba(188, 33, 132,.14), transparent 65%), var(--era-surface);
   box-shadow: var(--era-shadow-soft); display: grid; gap: .65rem;
 }
 .era-analytics-eyebrow { font-size: .65rem; font-weight: 800; letter-spacing: .12em; color: var(--era-text-muted); }
@@ -29,7 +29,7 @@
 .analytics-toolbar .analytics-compare { display: flex; align-items: center; min-height: 44px; gap: .5rem; }
 .analytics-tabs { display: flex; flex-wrap: nowrap; overflow-x: auto; gap: .35rem; padding: .2rem 0 .6rem; max-width: 100%; }
 .analytics-tabs button { flex: 0 0 auto; min-height: 44px; padding: .6rem .8rem; border-radius: 999px; }
-.analytics-tabs button[aria-selected=true] { background: var(--era-primary, #2455ff); color: #fff; }
+.analytics-tabs button[aria-selected=true] { background: var(--era-primary, #bc2184); color: #fff; }
 .analytics-kpis { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .5rem; }
 .analytics-number { display: block; font-size: clamp(1.1rem,5vw,1.9rem); font-family: var(--era-font-display); line-height: 1.3; overflow-wrap: anywhere; margin-bottom: .35rem; }
 .analytics-source-title { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .5rem; }

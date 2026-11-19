@@ -113,7 +113,7 @@ export function EventAttendancePanel({ eventId }: { eventId: number }) {
   }
 
   return (
-    <Card style={{ borderColor: "var(--era-border-strong)", background: "linear-gradient(145deg, rgba(36,85,255,.12), rgba(117,221,255,.06))" }}>
+    <Card style={{ borderColor: "var(--era-border-strong)", background: "linear-gradient(145deg, rgba(188, 33, 132,.12), rgba(255, 165, 234,.06))" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: ".7rem" }}>
         <div>
           <strong style={{ fontSize: "1.03rem" }}>Подтвердить участие</strong>

@@ -35,7 +35,7 @@ export function PillTabs<T extends string>({ options, active, onChange }: PillTa
               border: `1px solid ${isActive ? "var(--era-border-strong)" : "var(--era-border)"}`,
               borderRadius: "var(--era-radius-control)",
               background: isActive
-                ? "linear-gradient(135deg, rgba(36,85,255,0.18), rgba(117,221,255,0.08)), var(--era-surface)"
+                ? "linear-gradient(135deg, rgba(188, 33, 132,0.18), rgba(255, 165, 234,0.08)), var(--era-surface)"
                 : "var(--era-surface)",
               color: isActive ? "var(--era-text)" : "var(--era-text-muted)",
               fontSize: "var(--era-text-sm)",

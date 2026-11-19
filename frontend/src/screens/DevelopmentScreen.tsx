@@ -36,7 +36,7 @@ const DIMENSIONS: VectorDimension[] = ["energy", "agency", "autonomy", "connecti
 // Soft, non-hierarchical palette (ToR §21): lavender / blue / warm orange /
 // pale pink / soft mauve. None of these read as "good" or "bad" — My Vector
 // deliberately avoids using a harsh red to flag a dimension as a problem.
-const RING_COLORS = ["#75ddff", "#2455ff", "#9ae8ff", "#a9b4ff", "#6ce8ba"];
+const RING_COLORS = ["#ffa5ea", "#bc2184", "#ffd7f2", "#ff8edb", "#6ce8ba"];
 const GOAL_OBSTACLES = [
   "не хватило времени",
   "не было подходящей ситуации",
@@ -701,7 +701,7 @@ function ChipGrid({
               background: active ? "var(--era-tint-violet)" : "var(--era-surface)",
               color: "var(--era-text)",
               opacity: !active && selected.length >= max ? 0.5 : 1,
-              boxShadow: active ? "0 0 0 2px rgba(36,85,255,.22)" : undefined,
+              boxShadow: active ? "0 0 0 2px rgba(188, 33, 132,.22)" : undefined,
             }}
             onClick={() =>
               active

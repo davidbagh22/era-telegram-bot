@@ -77,7 +77,7 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
       </BottomSheet>
 
       {scope === "mine" && (
-        <Card style={{ background: "linear-gradient(135deg, rgba(36,85,255,0.16), rgba(117,221,255,0.08)), var(--era-surface)" }}>
+        <Card style={{ background: "linear-gradient(135deg, rgba(188, 33, 132,0.16), rgba(255, 165, 234,0.08)), var(--era-surface)" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
             <div>
               <p style={{ margin: "0 0 0.2rem", color: "var(--era-cyan)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Новый проект</p>

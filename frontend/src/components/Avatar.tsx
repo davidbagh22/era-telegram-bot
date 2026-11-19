@@ -29,7 +29,7 @@ export function Avatar({ firstName, lastName, size = "md" }: AvatarProps) {
         height: px,
         borderRadius: "50%",
         background: "var(--era-gradient-signal)",
-        boxShadow: `0 0 0 1px rgba(255,255,255,0.5) inset, 0 ${px * 0.12}px ${px * 0.32}px rgba(36, 85, 255, 0.35)`,
+        boxShadow: `0 0 0 1px rgba(255,255,255,0.5) inset, 0 ${px * 0.12}px ${px * 0.32}px rgba(188, 33, 132, 0.35)`,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",

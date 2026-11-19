@@ -7,8 +7,8 @@ test("participant gets AURA orbit UI, opens event details, and registers", async
 
   await expect(page.getByRole("heading", { name: "Твоя орбита" })).toBeVisible();
   const bodyBackground = await page.locator("body").evaluate((node) => getComputedStyle(node).backgroundColor);
-  // AURA base #070b18
-  expect(bodyBackground).toBe("rgb(7, 11, 24)");
+  // AURA base #19091a
+  expect(bodyBackground).toBe("rgb(25, 9, 26)");
 
   await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Афиша" }).click();
   await expect(page.getByRole("heading", { name: "Афиша", exact: true })).toBeVisible();

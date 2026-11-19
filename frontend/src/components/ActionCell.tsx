@@ -39,7 +39,7 @@ export function ActionCell({
         borderRadius: "var(--era-radius-card)",
         border: active ? "1px solid var(--era-border-strong)" : "1px solid var(--era-border)",
         background: active
-          ? "linear-gradient(135deg, rgba(36, 85, 255, 0.16), rgba(117, 221, 255, 0.06)), var(--era-surface)"
+          ? "linear-gradient(135deg, rgba(188, 33, 132, 0.16), rgba(255, 165, 234, 0.06)), var(--era-surface)"
           : "var(--era-surface)",
         boxShadow: "var(--era-shadow-soft)",
         color: "var(--era-text)",

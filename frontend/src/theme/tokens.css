@@ -1,73 +1,68 @@
-/* ERA / AURA × ORBIT — dark blue glass system (2026-11-19).
- *
- * Owner decision: AURA palette + ORBIT mechanics. FLOW = title typography only.
- * Legacy aliases (--era-violet, --era-red, …) map to AURA primary so existing
- * screens re-theme without a file-by-file rewrite.
- */
+/* FLOW palette with the existing ORBIT navigation and motion. */
 :root,
 :root[data-theme="aura"],
 :root[data-theme="light"],
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --era-bg: #070b18;
-  --era-bg-soft: #0b1224;
+  --era-bg: #19091a;
+  --era-bg-soft: #230d25;
   --era-bg-subtle: var(--era-bg-soft);
-  --era-surface: #111b30;
-  --era-surface-2: #16233c;
-  --era-surface-3: #1c2c49;
-  --era-surface-dark: #070b18;
+  --era-surface: #321731;
+  --era-surface-2: #432040;
+  --era-surface-3: #542651;
+  --era-surface-dark: #19091a;
 
-  --era-glass: rgba(17, 27, 48, 0.84);
-  --era-nav-glass: rgba(10, 18, 35, 0.9);
+  --era-glass: rgba(50, 23, 49, 0.84);
+  --era-nav-glass: rgba(38, 17, 36, 0.9);
 
-  --era-text: #f5f8ff;
-  --era-text-secondary: #b4c2dd;
+  --era-text: #fff6fc;
+  --era-text-secondary: #e8ccdf;
   --era-text-muted: var(--era-text-secondary);
-  --era-text-faint: #94a8ca;
+  --era-text-faint: #caa4bf;
   --era-text-muted-token: var(--era-text-faint);
-  --era-nav-muted: #b4c2dd;
+  --era-nav-muted: #e8ccdf;
   --era-on-primary: #ffffff;
-  --era-on-cyan: #070b18;
+  --era-on-cyan: #19091a;
 
-  --era-primary: #2455ff;
-  --era-primary-strong: #2449d8;
-  --era-cyan: #75ddff;
-  --era-focus: #9ae8ff;
-  --era-selected: rgba(36, 85, 255, 0.22);
+  --era-primary: #bc2184;
+  --era-primary-strong: #86209b;
+  --era-cyan: #ffa5ea;
+  --era-focus: #ffd7f2;
+  --era-selected: rgba(188, 33, 132, 0.22);
 
-  --era-border: rgba(157, 190, 255, 0.2);
-  --era-border-strong: rgba(157, 190, 255, 0.38);
-  --era-nav-border: rgba(157, 190, 255, 0.25);
+  --era-border: rgba(231, 167, 213, 0.2);
+  --era-border-strong: rgba(231, 167, 213, 0.38);
+  --era-nav-border: rgba(231, 167, 213, 0.25);
 
   --era-success: #6ce8ba;
   --era-success-bg: rgba(108, 232, 186, 0.12);
   --era-warning: #ffd38a;
   --era-error: #ff8da1;
 
-  --era-gradient: linear-gradient(135deg, #2449d8 0%, #2455ff 100%);
-  --era-gradient-cool: linear-gradient(135deg, #173280 0%, #2455ff 100%);
-  --era-gradient-hot: linear-gradient(135deg, #2449d8 0%, #75ddff 100%);
-  --era-gradient-signal: linear-gradient(135deg, #2449d8 0%, #2455ff 100%);
+  --era-gradient: linear-gradient(135deg, #86209b 0%, #bc2184 100%);
+  --era-gradient-cool: linear-gradient(135deg, #512074 0%, #bc2184 100%);
+  --era-gradient-hot: linear-gradient(135deg, #86209b 0%, #ffa5ea 100%);
+  --era-gradient-signal: linear-gradient(135deg, #86209b 0%, #bc2184 100%);
   --era-hero-bg:
-    radial-gradient(80% 80% at 90% 15%, rgba(36, 85, 255, 0.22), transparent 65%),
-    radial-gradient(70% 60% at 0% 100%, rgba(117, 221, 255, 0.1), transparent 60%),
-    #0b1224;
-  --era-scrim: rgba(7, 11, 24, 0.76);
+    radial-gradient(80% 80% at 90% 15%, rgba(188, 33, 132, 0.22), transparent 65%),
+    radial-gradient(70% 60% at 0% 100%, rgba(255, 165, 234, 0.1), transparent 60%),
+    #230d25;
+  --era-scrim: rgba(25, 9, 26, 0.76);
 
   --era-shadow-soft: 0 8px 28px rgba(0, 0, 0, 0.18);
   --era-shadow-lift: 0 12px 36px rgba(0, 0, 0, 0.24);
   --era-shadow-floating: 0 12px 36px rgba(0, 0, 0, 0.24);
   --era-shadow-dock: 0 10px 32px rgba(0, 0, 0, 0.32);
   --era-shadow-overlay: 0 -16px 48px rgba(0, 0, 0, 0.3);
-  --era-shadow-red: 0 8px 24px rgba(36, 85, 255, 0.22);
+  --era-shadow-red: 0 8px 24px rgba(188, 33, 132, 0.22);
 
-  --era-glow-violet: 0 0 0 1px rgba(117, 221, 255, 0.16);
-  --era-glow-hot: 0 0 0 1px rgba(169, 180, 255, 0.16);
+  --era-glow-violet: 0 0 0 1px rgba(255, 165, 234, 0.16);
+  --era-glow-hot: 0 0 0 1px rgba(255, 142, 219, 0.16);
   --era-tint-violet: var(--era-selected);
   --era-tint-red: var(--era-selected);
   --era-tint-gold: rgba(255, 211, 138, 0.12);
-  --era-ring-track: rgba(157, 190, 255, 0.14);
+  --era-ring-track: rgba(231, 167, 213, 0.14);
 
   /* Transitional aliases — existing components keep compiling */
   --era-blue: var(--era-primary);
@@ -75,7 +70,7 @@
   --era-red: var(--era-primary);
   --era-red-bright: var(--era-cyan);
   --era-deep-red: var(--era-primary-strong);
-  --era-magenta: #a9b4ff;
+  --era-magenta: #ff8edb;
   --era-signal-red: var(--era-error);
   --era-crimson: var(--era-error);
   --era-orange: var(--era-warning);
@@ -133,20 +128,20 @@
   --era-space-8: 32px;
 
   /* Orbit context accents (OrbitContext) */
-  --era-orbit-context: rgba(36, 85, 255, 0.18);
+  --era-orbit-context: rgba(188, 33, 132, 0.18);
 }
 
 :root[data-orbit-context="events"] {
-  --era-orbit-context: rgba(117, 221, 255, 0.16);
+  --era-orbit-context: rgba(255, 165, 234, 0.16);
 }
 :root[data-orbit-context="projects"] {
-  --era-orbit-context: rgba(36, 73, 216, 0.22);
+  --era-orbit-context: rgba(134, 32, 155, 0.22);
 }
 :root[data-orbit-context="community"] {
-  --era-orbit-context: rgba(169, 180, 255, 0.14);
+  --era-orbit-context: rgba(255, 142, 219, 0.14);
 }
 :root[data-orbit-context="profile"] {
-  --era-orbit-context: rgba(117, 221, 255, 0.1);
+  --era-orbit-context: rgba(255, 165, 234, 0.1);
 }
 
 * {
@@ -164,8 +159,8 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    radial-gradient(55% 36% at 100% -4%, rgba(36, 85, 255, 0.12), transparent 62%),
-    radial-gradient(48% 30% at 0% 0%, rgba(117, 221, 255, 0.06), transparent 68%),
+    radial-gradient(55% 36% at 100% -4%, rgba(188, 33, 132, 0.12), transparent 62%),
+    radial-gradient(48% 30% at 0% 0%, rgba(255, 165, 234, 0.06), transparent 68%),
     var(--era-bg);
   color: var(--era-text);
   font-family: var(--era-font-body);
@@ -215,7 +210,7 @@ button {
 
 button:active:not(:disabled) { transform: scale(0.97); }
 button:disabled { opacity: 0.48; cursor: not-allowed; }
-button:focus-visible { outline: 2px solid rgba(154, 232, 255, 0.7); outline-offset: 2px; }
+button:focus-visible { outline: 2px solid rgba(255, 215, 242, 0.7); outline-offset: 2px; }
 
 @media (hover: hover) and (pointer: fine) {
   button:hover:not(:disabled) {
@@ -223,7 +218,7 @@ button:focus-visible { outline: 2px solid rgba(154, 232, 255, 0.7); outline-offs
     background: var(--era-surface-2);
   }
   .era-btn-primary:hover:not(:disabled) {
-    box-shadow: 0 10px 24px rgba(36, 85, 255, 0.28);
+    box-shadow: 0 10px 24px rgba(188, 33, 132, 0.28);
   }
   .era-card[role="button"]:hover,
   button.era-card:hover {
@@ -253,8 +248,8 @@ textarea:focus,
 select:focus {
   outline: none;
   background: var(--era-surface);
-  border-color: rgba(117, 221, 255, 0.45);
-  box-shadow: 0 0 0 3px rgba(36, 85, 255, 0.18);
+  border-color: rgba(255, 165, 234, 0.45);
+  box-shadow: 0 0 0 3px rgba(188, 33, 132, 0.18);
 }
 input:disabled, textarea:disabled, select:disabled { opacity: 0.6; cursor: not-allowed; }
 input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--era-primary); cursor: pointer; flex-shrink: 0; }
@@ -332,13 +327,13 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
 
 .era-card-dark {
   background:
-    radial-gradient(120% 140% at 100% 0%, rgba(36, 85, 255, 0.28), transparent 55%),
-    radial-gradient(90% 100% at 0% 100%, rgba(117, 221, 255, 0.12), transparent 60%),
+    radial-gradient(120% 140% at 100% 0%, rgba(188, 33, 132, 0.28), transparent 55%),
+    radial-gradient(90% 100% at 0% 100%, rgba(255, 165, 234, 0.12), transparent 60%),
     var(--era-surface-dark);
-  color: #f5f8ff;
-  border: 1px solid rgba(157, 190, 255, 0.16);
+  color: #fff6fc;
+  border: 1px solid rgba(231, 167, 213, 0.16);
 }
-.era-card-dark .era-muted-on-dark { color: rgba(245, 248, 255, 0.62); }
+.era-card-dark .era-muted-on-dark { color: rgba(255, 246, 252, 0.62); }
 
 .era-pilltabs-scroller { scrollbar-width: none; -ms-overflow-style: none; }
 .era-pilltabs-scroller::-webkit-scrollbar { display: none; }
@@ -383,14 +378,14 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
   100% { background-position: 120% 0; }
 }
 .era-skeleton {
-  background: linear-gradient(90deg, #111b30 25%, #1c2c49 50%, #111b30 75%);
+  background: linear-gradient(90deg, #321731 25%, #542651 50%, #321731 75%);
   background-size: 200% 100%;
   animation: era-shimmer 1.35s ease-in-out infinite;
   border-radius: var(--era-radius-sm);
 }
 
 @keyframes era-overlay-in { from { opacity: 0; } to { opacity: 1; } }
-.era-overlay-backdrop { position: fixed; inset: 0; background: rgba(7, 11, 24, 0.72); animation: era-overlay-in var(--era-motion-fast); z-index: 40; }
+.era-overlay-backdrop { position: fixed; inset: 0; background: rgba(25, 9, 26, 0.72); animation: era-overlay-in var(--era-motion-fast); z-index: 40; }
 @keyframes era-sheet-in { from { opacity: .6; transform: translateY(22px); } to { opacity: 1; transform: translateY(0); } }
 .era-bottom-sheet { animation: era-sheet-in var(--era-motion-fast) cubic-bezier(0.22, 1, 0.36, 1); }
 @keyframes era-modal-in { from { opacity: 0; transform: translateY(8px) scale(0.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
@@ -455,7 +450,7 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
   max-height: 280px;
   top: -8%;
   right: -6%;
-  background: radial-gradient(circle, rgba(36, 85, 255, 0.55), transparent 70%);
+  background: radial-gradient(circle, rgba(188, 33, 132, 0.55), transparent 70%);
   animation: era-orbit-drift var(--era-ambient-period) ease-in-out infinite;
 }
 .era-orbit-ambient__blob--b {
@@ -465,7 +460,7 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
   max-height: 320px;
   bottom: 8%;
   left: -12%;
-  background: radial-gradient(circle, rgba(117, 221, 255, 0.28), transparent 72%);
+  background: radial-gradient(circle, rgba(255, 105, 45, 0.44), transparent 72%);
   animation: era-orbit-drift-alt calc(var(--era-ambient-period) * 1.15) ease-in-out infinite;
 }
 .era-orbit-ambient__blob--c {
@@ -482,7 +477,7 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
 .era-orbit-ambient__arc {
   position: absolute;
   inset: 12% 8% 18%;
-  border: 1px solid rgba(157, 190, 255, 0.12);
+  border: 1px solid rgba(231, 167, 213, 0.12);
   border-radius: 50%;
   mask-image: linear-gradient(135deg, transparent 20%, #000 48%, transparent 78%);
   -webkit-mask-image: linear-gradient(135deg, transparent 20%, #000 48%, transparent 78%);
@@ -499,16 +494,16 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
 .era-orbit-navigator { position:relative; width:100%; aspect-ratio:1.04; max-height:370px; margin:0 auto; isolation:isolate; }
 .era-orbit-connections { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; stroke:url(#orbit-light); stroke-width:.45; opacity:.65; }
 .era-orbit-connections circle { stroke-width:.2; stroke-dasharray:1 4; opacity:.7; }
-.era-orbit-navigator__center { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:70px; height:70px; border-radius:46% 54% 50% 45%; display:grid; place-items:center; background:radial-gradient(circle at 30% 20%,rgba(117,221,255,.3),rgba(36,85,255,.25) 55%,rgba(7,11,24,.9)); border:1px solid rgba(157,190,255,.6); box-shadow:0 0 28px rgba(36,85,255,.35),inset 0 1px 14px rgba(117,221,255,.15); font-weight:800; font-size:22px; z-index:2; pointer-events:none; }
+.era-orbit-navigator__center { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:70px; height:70px; border-radius:46% 54% 50% 45%; display:grid; place-items:center; background:radial-gradient(circle at 30% 20%,rgba(255, 165, 234,.3),rgba(188, 33, 132,.25) 55%,rgba(25, 9, 26,.9)); border:1px solid rgba(231, 167, 213,.6); box-shadow:0 0 28px rgba(188, 33, 132,.35),inset 0 1px 14px rgba(255, 165, 234,.15); font-weight:800; font-size:22px; z-index:2; pointer-events:none; }
 .era-orbit-node { position:absolute; width:43%; aspect-ratio:1.08; min-width:88px; min-height:80px; max-width:172px; padding:16px 8px; border:0; border-radius:35%; background:transparent; box-shadow:none; color:var(--era-text); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; text-align:center; z-index:3; isolation:isolate; transition:color var(--era-motion-fast); }
 .era-orbit-node:hover:not(:disabled) { background:transparent; }
 .era-orbit-node:active:not(:disabled) { transform:none; }
-.era-orbit-node__shell { position:absolute; inset:0; border:1px solid rgba(157,190,255,.5); border-radius:var(--orbit-shape,45% 55% 40% 60%); background:radial-gradient(ellipse at 25% 15%,rgba(117,221,255,.35),transparent 55%),radial-gradient(ellipse at 75% 90%,rgba(36,85,255,.5),transparent 65%),rgba(17,27,48,.86); box-shadow:inset 0 1px 12px rgba(117,221,255,.22),0 10px 30px rgba(0,0,0,.22),0 0 22px rgba(36,85,255,.14); pointer-events:none; animation:era-orbit-node-breathe 9s ease-in-out infinite; z-index:-1; }
-.era-orbit-node__shell::after { content:""; position:absolute; inset:5px; border-radius:inherit; border-top:1px solid rgba(245,248,255,.22); pointer-events:none; }
+.era-orbit-node__shell { position:absolute; inset:0; border:1px solid rgba(231, 167, 213,.5); border-radius:var(--orbit-shape,45% 55% 40% 60%); background:radial-gradient(ellipse at 25% 15%,rgba(255, 165, 234,.35),transparent 55%),radial-gradient(ellipse at 75% 90%,rgba(188, 33, 132,.5),transparent 65%),rgba(50, 23, 49,.86); box-shadow:inset 0 1px 12px rgba(255, 165, 234,.22),0 10px 30px rgba(0,0,0,.22),0 0 22px rgba(188, 33, 132,.14); pointer-events:none; animation:era-orbit-node-breathe 9s ease-in-out infinite; z-index:-1; }
+.era-orbit-node__shell::after { content:""; position:absolute; inset:5px; border-radius:inherit; border-top:1px solid rgba(255, 246, 252,.22); pointer-events:none; }
 .era-orbit-node:nth-of-type(even) .era-orbit-node__shell { animation-delay:-4.5s; }
 .era-orbit-node[data-paused="true"] .era-orbit-node__shell,.era-orbit-node:focus-visible .era-orbit-node__shell,.era-orbit-node:active .era-orbit-node__shell { animation-play-state:paused; }
 .era-orbit-node:active .era-orbit-node__shell { filter:brightness(1.12); }
-.era-orbit-node__icon { color:#c5efff; display:grid; place-items:center; }
+.era-orbit-node__icon { color:#ffe2f6; display:grid; place-items:center; }
 .era-orbit-node__icon svg { width:28px; height:28px; }
 .era-orbit-node__label { font-weight:800; font-size:clamp(18px,5.2vw,23px); letter-spacing:-.035em; line-height:1.1; }
 .era-orbit-node__hint { color:var(--era-text-secondary); font-size:11px; font-weight:500; }
@@ -526,8 +521,8 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
   border-radius: var(--era-radius-card);
   border: 1px solid var(--era-border);
   background:
-    radial-gradient(120% 100% at 100% 0%, rgba(36, 85, 255, 0.22), transparent 55%),
-    radial-gradient(90% 80% at 0% 100%, rgba(117, 221, 255, 0.1), transparent 60%),
+    radial-gradient(120% 100% at 100% 0%, rgba(188, 33, 132, 0.22), transparent 55%),
+    radial-gradient(90% 80% at 0% 100%, rgba(255, 165, 234, 0.1), transparent 60%),
     var(--era-surface);
   box-shadow: var(--era-shadow-soft);
   text-align: left;
@@ -577,3 +572,9 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
     --era-orbit-period: 0s;
   }
 }
+
+.era-orbit-node--events { --flow-node: #a12fe8; }
+.era-orbit-node--ideas { --flow-node: #ed6733; }
+.era-orbit-node--teams { --flow-node: #ee399f; }
+.era-orbit-node__shell { background: radial-gradient(ellipse at 22% 12%, color-mix(in srgb, var(--flow-node, #dd419d) 64%, transparent), transparent 64%), radial-gradient(ellipse at 90% 90%, #661556, transparent 68%), #341132; }
+.era-typography-feed-card { background: radial-gradient(ellipse at 100% 0%, #842366, transparent 58%), linear-gradient(125deg, #391039, #271026 65%, #682f28); }

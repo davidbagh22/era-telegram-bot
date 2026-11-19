@@ -344,7 +344,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
             </Card>
 
             {currentHint && (
-              <Card style={{ background: "linear-gradient(135deg, rgba(36,85,255,.12), rgba(117,221,255,.05)), var(--era-surface)", borderColor: "var(--era-border)" }}>
+              <Card style={{ background: "linear-gradient(135deg, rgba(188, 33, 132,.12), rgba(255, 165, 234,.05)), var(--era-surface)", borderColor: "var(--era-border)" }}>
                 <p style={{ margin: "0 0 0.45rem", color: "var(--era-violet)", fontSize: "var(--era-text-xs)", fontWeight: 850, textTransform: "uppercase" }}>Теория шага</p>
                 <strong style={{ display: "block", lineHeight: 1.45 }}>{currentHint.what}</strong>
                 <p style={{ margin: "0.55rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.55 }}>{currentHint.why}</p>

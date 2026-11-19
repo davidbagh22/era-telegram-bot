@@ -85,8 +85,8 @@ export function getColorScheme(): "light" | "dark" {
   return "dark";
 }
 
-const AURA_BG = "#070b18";
-const AURA_BAR = "#0a1223";
+const AURA_BG = "#19091a";
+const AURA_BAR = "#261124";
 
 export function applyTelegramTheme(): void {
   document.documentElement.dataset.theme = "aura";

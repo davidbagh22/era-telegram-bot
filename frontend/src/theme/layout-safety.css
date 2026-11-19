@@ -39,15 +39,15 @@ svg {
  * AURA nav glass refinements. Imported after tokens.css.
  */
 :root {
-  --era-nav-border: rgba(157, 190, 255, 0.25);
-  --era-nav-muted: #b4c2dd;
-  --era-nav-glass: rgba(10, 18, 35, 0.9);
+  --era-nav-border: rgba(231, 167, 213, 0.25);
+  --era-nav-muted: #e8ccdf;
+  --era-nav-glass: rgba(38, 17, 36, 0.9);
 }
 
 .era-bottom-nav {
   box-shadow:
     0 16px 40px rgba(0, 0, 0, 0.35),
-    0 0 0 1px rgba(157, 190, 255, 0.08) inset;
+    0 0 0 1px rgba(231, 167, 213, 0.08) inset;
 }
 
 .era-bottom-nav::after {
@@ -56,7 +56,7 @@ svg {
   pointer-events: none;
   inset: 0.35rem 12% auto;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(157, 190, 255, 0.35), transparent);
+  background: linear-gradient(90deg, transparent, rgba(231, 167, 213, 0.35), transparent);
   z-index: 2;
 }
 
