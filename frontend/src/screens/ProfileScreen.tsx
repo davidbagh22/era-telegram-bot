@@ -10,6 +10,7 @@ import { Skeleton, SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
 import { useToast } from "../components/Toast";
 import { useAsync } from "../hooks/useAsync";
+import { useMotionPreference } from "../motion/MotionPreference";
 import { CareerPortfolioScreen } from "./CareerPortfolioScreen";
 import { ReferralScreen } from "./ReferralScreen";
 import type { PortfolioEntry } from "../types/profile";
@@ -58,6 +59,7 @@ interface ProfileScreenProps {
 }
 
 export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevelopment }: ProfileScreenProps = {}) {
+  const motion = useMotionPreference();
   const state = useAsync(fetchProfile, []);
   const me = useAsync(fetchMe, []);
   const toast = useToast();
@@ -166,6 +168,11 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
         </div>
       </Card>
 
+      <Card>
+        <button type="button" aria-pressed={motion.liveBackground} onClick={motion.toggleLiveBackground} style={{ width: "100%", textAlign: "left" }}>
+          Живой фон · {motion.liveBackground ? "Включён" : "Выключен"}
+        </button>
+      </Card>
       <section>
         <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Мой вклад и опыт</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.6rem" }}>

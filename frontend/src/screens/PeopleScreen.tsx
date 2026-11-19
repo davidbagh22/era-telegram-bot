@@ -16,6 +16,8 @@ export function PeopleScreen({ onOpenUser, onBack }: PeopleScreenProps) {
   const [items, setItems] = useState<CommunityUser[] | "loading" | "error">("loading");
   const [total, setTotal] = useState(0);
   const [reloadTick, setReloadTick] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [departments, setDepartments] = useState<string[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -24,12 +26,15 @@ export function PeopleScreen({ onOpenUser, onBack }: PeopleScreenProps) {
       q: submitted || undefined,
       department: department || undefined,
       limit: 40,
-      offset: 0,
+      offset,
     })
       .then((result) => {
         if (!active) return;
         setItems(result.items);
         setTotal(result.total);
+        setDepartments(previous => Array.from(new Set([
+          ...previous, ...result.items.flatMap(person => person.departments),
+        ])).sort());
       })
       .catch(() => {
         if (active) setItems("error");
@@ -37,11 +42,7 @@ export function PeopleScreen({ onOpenUser, onBack }: PeopleScreenProps) {
     return () => {
       active = false;
     };
-  }, [submitted, department, reloadTick]);
-
-  const departments = Array.isArray(items)
-    ? Array.from(new Set(items.flatMap((person) => person.departments))).sort()
-    : [];
+  }, [submitted, department, reloadTick, offset]);
 
   return (
     <div className="era-page" style={{ padding: "1.15rem 1.15rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1rem" }}>
@@ -61,7 +62,7 @@ export function PeopleScreen({ onOpenUser, onBack }: PeopleScreenProps) {
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          setSubmitted(query.trim());
+          setSubmitted(query.trim()); setOffset(0);
         }}
         style={{ display: "flex", gap: "0.5rem" }}
       >
@@ -81,7 +82,7 @@ export function PeopleScreen({ onOpenUser, onBack }: PeopleScreenProps) {
           <button
             type="button"
             aria-pressed={department === null}
-            onClick={() => setDepartment(null)}
+            onClick={() => { setDepartment(null); setOffset(0); }}
             style={{
               minHeight: 36,
               borderRadius: "var(--era-radius-pill)",
@@ -98,7 +99,7 @@ export function PeopleScreen({ onOpenUser, onBack }: PeopleScreenProps) {
               key={name}
               type="button"
               aria-pressed={department === name}
-              onClick={() => setDepartment(name)}
+              onClick={() => { setDepartment(name); setOffset(0); }}
               style={{
                 minHeight: 36,
                 borderRadius: "var(--era-radius-pill)",
@@ -128,7 +129,7 @@ export function PeopleScreen({ onOpenUser, onBack }: PeopleScreenProps) {
       )}
       {Array.isArray(items) && items.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-          <p style={{ margin: 0, color: "var(--era-text-faint)", fontSize: "0.78rem" }}>Найдено: {total}</p>
+          <p style={{ margin: 0, color: "var(--era-text-faint)", fontSize: "0.78rem" }}>Показано {offset + 1}–{offset + items.length} из {total}</p>
           {items.map((person) => {
             const tags = [...person.departments, ...(person.directions ?? [])].slice(0, 3);
             const initials = person.name
@@ -180,6 +181,10 @@ export function PeopleScreen({ onOpenUser, onBack }: PeopleScreenProps) {
               </button>
             );
           })}
+          {total > 40 && <div style={{ display: "flex", gap: 8 }}>
+            <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - 40))}>← Назад</button>
+            <button disabled={offset + items.length >= total} onClick={() => setOffset(offset + 40)}>Далее →</button>
+          </div>}
         </div>
       )}
     </div>

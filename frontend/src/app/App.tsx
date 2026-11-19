@@ -53,8 +53,8 @@ interface DeepLink {
 const TAB_HASH: Record<TabKey, string> = {
   home: "#/home",
   projects: "#/projects",
-  events: "#/participation",
-  community: "#/opportunities",
+  events: "#/events",
+  community: "#/discover",
   profile: "#/profile",
 };
 
@@ -181,7 +181,7 @@ function parseDeepLink(): DeepLink | null {
   const userMatch = route.match(/^users\/(\d+)$/);
   if (userMatch) {
     const userId = parseOptionalId(userMatch[1]);
-    return userId ? link({ tab: "community", userId }) : link({ invalid: true });
+    return userId ? link({ tab: "home", userId }) : link({ invalid: true });
   }
 
   const communityMatch = route.match(/^(opportunities|auctions|rewards|surveys|media)(?:\/(\d+))?$/);
@@ -201,7 +201,16 @@ function parseDeepLink(): DeepLink | null {
   if (route === "teams") return link({ tab: "home", orbitCatalog: "teams" });
   if (route === "ideas") return link({ tab: "home", orbitCatalog: "ideas" });
   if (route === "discover") return link({ tab: "community" });
-  if (route === "community") return link({ tab: "community" });
+  if (route === "discover/leisure") return link({ tab: "community", communitySection: "leisure" });
+  if (route === "discover/points") return link({ tab: "community", communitySection: "points" });
+  const readingMatch = route.match(/^literature(?:\/(\d+))?$/);
+  if (readingMatch) {
+    const itemId = parseOptionalId(readingMatch[1]);
+    if (readingMatch[1] && itemId === null) return link({ invalid: true });
+    return link({ tab: "community", communitySection: "literature", itemId });
+  }
+  if (route === "games") return link({ tab: "community", communitySection: "games" });
+  if (route === "community") return link({ tab: "community", communitySection: "opportunities" });
   if (route === "profile") return link({ tab: "profile" });
   if (route === "admin") return link({ tab: "profile", workspace: "admin" });
   if (route === "leader") return link({ tab: "profile", workspace: "leader" });
@@ -306,7 +315,7 @@ export function App() {
   };
   const initialProjectId = deepLink?.projectId ?? null;
 
-  if (auth.status === "loading") return null;
+  if (auth.status === "loading") return <div className="era-page era-discover-page" role="status">Загрузка ЭРА…</div>;
   if (auth.status === "error") return <AuthErrorScreen code={auth.code} detail={auth.detail} onRetry={auth.refresh} />;
 
   const { user } = auth;

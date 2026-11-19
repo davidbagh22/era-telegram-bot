@@ -11,7 +11,7 @@ interface AppShellProps {
 /**
  * Single shell above user/leader/admin layouts: one OrbitAmbient lifecycle.
  */
-export function AppShell({ children, context = "home" }: AppShellProps) {
+export function OrbitContextBoundary({ children, context = "home" }: AppShellProps) {
   useEffect(() => {
     document.documentElement.dataset.orbitContext = context;
     return () => {
@@ -19,8 +19,13 @@ export function AppShell({ children, context = "home" }: AppShellProps) {
     };
   }, [context]);
 
+  return <>{children}</>;
+}
+
+/** Keep the same ambient DOM node across auth, tabs and workspace changes. */
+export function AppShell({ children }: { children: ReactNode }) {
   return (
-    <div className="era-app-shell" data-orbit-context={context}>
+    <div className="era-app-shell">
       <OrbitAmbient />
       <div className="era-app-shell__content">{children}</div>
     </div>

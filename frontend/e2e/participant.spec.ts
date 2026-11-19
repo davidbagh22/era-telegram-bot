@@ -62,6 +62,7 @@ test("project constructor teaches each step, has no AI writer and lets the autho
   await expect(page.getByRole("heading", { name: "Проекты" })).toBeVisible();
 
   const idea = `E2E черновик ${Date.now()}`;
+  await page.getByRole("button", { name: "Предложить идею", exact: true }).click();
   await page.getByPlaceholder("Мы делаем [что] для [кого], чтобы [зачем]").fill(idea);
   await page.getByRole("button", { name: "Начать конструктор →" }).click();
 

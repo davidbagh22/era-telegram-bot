@@ -4,6 +4,7 @@ import { installProductAnalytics } from "./analytics/productAnalytics";
 import { App } from "./app/App";
 import { ToastProvider } from "./components/Toast";
 import { MotionPreferenceProvider } from "./motion/MotionPreference";
+import { AppShell } from "./layouts/AppShell";
 import { applyTelegramTheme, initTelegramBackNavigation } from "./telegram/webApp";
 import "./theme/tokens.css";
 import "./theme/motion.css";
@@ -23,7 +24,7 @@ createRoot(container).render(
   <StrictMode>
     <MotionPreferenceProvider>
       <ToastProvider>
-        <App />
+        <AppShell><App /></AppShell>
       </ToastProvider>
     </MotionPreferenceProvider>
   </StrictMode>,

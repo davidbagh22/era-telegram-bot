@@ -43,6 +43,7 @@ export function MotionPreferenceProvider({ children }: { children: ReactNode }) 
   const [documentVisible, setDocumentVisible] = useState(
     typeof document === "undefined" ? true : document.visibilityState !== "hidden",
   );
+  const [telegramActive, setTelegramActive] = useState(() => getTelegramWebApp()?.isActive !== false);
 
   const setLiveBackground = useCallback((value: boolean) => {
     setLiveBackgroundState(value);
@@ -70,20 +71,22 @@ export function MotionPreferenceProvider({ children }: { children: ReactNode }) 
     const onVisibility = () => setDocumentVisible(document.visibilityState !== "hidden");
     document.addEventListener("visibilitychange", onVisibility);
     const webApp = getTelegramWebApp();
-    const onDeactivated = () => setDocumentVisible(false);
-    const onActivated = () => setDocumentVisible(true);
+    const onDeactivated = () => setTelegramActive(false);
+    const onActivated = () => setTelegramActive(true);
     try {
-      webApp?.onEvent?.("deactivated" as "themeChanged", onDeactivated);
-      webApp?.onEvent?.("activated" as "themeChanged", onActivated);
+      webApp?.onEvent?.("deactivated", onDeactivated);
+      webApp?.onEvent?.("activated", onActivated);
     } catch {
       /* older clients */
     }
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
+      webApp?.offEvent?.("deactivated", onDeactivated);
+      webApp?.offEvent?.("activated", onActivated);
     };
   }, []);
 
-  const motionAllowed = liveBackground && !reducedMotion && documentVisible;
+  const motionAllowed = liveBackground && !reducedMotion && documentVisible && telegramActive;
 
   const value = useMemo(
     () => ({ liveBackground, setLiveBackground, motionAllowed, toggleLiveBackground }),

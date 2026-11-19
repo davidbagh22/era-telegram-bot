@@ -1,3 +1,32 @@
+# ERA Mini App — current AURA × ORBIT additions (19 November 2026)
+
+The current route parser is hash-reactive (hashchange/popstate), not one-time.
+The participant dock is Орбита / Афиша / Проекты / Открытия / Я.
+
+| Route | Destination |
+|---|---|
+| #/home | Organic orbit with people/events/ideas/teams nodes |
+| #/events | Event feed; title + date, media only after opening |
+| #/projects | Project feed; saved scope, default open; /:id opens details |
+| #/people | Member directory with search and pagination |
+| #/teams | Authored and accepted-member teams, open projects |
+| #/ideas | Existing project constructor and drafts |
+| #/discover | Opportunities category |
+| #/discover/leisure | Literature and enabled games |
+| #/discover/points | Enabled catalog/auctions, balance and rating |
+| #/literature | Real available archive and explicit subscription |
+| #/literature/:number | Structured reader, per-user local reading position |
+| #/games | Existing game metadata and real Telegram launch, rollout-gated |
+| #/profile | Personal results, portfolio, workspaces, motion setting |
+
+Legacy opportunities/auctions/rewards/surveys/media/development/admin links remain.
+OrbitAmbient is mounted once in main.tsx, above all auth/layout branches.
+Reader APIs share the bot's existing archive boundary; no schedule/send jobs change.
+The previous inventory follows for historical detailed component mapping. Its
+four-tab/one-time-route description is superseded by this section and App.tsx.
+
+---
+
 # ERA Mini App — UX Screen Map
 
 **2026-08 redesign, phase 6.** A flat inventory of every screen the Mini

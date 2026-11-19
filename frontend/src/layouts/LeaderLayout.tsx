@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ContextHelp } from "../components/ContextHelp";
-import { AppShell } from "./AppShell";
+import { OrbitContextBoundary } from "./AppShell";
 
 interface LeaderLayoutProps {
   children: ReactNode;
@@ -9,8 +9,8 @@ interface LeaderLayoutProps {
 
 export function LeaderLayout({ children, onExitWorkspace }: LeaderLayoutProps) {
   return (
-    <AppShell context="workspace">
-      <div style={{ minHeight: "100vh", paddingTop: "env(safe-area-inset-top, 0px)" }}>
+    <OrbitContextBoundary context="workspace">
+      <div style={{ minHeight: "100vh", paddingTop: "var(--era-safe-top)" }}>
         <div
           style={{
             display: "flex",
@@ -45,6 +45,6 @@ export function LeaderLayout({ children, onExitWorkspace }: LeaderLayoutProps) {
         {children}
         <ContextHelp mode="leader" />
       </div>
-    </AppShell>
+    </OrbitContextBoundary>
   );
 }

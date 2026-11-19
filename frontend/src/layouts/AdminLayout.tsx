@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ContextHelp } from "../components/ContextHelp";
-import { AppShell } from "./AppShell";
+import { OrbitContextBoundary } from "./AppShell";
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -9,8 +9,8 @@ interface AdminLayoutProps {
 
 export function AdminLayout({ children, onExitWorkspace }: AdminLayoutProps) {
   return (
-    <AppShell context="workspace">
-      <div style={{ minHeight: "100vh", paddingTop: "env(safe-area-inset-top, 0px)" }}>
+    <OrbitContextBoundary context="workspace">
+      <div style={{ minHeight: "100vh", paddingTop: "var(--era-safe-top)" }}>
         <div
           style={{
             display: "flex",
@@ -47,6 +47,6 @@ export function AdminLayout({ children, onExitWorkspace }: AdminLayoutProps) {
         </div>
         {children}
       </div>
-    </AppShell>
+    </OrbitContextBoundary>
   );
 }

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { FloatingNav, type TabKey } from "../components/FloatingNav";
 import { OnboardingGate } from "../components/OnboardingGate";
 import { ParticipationModeControl } from "../components/ParticipationModeControl";
-import { AppShell, type OrbitContext } from "./AppShell";
+import { OrbitContextBoundary, type OrbitContext } from "./AppShell";
 
 interface UserLayoutProps {
   children: ReactNode;
@@ -20,14 +20,14 @@ function tabToContext(tab: TabKey): OrbitContext {
 
 export function UserLayout({ children, activeTab, onTabChange }: UserLayoutProps) {
   return (
-    <AppShell context={tabToContext(activeTab)}>
+    <OrbitContextBoundary context={tabToContext(activeTab)}>
       <OnboardingGate>
-        <div
+        <div className="era-user-layout"
           style={{
             minHeight: "100dvh",
             display: "flex",
             flexDirection: "column",
-            paddingTop: "env(safe-area-inset-top, 0px)",
+            paddingTop: "var(--era-safe-top)",
             paddingBottom: "var(--era-bottom-nav-clearance, calc(6rem + env(safe-area-inset-bottom, 0px)))",
           }}
         >
@@ -36,6 +36,6 @@ export function UserLayout({ children, activeTab, onTabChange }: UserLayoutProps
           <FloatingNav active={activeTab} onChange={onTabChange} />
         </div>
       </OnboardingGate>
-    </AppShell>
+    </OrbitContextBoundary>
   );
 }

@@ -58,7 +58,9 @@ export function HomeScreen({
   void _onOpenProjects;
   const home = useHome();
   const { liveBackground, toggleLiveBackground } = useMotionPreference();
-  const [viewMode, setViewMode] = useState<"orbit" | "list">("orbit");
+  const [viewMode, setViewMode] = useState<"orbit" | "list">(() => {
+    try { return localStorage.getItem("era.orbit.view") === "list" ? "list" : "orbit"; } catch { return "orbit"; }
+  });
   const [dailyQuote, setDailyQuote] = useState("");
   const [eventBoard, setEventBoard] = useState<EventItem[] | "loading" | "error">("loading");
   const [eventsTick, setEventsTick] = useState(0);
@@ -190,8 +192,8 @@ export function HomeScreen({
             aria-pressed={liveBackground}
             aria-label={liveBackground ? "Пауза живого фона" : "Включить живой фон"}
             style={{
-              minHeight: 36,
-              minWidth: 36,
+              minHeight: 44,
+              minWidth: 44,
               padding: "0.35rem 0.55rem",
               borderRadius: "var(--era-radius-pill)",
               fontSize: "0.72rem",
@@ -243,7 +245,10 @@ export function HomeScreen({
                 key={mode}
                 type="button"
                 aria-pressed={viewMode === mode}
-                onClick={() => setViewMode(mode)}
+                onClick={() => {
+                  setViewMode(mode);
+                  try { localStorage.setItem("era.orbit.view", mode); } catch { /* private mode */ }
+                }}
                 style={{
                   minHeight: 36,
                   padding: "0.3rem 0.7rem",

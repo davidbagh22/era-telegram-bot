@@ -1,6 +1,6 @@
 import {
   EventIcon,
-  HomeIcon,
+  OrbitIcon,
   OpportunitiesIcon,
   ProfileIcon,
   ProjectsIcon,
@@ -9,8 +9,8 @@ import { selectionHaptic } from "../telegram/webApp";
 
 export type TabKey = "home" | "projects" | "events" | "community" | "profile";
 
-const TABS: { key: TabKey; label: string; Icon: typeof HomeIcon }[] = [
-  { key: "home", label: "Орбита", Icon: HomeIcon },
+const TABS: { key: TabKey; label: string; Icon: typeof OrbitIcon }[] = [
+  { key: "home", label: "Орбита", Icon: OrbitIcon },
   { key: "events", label: "Афиша", Icon: EventIcon },
   { key: "projects", label: "Проекты", Icon: ProjectsIcon },
   { key: "community", label: "Открытия", Icon: OpportunitiesIcon },
@@ -32,7 +32,7 @@ export function FloatingNav({ active, onChange }: FloatingNavProps) {
       style={{
         position: "fixed",
         left: "50%",
-        bottom: "calc(0.55rem + env(safe-area-inset-bottom, 0px))",
+        bottom: "calc(0.55rem + var(--era-safe-bottom))",
         transform: "translateX(-50%)",
         width: "calc(100% - 1.25rem)",
         maxWidth: "32rem",
@@ -59,10 +59,6 @@ export function FloatingNav({ active, onChange }: FloatingNavProps) {
             type="button"
             onClick={() => {
               if (!isActive) selectionHaptic();
-              if (key === "community") {
-                if (window.location.hash !== "#/opportunities") window.location.hash = "#/opportunities";
-                return;
-              }
               onChange(key);
             }}
             aria-current={isActive ? "page" : undefined}
@@ -79,7 +75,7 @@ export function FloatingNav({ active, onChange }: FloatingNavProps) {
               border: "none",
               boxShadow: "none",
               color: isActive ? "var(--era-cyan)" : "var(--era-nav-muted, var(--era-text-muted))",
-              fontSize: "0.62rem",
+              fontSize: "0.7rem",
               fontWeight: isActive ? 800 : 650,
               padding: "0.38rem 0.05rem",
               borderRadius: "1.1rem",
@@ -89,7 +85,7 @@ export function FloatingNav({ active, onChange }: FloatingNavProps) {
             <span aria-hidden="true" style={{ display: "grid", placeItems: "center", width: 32, height: 26 }}>
               <Icon width={21} height={21} />
             </span>
-            <span style={{ maxWidth: "100%", lineHeight: 1.1, textAlign: "center", overflowWrap: "anywhere" }}>
+            <span style={{ maxWidth: "100%", lineHeight: 1.1, textAlign: "center", whiteSpace: "nowrap" }}>
               {label}
             </span>
           </button>

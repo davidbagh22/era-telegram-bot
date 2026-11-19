@@ -1,15 +1,13 @@
 import { useState } from "react";
-import { cancelProject, createProject, describeActionError, fetchProjects } from "../../api/client";
+import { createProject, describeActionError, fetchProjects } from "../../api/client";
 import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
-import { StatusBadge } from "../../components/StatusBadge";
 import { TypographyFeedCard } from "../../components/TypographyFeedCard";
 import { useAsync } from "../../hooks/useAsync";
-import type { ProjectScope, ProjectSummary } from "../../types/project";
+import type { ProjectScope } from "../../types/project";
 import { formatProjectFeedDate } from "../../utils/feedDate";
 import { displayProjectTitle } from "./displayTitle";
-import { projectStatusLabel } from "./statusLabels";
 
 
 const SCOPES: { value: ProjectScope; label: string }[] = [
@@ -23,21 +21,18 @@ interface ProjectsListProps {
   onSelect: (projectId: number) => void;
 }
 
-function isDraft(project: ProjectSummary): boolean {
-  return project.status === "draft" || project.status === "needs_revision";
-}
-
 export function ProjectsList({ onSelect }: ProjectsListProps) {
-  const [scope, setScope] = useState<ProjectScope>("mine");
+  const [scope, setScope] = useState<ProjectScope>(() => {
+    try {
+      const stored = sessionStorage.getItem("era.projects.scope");
+      return SCOPES.some(s => s.value === stored) ? stored as ProjectScope : "open";
+    } catch { return "open"; }
+  });
   const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [idea, setIdea] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [deleteCandidate, setDeleteCandidate] = useState<ProjectSummary | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const state = useAsync(() => fetchProjects(scope), [scope, refreshKey]);
+  const state = useAsync(() => fetchProjects(scope), [scope]);
   const scopeLabel = SCOPES.find((option) => option.value === scope)?.label ?? scope;
 
   const handleCreate = async () => {
@@ -55,21 +50,6 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
     }
   };
 
-  const handleDeleteDraft = async () => {
-    if (!deleteCandidate) return;
-    setDeleting(true);
-    setDeleteError(null);
-    try {
-      await cancelProject(deleteCandidate.id);
-      setDeleteCandidate(null);
-      setRefreshKey((value) => value + 1);
-    } catch (error) {
-      setDeleteError(describeActionError(error));
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -84,7 +64,10 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
               key={option.value}
               type="button"
               style={{ display: "flex", alignItems: "center", gap: "0.5rem", width: "100%", textAlign: "left", fontFamily: "var(--era-font-body)", fontSize: "0.9375rem", padding: "0.625rem 0.25rem", border: "none", borderBottom: "1px solid var(--era-border)", background: "transparent", color: "var(--era-text)" }}
-              onClick={() => { setScope(option.value); setShowFilterSheet(false); }}
+              onClick={() => {
+                setScope(option.value); setShowFilterSheet(false);
+                try { sessionStorage.setItem("era.projects.scope", option.value); } catch { /* private mode */ }
+              }}
             >
               <input type="radio" readOnly checked={scope === option.value} />
               {option.label}
@@ -117,12 +100,10 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
         </Card>
       )}
 
-      {deleteError && <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{deleteError}</p>}
       {state.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>}
-      {state.status === "error" && <EmptyState text="Не удалось загрузить проекты." />}
+      {state.status === "error" && <EmptyState text="Не удалось загрузить проекты." actionLabel="Повторить" onAction={state.reload} />}
       {state.status === "ready" && state.data.length === 0 && <EmptyState text="Проектов в этом разделе пока нет." />}
       {state.status === "ready" && state.data.map((project) => (
-        scope === "open" || scope === "completed" || scope === "proposals" ? (
           <TypographyFeedCard
             key={project.id}
             title={displayProjectTitle(project.title)}
@@ -133,55 +114,7 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
             })}
             onClick={() => onSelect(project.id)}
           />
-        ) : (
-          <div
-            key={project.id}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.65rem",
-              padding: "1rem 0",
-              borderBottom: "1px solid var(--era-border)",
-            }}
-          >
-            <button type="button" onClick={() => onSelect(project.id)} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start" }}>
-                <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "1.15rem", lineHeight: 1.3, overflowWrap: "break-word", textWrap: "balance" }}>{displayProjectTitle(project.title)}</strong>
-                <StatusBadge label={projectStatusLabel(project.status)} tone="violet" />
-              </div>
-              {project.short_description && (
-                <p className="era-readable-copy" style={{ margin: "0.4rem 0 0", color: "var(--era-text-muted)" }}>
-                  {project.short_description}
-                </p>
-              )}
-            </button>
-            {isDraft(project) && (
-              <button
-                type="button"
-                disabled={deleting}
-                onClick={() => { setDeleteError(null); setDeleteCandidate(project); }}
-                style={{ alignSelf: "flex-start", color: "var(--era-error)", minHeight: "auto", padding: "0.35rem 0.55rem" }}
-              >
-                Удалить черновик
-              </button>
-            )}
-          </div>
-        )
       ))}
-
-      <BottomSheet open={Boolean(deleteCandidate)} onClose={() => setDeleteCandidate(null)} title="Удалить черновик?">
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
-          <p style={{ margin: 0, color: "var(--era-text-muted)", lineHeight: 1.55 }}>
-            {deleteCandidate ? `«${deleteCandidate.title}» исчезнет из ваших проектов. Восстановить его через интерфейс будет нельзя.` : ""}
-          </p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.55rem" }}>
-            <button type="button" disabled={deleting} onClick={() => setDeleteCandidate(null)}>Оставить</button>
-            <button type="button" disabled={deleting} onClick={() => void handleDeleteDraft()} style={{ color: "var(--era-error)", borderColor: "rgba(255,102,117,.35)" }}>
-              {deleting ? "Удаляем…" : "Удалить"}
-            </button>
-          </div>
-        </div>
-      </BottomSheet>
     </div>
   );
 }

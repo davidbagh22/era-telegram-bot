@@ -5,10 +5,14 @@ import { useAsync } from "../hooks/useAsync";
 import { LeaderboardScreen } from "./LeaderboardScreen";
 import { MediaScreen } from "./MediaScreen";
 import { OpportunitiesScreen, type OpportunitiesSection } from "./OpportunitiesScreen";
+import { DiscoverScreen } from "./DiscoverScreen";
+import { LiteratureScreen } from "./LiteratureScreen";
+import { GamesScreen } from "./GamesScreen";
+import { EmptyState } from "../components/EmptyState";
 
 // `community` remains only as a compatibility shell for old deep links.
 // Participant navigation now treats Opportunities as the real fifth domain.
-export type CommunitySection = "opportunities" | "leaderboard" | "surveys" | "media" | "rewards" | "auctions";
+export type CommunitySection = "opportunities" | "leaderboard" | "surveys" | "media" | "rewards" | "auctions" | "leisure" | "points" | "literature" | "games";
 
 interface CommunityScreenProps {
   initialSection?: CommunitySection | null;
@@ -37,12 +41,18 @@ export function CommunityScreen({ initialSection = null, initialItemId = null, i
     if (window.location.hash !== "#/opportunities") window.location.hash = "#/opportunities";
   };
 
-  if (me.status === "loading" && initialSection && ["surveys", "media", "rewards", "auctions"].includes(initialSection)) {
+  if (me.status === "loading") {
     return (
       <div className="era-page" style={{ padding: "1.25rem" }}>
         <SkeletonList count={2} />
       </div>
     );
+  }
+  if (me.status === "error") return <EmptyState text="Не удалось загрузить открытия." actionLabel="Повторить" onAction={me.reload} />;
+  if (initialSection === "literature") return <LiteratureScreen userId={me.data.id} number={initialItemId} />;
+  if (initialSection === "games") return <GamesScreen />;
+  if (!initialSection || initialSection === "leisure" || initialSection === "points") {
+    return <DiscoverScreen user={me.data} category={initialSection === "leisure" ? "leisure" : initialSection === "points" ? "points" : "offers"} />;
   }
 
   if (me.status === "ready") {
@@ -65,6 +75,7 @@ export function CommunityScreen({ initialSection = null, initialItemId = null, i
     <OpportunitiesScreen
       initialSection={toOpportunitySection(initialSection)}
       initialItemId={initialItemId}
+      onBack={() => { window.location.hash = "#/discover"; }}
     />
   );
 }

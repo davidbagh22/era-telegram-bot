@@ -1,4 +1,4 @@
-import { fetchProjects } from "../api/client";
+import { fetchTeams } from "../api/client";
 import { EmptyState } from "../components/EmptyState";
 import { MonoLabel } from "../components/MonoLabel";
 import { TypographyFeedCard } from "../components/TypographyFeedCard";
@@ -14,11 +14,13 @@ interface TeamsScreenProps {
 
 /** Teams = existing projects/memberships — no parallel team entity. */
 export function TeamsScreen({ onOpenProject, onBack }: TeamsScreenProps) {
-  const mine = useAsync(() => fetchProjects("mine"), []);
-  const open = useAsync(() => fetchProjects("open"), []);
+  const mine = useAsync(() => fetchTeams("mine"), []);
+  const open = useAsync(() => fetchTeams("open"), []);
 
   const loading = mine.status === "loading" || open.status === "loading";
-  const errored = mine.status === "error" && open.status === "error";
+  const openTeams = open.status === "ready"
+    ? open.data.filter(project => mine.status !== "ready" || !mine.data.some(item => item.id === project.id))
+    : [];
 
   return (
     <div className="era-page" style={{ padding: "1.15rem 1.15rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1.1rem" }}>
@@ -31,12 +33,13 @@ export function TeamsScreen({ onOpenProject, onBack }: TeamsScreenProps) {
         <MonoLabel>Орбита</MonoLabel>
         <h1 style={{ margin: "0.35rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "1.8rem" }}>Команды</h1>
         <p style={{ margin: "0.4rem 0 0", color: "var(--era-text-secondary)", fontSize: "0.9rem" }}>
-          Мои проекты и открытый набор. Это те же проектные команды ЭРА.
+          Найди свою команду и создавай вместе.
         </p>
       </header>
 
       {loading && <SkeletonList count={3} />}
-      {errored && <EmptyState text="Не удалось загрузить команды." />}
+      {mine.status === "error" && <EmptyState text="Не удалось загрузить мои команды." actionLabel="Повторить" onAction={mine.reload} />}
+      {open.status === "error" && <EmptyState text="Не удалось загрузить открытые команды." actionLabel="Повторить" onAction={open.reload} />}
 
       {mine.status === "ready" && (
         <section style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
@@ -62,11 +65,11 @@ export function TeamsScreen({ onOpenProject, onBack }: TeamsScreenProps) {
 
       {open.status === "ready" && (
         <section style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
-          <MonoLabel>Открытый набор</MonoLabel>
-          {open.data.length === 0 ? (
+          <MonoLabel>Открытые команды</MonoLabel>
+          {openTeams.length === 0 ? (
             <EmptyState text="Сейчас нет проектов с открытым набором." />
           ) : (
-            open.data.map((project) => (
+            openTeams.map((project) => (
               <TypographyFeedCard
                 key={`open-${project.id}`}
                 title={displayProjectTitle(project.title)}

@@ -22,6 +22,10 @@ interface TelegramWebApp {
   colorScheme: "light" | "dark";
   themeParams: Record<string, string | undefined>;
   onEvent: (eventType: string, callback: () => void) => void;
+  offEvent?: (eventType: string, callback: () => void) => void;
+  isActive?: boolean;
+  safeAreaInset?: { top: number; bottom: number; left: number; right: number };
+  contentSafeAreaInset?: { top: number; bottom: number; left: number; right: number };
   setHeaderColor?: (color: string) => void;
   setBackgroundColor?: (color: string) => void;
   setBottomBarColor?: (color: string) => void;
@@ -58,7 +62,23 @@ export function initTelegramWebApp(): void {
   webApp?.expand();
   // Re-apply ERA chrome if Telegram itself changes theme while the Mini App is open.
   webApp?.onEvent("themeChanged", applyTelegramTheme);
+  syncTelegramSafeArea();
+  if (webApp && !safeAreaBound) {
+    safeAreaBound = true;
+    for (const event of ["safeAreaChanged", "contentSafeAreaChanged", "viewportChanged"]) {
+      webApp.onEvent(event, syncTelegramSafeArea);
+    }
+  }
   bindPrimaryButtonHaptics();
+}
+
+let safeAreaBound = false;
+function syncTelegramSafeArea(): void {
+  const app = getTelegramWebApp();
+  for (const side of ["top", "bottom", "left", "right"] as const) {
+    const value = Math.max(0, app?.safeAreaInset?.[side] ?? 0, app?.contentSafeAreaInset?.[side] ?? 0);
+    document.documentElement.style.setProperty("--era-tg-" + side, Number.isFinite(value) ? value + "px" : "0px");
+  }
 }
 
 export function getColorScheme(): "light" | "dark" {
@@ -95,12 +115,14 @@ function parentRoute(route: string): string | null {
     "admin",
     "leader",
     "community",
-    "people",
-    "teams",
-    "ideas",
     "discover",
   ]);
   if (roots.has(route)) return null;
+  if (["people", "teams", "ideas"].includes(route)) return "home";
+  if (route === "literature") return "discover/leisure";
+  if (/^literature\/\d+$/.test(route)) return "literature";
+  if (route === "games") return "discover/leisure";
+  if (route.startsWith("discover/")) return "discover";
 
   if (route === "development" || route === "progress") return "home";
   if (route.startsWith("development/")) return "development";

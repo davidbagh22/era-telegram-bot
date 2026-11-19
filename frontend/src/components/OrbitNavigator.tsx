@@ -1,5 +1,6 @@
 import { useMotionPreference } from "../motion/MotionPreference";
 import { selectionHaptic } from "../telegram/webApp";
+import { CommunityIcon, EventIcon, IdeaIcon, ProjectsIcon } from "./icons";
 
 export type OrbitNodeKey = "people" | "events" | "ideas" | "teams";
 
@@ -20,6 +21,11 @@ export function OrbitNavigator({ onSelect }: OrbitNavigatorProps) {
 
   return (
     <div className="era-orbit-navigator" role="navigation" aria-label="Твоя орбита">
+      <svg className="era-orbit-connections" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+        <defs><linearGradient id="orbit-light"><stop stopColor="#75ddff" stopOpacity=".15" /><stop offset=".5" stopColor="#75ddff" /><stop offset="1" stopColor="#2455ff" stopOpacity=".25" /></linearGradient></defs>
+        <circle cx="50" cy="50" r="37" />
+        <path d="M23 23Q50 28 50 50Q50 28 77 23M23 77Q50 72 50 50Q50 72 77 77" />
+      </svg>
       <div className="era-orbit-navigator__center" aria-hidden="true">
         ЭРА
       </div>
@@ -36,6 +42,9 @@ export function OrbitNavigator({ onSelect }: OrbitNavigatorProps) {
           }}
         >
           <span className="era-orbit-node__shell" aria-hidden="true" />
+          <span className="era-orbit-node__icon" aria-hidden="true">
+            {node.key === "people" ? <CommunityIcon /> : node.key === "events" ? <EventIcon /> : node.key === "ideas" ? <IdeaIcon /> : <ProjectsIcon />}
+          </span>
           <span className="era-orbit-node__label">{node.label}</span>
           <span className="era-orbit-node__hint">{node.hint}</span>
         </button>
