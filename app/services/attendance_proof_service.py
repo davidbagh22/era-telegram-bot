@@ -8,6 +8,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database.event_experience import EventExperience
 from app.database.models import AttendanceProof, Event, EventRegistration, User
 from app.services.notification_service import safe_send, safe_send_document
 from app.services.points_service import add_points, add_portfolio_item
@@ -83,7 +84,8 @@ async def approve_proof(
     )
 
     cert_note = ""
-    if event is not None:
+    experience = await session.get(EventExperience, event.id) if event else None
+    if event is not None and (experience is None or experience.issue_certificate is not False):
         try:
             async with session.begin_nested():
                 from app.services.certificate_pdf_service import build_certificate_pdf

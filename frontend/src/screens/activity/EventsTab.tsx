@@ -9,6 +9,7 @@ import {
   sendEventCalendarToChat,
   registerForEvent,
 } from "../../api/client";
+import { EventDetailsEditor } from "../admin/events/EventDetailsEditor";
 import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
@@ -21,7 +22,7 @@ import { useAsync } from "../../hooks/useAsync";
 import { safeEvidenceUrl } from "../../utils/safeEvidenceUrl";
 import { formatFeedDateLine } from "../../utils/feedDate";
 import { getTelegramWebApp, successHaptic } from "../../telegram/webApp";
-import type { EventActivity, EventItem, EventScope } from "../../types/activity";
+import type { EventActivity, EventItem, EventScope, EventSignup } from "../../types/activity";
 import { AnniversaryRegistration } from "./AnniversaryRegistration";
 import { EventAttendancePanel } from "./EventAttendancePanel";
 
@@ -392,15 +393,17 @@ export function EventPoster({ event, compact = false }: { event: EventItem; comp
 }
 
 interface EventDetailProps {
+  openSignup?: boolean;
   event: EventItem;
   pending: boolean;
   actionError: string | null;
-  onRegister: () => void;
+  onRegister: (fields?: EventSignup) => void;
   onCancelRequest: () => void;
   onBack: () => void;
 }
 
-function EventDetail({ event, pending, actionError, onRegister, onCancelRequest, onBack }: EventDetailProps) {
+function EventDetail({ event, openSignup, pending, actionError, onRegister, onCancelRequest, onBack }: EventDetailProps) {
+  const [showForm, setShowForm] = useState(Boolean(openSignup && event.signup_defaults));
   const anniversary = event.anniversary_registered != null;
   const registered = ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "");
   const waitlisted = event.registration_status === WAITLIST_STATUS;
@@ -555,8 +558,22 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
           </div>
         ) : anniversary ? (
           <AnniversaryRegistration key={event.id} event={event} />
+        ) : event.can_register && event.signup_defaults && showForm ? (
+          <form style={{ display: "grid", gap: 8, maxHeight: "55dvh", overflowY: "auto" }} onSubmit={e => {
+            e.preventDefault();
+            const data = new FormData(e.currentTarget);
+            onRegister({ full_name: String(data.get("full_name")).trim(), phone: String(data.get("phone")).trim(),
+              organization: String(data.get("organization")).trim() });
+          }}>
+            <label>Фамилия, имя и отчество<input required name="full_name" maxLength={255} defaultValue={event.signup_defaults.full_name} /></label>
+            <label>Организация или вуз полностью<input required name="organization" maxLength={255} defaultValue={event.signup_defaults.organization} /></label>
+            <label>Номер телефона<input required type="tel" name="phone" maxLength={32} defaultValue={event.signup_defaults.phone} /></label>
+            <small>Данные получит руководитель мероприятия.</small>
+            <button disabled={pending}>Подтвердить регистрацию</button>
+            <button type="button" disabled={pending} onClick={() => setShowForm(false)}>Назад</button>
+          </form>
         ) : event.can_register ? (
-          <button type="button" className="era-btn-primary" disabled={pending} onClick={onRegister} style={{ width: "100%" }}>
+          <button type="button" className="era-btn-primary" disabled={pending} onClick={() => event.signup_defaults ? setShowForm(true) : onRegister()} style={{ width: "100%" }}>
             {pending ? "● Сохраняем…" : event.remaining_count === 0 && event.waitlist_enabled ? "Встать в лист ожидания" : "Участвовать"}
           </button>
         ) : (
@@ -572,11 +589,13 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
 }
 
 interface EventsTabProps {
+  canEdit?: boolean;
   initialItemId?: number | null;
   initialScope?: EventScope;
 }
 
-export function EventsTab({ initialItemId, initialScope }: EventsTabProps = {}) {
+export function EventsTab({ initialItemId, initialScope, canEdit }: EventsTabProps = {}) {
+  const [editing, setEditing] = useState(false);
   const [scope, setScope] = useState<EventScope>(initialItemId ? "all" : initialScope ?? "for_me");
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchEvents(scope), [scope, refreshKey]);
@@ -617,13 +636,13 @@ export function EventsTab({ initialItemId, initialScope }: EventsTabProps = {}) 
     return state.data.find((item) => item.id === selectedId) ?? null;
   }, [selectedId, selectedOverride, state]);
 
-  const handleRegister = useCallback(async (eventId: number) => {
+  const handleRegister = useCallback(async (eventId: number, fields?: EventSignup) => {
     if (pendingRegistration.current) return;
     pendingRegistration.current = true;
     setPendingId(eventId);
     setActionError(null);
     try {
-      const result = await registerForEvent(eventId);
+      const result = await registerForEvent(eventId, fields);
       setSelectedOverride(result);
       refresh();
       if (result.registration_status === WAITLIST_STATUS) {
@@ -729,13 +748,23 @@ export function EventsTab({ initialItemId, initialScope }: EventsTabProps = {}) 
       );
     }
     if (selected) {
+      if (canEdit && editing) {
+        return <EventDetailsEditor key={selected.id} eventId={selected.id} onClose={() => {
+          setEditing(false);
+          setSelectedOverride(null);
+          refresh();
+        }} />;
+      }
       return (
         <>
+          {canEdit && <button onClick={() => setEditing(true)}>Редактировать мероприятие</button>}
           <EventDetail
+            key={selected.id}
+            openSignup={selected.id === initialItemId}
             event={selected}
             pending={pendingId === selected.id}
             actionError={actionError}
-            onRegister={() => void handleRegister(selected.id)}
+            onRegister={(fields) => void handleRegister(selected.id, fields)}
             onCancelRequest={() => setCancelTarget(selected)}
             onBack={closeEvent}
           />

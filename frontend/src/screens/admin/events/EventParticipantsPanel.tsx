@@ -8,6 +8,7 @@ import { Card } from "../../../components/Card";
 import { EmptyState } from "../../../components/EmptyState";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { useAsync } from "../../../hooks/useAsync";
+import { RegistrantMessagePanel } from "./RegistrantMessagePanel";
 import { EventLifecyclePanel } from "./EventLifecyclePanel";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -94,6 +95,7 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
         </p>
       </Card>
 
+      <RegistrantMessagePanel key={eventId} eventId={eventId} />
       <EventLifecyclePanel eventId={eventId} onChanged={refresh} />
 
       {state.status === "ready" && (
@@ -141,6 +143,7 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
         <Card key={participant.registration_id} style={{ padding: "0.8rem 0.9rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "center" }}>
             <strong>{participant.participant_name}</strong>
+            {participant.organization && <p>{participant.organization} · {participant.phone}</p>}
             <StatusBadge label={STATUS_LABELS[participant.status] ?? "Статус обновлён"} tone={participant.status === "attended" ? "violet" : "neutral"} />
           </div>
           {participant.status === "attended" && (

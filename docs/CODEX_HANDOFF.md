@@ -1,5 +1,7 @@
 # ERA bot and Mini App handoff
 
+- Event management: published cards open a role-gated details editor. The home orbit opens assessments. Release and Telegram device acceptance pending.
+- Release scope includes project topics, scoped recipient preview, notice routing, attendance certificates and the four November events. Reconcile any uncertain Telegram creation before retrying.
 - 19 November / AURA×ORBIT follow-through prepared locally for #713: persistent ambient above layouts/auth, organic blue-glass nodes, actual Discover/reading/game-gated surfaces, own+accepted team memberships, project title/date cards in every list scope and explicit workspace entry. Local typecheck/build PASS; 80 targeted tests PASS (CI dummy BOT_TOKEN required). New E2E is configured to record screenshots/video in CI; local Chromium is BLOCKED by socket() policy, so no local browser/device VERIFIED claim. Public git push was rejected by automatic approval review pending explicit owner authorization; PR remote head remains 952f8e08, no merge/deploy.
 
 - 19 November / **AURA×ORBIT redesign** (`cursor/aura-orbit-redesign-37e0`, #713, CI green `b5a17664`+): Stage A–C CODE COMPLETE; Stage D CODE COMPLETE for shared accents (Card/PillTabs/ActionCell/ProgressRing/SignalGlow/Vector*/admin panels → AURA primary/cyan). Remaining Stage E: screenshots/build delta + device VERIFIED. Coverage: `docs/design/aura-orbit/coverage.csv`.

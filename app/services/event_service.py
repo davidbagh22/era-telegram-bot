@@ -100,6 +100,7 @@ async def register_for_event(
     session: AsyncSession,
     event: Event,
     user_id: int,
+    signup: dict | None = None,
 ) -> tuple[EventRegistration | None, str | None]:
     """Register a participant, or put them on the waitlist when configured.
 
@@ -117,6 +118,8 @@ async def register_for_event(
     # The admin event editor takes the same Event lock before updating or
     # inserting the policy. Refresh the session cache after acquiring it.
     experience = await session.get(EventExperience, event.id, populate_existing=True)
+    if experience and "project_topic" in (getattr(experience, "broadcast_targets", None) or []) and not signup:
+        return None, "signup_required"
     if registration_is_closed(experience):
         return None, "closed"
     if experience is not None and not experience.registration_required:
@@ -152,6 +155,8 @@ async def register_for_event(
         )
         session.add(registration)
     registration.updated_at = datetime.now(timezone.utc)
+    if signup:
+        registration.signup = signup
     await session.flush()
     await audit(
         session,

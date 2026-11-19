@@ -38,7 +38,7 @@ async def certificate_snapshot(session, user_id, event_id, signatory):
             or target.application_status != ApplicationStatus.APPROVED
             or not event or not reg or reg.status != RegistrationStatus.ATTENDED):
         raise ValueError("Выдача доступна только одобренному участнику с подтверждённым посещением.")
-    return dict(full_name=f"{target.first_name} {target.last_name or ''}".strip(),
+    return dict(full_name=(reg.signup or {}).get("full_name") or f"{target.first_name} {target.last_name or ''}".strip(),
                 event_title=event.title, event_date=event.event_date.isoformat(),
                 signatory=signatory, template_version=TEMPLATE_VERSION)
 
@@ -176,3 +176,27 @@ async def revoke_certificate(session, actor, settings, issue_id, reason):
     await audit(session, actor_id=actor.id, action="certificate.revoked", entity_type="certificate", entity_id=issue.id,
                 new_value={"reason": reason.strip()})
     return issue
+
+
+async def deliver_requested_certificates(bot, settings, session_factory):
+    from aiogram.types import BufferedInputFile
+    from app.database.models import AppSetting
+    from app.services.certificate_pdf_service import build_certificate_pdf
+    from app.services.notification_service import safe_send_once
+
+    async with session_factory() as session:
+        rows = list(await session.scalars(select(AppSetting).where(
+            AppSetting.key.like("event-certificate:pending:%"),
+        ).order_by(AppSetting.id).limit(25).with_for_update(skip_locked=True)))
+        for row in rows:
+            issue = await session.get(CertificateIssue, row.value["issue_id"])
+            user = await session.get(User, issue.user_id) if issue else None
+            status = "skipped"
+            if issue and issue.status == "issued" and user and not user.is_archived and not user.is_blocked:
+                pdf = build_certificate_pdf(issue.snapshot, number=issue.document_number, issued_at=issue.issued_at)
+                result = await safe_send_once(bot, settings, user.telegram_id, "Ваш сертификат участника ЭРА",
+                    delivery_key=f"event-certificate:{issue.id}", notification_type="event_certificate",
+                    document=BufferedInputFile(pdf, filename=f"{issue.document_number}.pdf"), max_attempts=1)
+                status = "sent" if result.sent else "needs_attention"
+            row.key = row.key.replace(":pending:", f":{status}:")
+        await session.commit()

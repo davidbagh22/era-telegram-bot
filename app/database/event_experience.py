@@ -22,6 +22,7 @@ class EventExperience(Base):
     event_id: Mapped[int] = mapped_column(
         ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
     )
+    issue_certificate: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     short_description: Mapped[str | None] = mapped_column(Text)
     full_description: Mapped[str | None] = mapped_column(Text)
     category: Mapped[str | None] = mapped_column(String(100))

@@ -157,6 +157,7 @@ async def create_event_from_admin(
 
 
 class EventDraftPatch(BaseModel):
+    issue_certificate: bool | None = None
     creation_mode: Literal["wizard", "quick"] | None = None
     wizard_step: int | None = Field(default=None, ge=1, le=10)
     title: str | None = Field(default=None, max_length=255)
@@ -194,6 +195,7 @@ class EventDraftPatch(BaseModel):
 
 
 class EventDraftOut(BaseModel):
+    issue_certificate: bool | None = None
     creation_mode: str = "wizard"
     announcement_status: str = "not_requested"
     id: int
@@ -261,6 +263,7 @@ async def _broadcast_estimate(session: AsyncSession, experience: EventExperience
 
 async def _draft_out(session: AsyncSession, event: Event, experience: EventExperience) -> EventDraftOut:
     return EventDraftOut(
+        issue_certificate=experience.issue_certificate,
         creation_mode=experience.creation_mode,
         announcement_status=experience.announcement_status,
         id=event.id,
@@ -429,6 +432,8 @@ async def save_event_draft_step(
     if payload.creation_mode is not None and not was_public:
         experience.creation_mode = payload.creation_mode
 
+    if payload.issue_certificate is not None:
+        experience.issue_certificate = payload.issue_certificate
     if payload.title is not None:
         event.title = payload.title.strip() or event.title
     if payload.short_description is not None:
@@ -645,6 +650,7 @@ async def publish_event(
     settings: Settings = Depends(get_settings),
     bot: Bot | None = Depends(get_bot),
     background_tasks: BackgroundTasks = None,
+    project_topic: bool = False,
 ) -> EventDraftOut:
     event = await _managed_event(session, event_id)
     experience = await _experience(session, event)
@@ -663,6 +669,10 @@ async def publish_event(
     event.approved_by = admin.id
     experience.wizard_step = 10
     experience.is_complete = True
+    if project_topic:
+        if experience.issue_certificate is None:
+            experience.issue_certificate = False
+        experience.broadcast_targets = list(dict.fromkeys([*(experience.broadcast_targets or []), "project_topic"]))
     experience.announcement_status = "pending"
     await session.flush()
     await audit(

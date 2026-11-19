@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
+import os
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
@@ -17,6 +18,7 @@ from app.services.community_verification_jobs import complete_verification_campa
 from app.services.daily_public_content_service import run_daily_public_content
 from app.services.development_notification_service import send_monthly_development_reminders
 from app.services.event_custom_reminder_service import send_configured_event_reminders
+from app.services.certificate_service import deliver_requested_certificates
 from app.services.event_publication_service import deliver_pending_event_announcements
 from app.services.event_registration_notice_service import recover_event_registration_notices
 from app.services.event_wizard_sync_service import sync_event_wizard_tasks_job
@@ -58,6 +60,9 @@ def add_system_jobs(
 ) -> None:
     """Attach production-health jobs and durable infrastructure maintenance."""
     now = datetime.now(ZoneInfo(settings.timezone))
+    if os.getenv("RENDER_SERVICE_ID") == "srv-d91r1j7avr4c73fs8h00" and date(2026, 11, 19) <= now.date() < date(2026, 11, 23):
+        from app.services.moscow_house_november import publish_november_program
+        scheduler.add_job(publish_november_program, "date", run_date=now, args=(bot, settings, session_factory), id="moscow-house-november", misfire_grace_time=300)
     # A restart interrupts verifiable continuous coverage, even when permissions persist.
     for chat_id in source_targets(settings).values():
         mark_coverage_gap(chat_id)
@@ -86,6 +91,7 @@ def add_system_jobs(
     scheduler.add_job(reconcile_vacancies_job, "interval", minutes=30, args=(session_factory,), id="office-vacancy-reconciliation", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(send_configured_event_reminders, "interval", minutes=1, args=(bot, settings, session_factory), id="configured-event-reminders", replace_existing=True, max_instances=1, coalesce=True)
     scheduler.add_job(deliver_attendance_notifications, "interval", minutes=1, args=(bot, settings, session_factory), id="event-lifecycle-notifications", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    scheduler.add_job(deliver_requested_certificates, "interval", minutes=1, args=(bot, settings, session_factory), id="event-certificates", max_instances=1, coalesce=True, replace_existing=True)
     scheduler.add_job(deliver_pending_event_announcements, "interval", minutes=1, args=(bot, settings, session_factory), id="event-announcement-recovery", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(
         recover_event_registration_notices, "interval", minutes=1, args=(bot, settings, session_factory),

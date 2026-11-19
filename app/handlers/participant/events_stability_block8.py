@@ -270,6 +270,13 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
         await call.message.answer("Это мероприятие сейчас недоступно")
         return
     registration, error = await register_for_event(session, event, user.id)
+    if error == "signup_required":
+        from app.utils.deep_links import telegram_event_miniapp_url
+        username = (await call.bot.get_me()).username
+        url = telegram_event_miniapp_url(username, event.id)
+        await call.message.answer("Заполните короткую форму участия.", reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="Зарегистрироваться", url=url)]]))
+        return
     if error is not None:
         reply = {
             "already": texts.EVENT_ALREADY_REGISTERED,

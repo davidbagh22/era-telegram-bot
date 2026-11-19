@@ -59,6 +59,7 @@ function taskDeadlineIso(value: string): string {
 
 function patchFromDraft(draft: AdminEventDraft, wizardStep = draft.wizard_step): AdminEventDraftPatch {
   return {
+    issue_certificate: draft.issue_certificate,
     wizard_step: wizardStep,
     creation_mode: draft.creation_mode,
     title: draft.title,
@@ -479,6 +480,7 @@ export function AdminEventCreatePanel() {
 
         {step === 8 && (
           <>
+            <Toggle checked={draft.issue_certificate === true} onChange={checked => mutate(current => ({ ...current, issue_certificate: checked }))} title="Сертификат после подтверждения участия" />
             <Question title="Отправлять напоминания зарегистрированным?" hint="Можно выбрать несколько моментов. Они сохраняются в событии и используются планировщиком уведомлений." />
             {REMINDERS.map((item) => <Toggle key={item.value} checked={draft.reminders.includes(item.value)} onChange={(checked) => mutate((current) => ({ ...current, reminders: checked ? [...current.reminders, item.value] : current.reminders.filter((value) => value !== item.value) }))} title={item.label} />)}
             <Field label="Своё время, минут до события"><div style={{ display: "flex", gap: ".5rem", minWidth: 0 }}><input style={{ flex: "1 1 0", minWidth: 0, width: "100%", boxSizing: "border-box" }} inputMode="numeric" value={customReminder} onChange={(event) => setCustomReminder(event.target.value)} placeholder="Например, 30" /><button type="button" onClick={() => { const value = Number(customReminder); if (value > 0) { mutate((current) => ({ ...current, reminders: [...current.reminders.filter((item) => item !== value), value] })); setCustomReminder(""); } }}>Добавить</button></div></Field>

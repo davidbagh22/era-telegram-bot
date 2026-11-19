@@ -3,11 +3,12 @@ import { EventIcon } from "../components/icons";
 import { EventsTab } from "./activity/EventsTab";
 
 interface EventsScreenProps {
+  canEdit?: boolean;
   initialItemId?: number | null;
   initialScope?: "mine";
 }
 
-export function EventsScreen({ initialItemId = null, initialScope }: EventsScreenProps) {
+export function EventsScreen({ initialItemId = null, initialScope, canEdit }: EventsScreenProps) {
   const isDetail = initialItemId !== null;
   return (
     <div
@@ -85,7 +86,7 @@ export function EventsScreen({ initialItemId = null, initialScope }: EventsScree
       )}
 
       <section style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        <EventsTab initialItemId={initialItemId} initialScope={initialScope} />
+        <EventsTab canEdit={canEdit} initialItemId={initialItemId} initialScope={initialScope} />
       </section>
     </div>
   );

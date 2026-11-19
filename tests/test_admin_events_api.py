@@ -206,3 +206,21 @@ class AdminEventsApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_registrant_message_requires_unchanged_preview_and_manager():
+    session = SimpleNamespace(get=AsyncMock(return_value=_event()), scalars=AsyncMock(return_value=[101, 202]))
+    url = "/api/v1/admin/events/5/participants/message"
+    body = {"message": "Встречаемся в фойе."}
+    assert TestClient(_build_app(_participant(), session)).post(url, json=body).status_code == 403
+    client = TestClient(_build_app(_admin(), session, bot=object()))
+    with patch("app.api.v1.admin_event_operations.broadcast_detailed_once", new_callable=AsyncMock) as send:
+        preview = client.post(url, json=body).json()
+        assert preview["count"] == 2
+        session.scalars.return_value = [101]
+        assert client.post(url, json={**body, "confirmation": preview["confirmation"]}).status_code == 409
+        send.assert_not_awaited()
+        preview = client.post(url, json=body).json()
+        send.return_value = SimpleNamespace(sent=1, total=1, failed=0)
+        assert client.post(url, json={**body, "confirmation": preview["confirmation"]}).json()["sent"] == 1
+        assert send.await_args.args[2] == [101]
