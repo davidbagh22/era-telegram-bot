@@ -95,6 +95,10 @@ function parentRoute(route: string): string | null {
     "admin",
     "leader",
     "community",
+    "people",
+    "teams",
+    "ideas",
+    "discover",
   ]);
   if (roots.has(route)) return null;
 
@@ -110,7 +114,7 @@ function parentRoute(route: string): string | null {
   if (/^tasks\/\d+$/.test(route)) return "tasks";
   if (route === "tasks" || route === "calendar" || route === "history") return "home";
 
-  if (/^users\/\d+$/.test(route)) return "opportunities";
+  if (/^users\/\d+$/.test(route)) return "people";
   if (/^(opportunities|auctions|rewards|surveys|media)\/\d+$/.test(route)) return "opportunities";
   if (["auctions", "rewards", "surveys", "media", "leaderboard"].includes(route)) return "opportunities";
   if (["media/guide", "media/era", "media/ksoors"].includes(route)) return "media";

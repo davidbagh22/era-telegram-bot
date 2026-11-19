@@ -37,18 +37,21 @@ function formatDateOnlyParts(parts: { year: number; month: number; day: number }
   return withYear ? `${label} ${parts.year}` : label;
 }
 
+export type FeedDateInput = {
+  date?: string | null;
+  time?: string | null;
+  endTime?: string | null;
+  tentative?: boolean;
+  fallback?: string;
+};
+
 /**
  * Public feed date line: title companion only.
  * Never substitutes updated_at / submitted_at / "today".
  * Date-only values keep calendar components — no device-TZ midnight conversion.
  */
-export function formatFeedDateLine(options: {
-  date?: string | null;
-  time?: string | null;
-  endTime?: string | null;
-  fallback?: string;
-}): string {
-  const { date, time, endTime, fallback = "Дата уточняется" } = options;
+export function formatFeedDateLine(options: FeedDateInput): string {
+  const { date, time, endTime, tentative = false, fallback = "Дата уточняется" } = options;
   if (!date) return fallback;
 
   const parts = parseDateOnlyParts(date);
@@ -57,7 +60,6 @@ export function formatFeedDateLine(options: {
     const withYear = parts.year !== currentYerevanYear();
     dayLabel = formatDateOnlyParts(parts, withYear);
   } else {
-    // Instant/ISO timestamps: format the calendar day in Asia/Yerevan.
     const parsed = new Date(date);
     if (Number.isNaN(parsed.getTime())) return fallback;
     const yerevan = new Intl.DateTimeFormat("en-US", {
@@ -73,7 +75,23 @@ export function formatFeedDateLine(options: {
     dayLabel = formatDateOnlyParts({ year, month, day }, year !== currentYerevanYear());
   }
 
-  if (!time) return dayLabel;
-  const timePart = endTime ? `${time}–${endTime}` : time;
-  return `${dayLabel} · ${timePart}`;
+  if (time) {
+    const timePart = endTime ? `${time}–${endTime}` : time;
+    dayLabel = `${dayLabel} · ${timePart}`;
+  }
+  return tentative ? `Предварительно: ${dayLabel}` : dayLabel;
+}
+
+/** Project schedule helper — proposed fields are always tentative. */
+export function formatProjectFeedDate(options: {
+  proposedDate?: string | null;
+  proposedTime?: string | null;
+  dateIsTentative?: boolean | null;
+}): string {
+  if (!options.proposedDate) return "Дата уточняется";
+  return formatFeedDateLine({
+    date: options.proposedDate,
+    time: options.proposedTime,
+    tentative: options.dateIsTentative !== false,
+  });
 }

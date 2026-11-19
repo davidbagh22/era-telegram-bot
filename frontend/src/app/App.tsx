@@ -13,13 +13,16 @@ import { DevelopmentScreen, type DevelopmentRoute } from "../screens/Development
 import { EraProScreen } from "../screens/EraProScreen";
 import { EventsScreen } from "../screens/EventsScreen";
 import { HomeScreen } from "../screens/HomeScreen";
+import { IdeasScreen } from "../screens/IdeasScreen";
 import { LeaderScreen } from "../screens/LeaderScreen";
 import { ObjectUnavailableScreen } from "../screens/ObjectUnavailableScreen";
 import { PendingScreen } from "../screens/PendingScreen";
+import { PeopleScreen } from "../screens/PeopleScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { ProgressScreen } from "../screens/ProgressScreen";
 import { ProjectsScreen } from "../screens/ProjectsScreen";
 import { TasksScreen } from "../screens/TasksScreen";
+import { TeamsScreen } from "../screens/TeamsScreen";
 import { UserPublicProfileScreen } from "../screens/UserPublicProfileScreen";
 import { VectorHomeScreen } from "../screens/VectorHomeScreen";
 import { AdminEventsScreen } from "../screens/admin/AdminEventsScreen";
@@ -28,6 +31,7 @@ import type { MiniAppUserSummary } from "../types/auth";
 type LegacyActivitySection = "events" | "tasks" | "calendar" | "history";
 type WorkspaceKind = "admin" | "leader";
 type SpecialScreen = "progress" | "development" | "era-pro";
+type OrbitCatalog = "people" | "teams" | "ideas";
 
 interface DeepLink {
   tab: TabKey;
@@ -42,6 +46,7 @@ interface DeepLink {
   specialScreen: SpecialScreen | null;
   developmentRoute: DevelopmentRoute | null;
   mediaRoute: "guide" | "files" | "era" | "ksoors" | null;
+  orbitCatalog: OrbitCatalog | null;
   invalid: boolean;
 }
 
@@ -116,6 +121,7 @@ function link(overrides: Partial<DeepLink> = {}): DeepLink {
     specialScreen: null,
     developmentRoute: null,
     mediaRoute: null,
+    orbitCatalog: null,
     invalid: false,
     ...overrides,
   };
@@ -191,6 +197,10 @@ function parseDeepLink(): DeepLink | null {
 
   if (route === "progress") return link({ tab: "home", specialScreen: "progress" });
   if (route === "leaderboard") return link({ tab: "community", communitySection: "leaderboard" });
+  if (route === "people") return link({ tab: "home", orbitCatalog: "people" });
+  if (route === "teams") return link({ tab: "home", orbitCatalog: "teams" });
+  if (route === "ideas") return link({ tab: "home", orbitCatalog: "ideas" });
+  if (route === "discover") return link({ tab: "community" });
   if (route === "community") return link({ tab: "community" });
   if (route === "profile") return link({ tab: "profile" });
   if (route === "admin") return link({ tab: "profile", workspace: "admin" });
@@ -320,7 +330,45 @@ export function App() {
   }
 
   if (deepLink?.userId) {
-    return <UserLayout activeTab="community" onTabChange={handleTabChange}><UserPublicProfileScreen userId={deepLink.userId} onBack={() => window.history.length > 1 ? window.history.back() : navigateToRoute("opportunities")} /></UserLayout>;
+    return (
+      <UserLayout activeTab="home" onTabChange={handleTabChange}>
+        <UserPublicProfileScreen
+          userId={deepLink.userId}
+          onBack={() => (window.history.length > 1 ? window.history.back() : navigateToRoute("people"))}
+        />
+      </UserLayout>
+    );
+  }
+
+  if (deepLink?.orbitCatalog === "people") {
+    return (
+      <UserLayout activeTab="home" onTabChange={handleTabChange}>
+        <PeopleScreen
+          onBack={() => navigateToTab("home")}
+          onOpenUser={(id) => navigateToRoute(`users/${id}`)}
+        />
+      </UserLayout>
+    );
+  }
+  if (deepLink?.orbitCatalog === "teams") {
+    return (
+      <UserLayout activeTab="home" onTabChange={handleTabChange}>
+        <TeamsScreen
+          onBack={() => navigateToTab("home")}
+          onOpenProject={(id) => navigateToRoute(`projects/${id}`)}
+        />
+      </UserLayout>
+    );
+  }
+  if (deepLink?.orbitCatalog === "ideas") {
+    return (
+      <UserLayout activeTab="home" onTabChange={handleTabChange}>
+        <IdeasScreen
+          onBack={() => navigateToTab("home")}
+          onOpenProject={(id) => navigateToRoute(`projects/${id}`)}
+        />
+      </UserLayout>
+    );
   }
 
   if (deepLink?.specialScreen === "progress") {

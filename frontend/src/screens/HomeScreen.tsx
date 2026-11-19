@@ -12,7 +12,7 @@ import { useHome } from "../hooks/useHome";
 import { useMotionPreference } from "../motion/MotionPreference";
 import type { EventItem } from "../types/activity";
 import type { MiniAppUserSummary } from "../types/auth";
-import { formatFeedDateLine } from "../utils/feedDate";
+import { formatFeedDateLine, formatProjectFeedDate } from "../utils/feedDate";
 import { displayProjectTitle } from "./projects/displayTitle";
 
 interface HomeScreenProps {
@@ -50,10 +50,12 @@ export function HomeScreen({
   onOpenProject,
   onOpenTask,
   onOpenTasks,
-  onOpenCommunity,
+  onOpenCommunity: _onOpenCommunity,
   onOpenOpportunity,
-  onOpenProjects,
+  onOpenProjects: _onOpenProjects,
 }: HomeScreenProps) {
+  void _onOpenCommunity;
+  void _onOpenProjects;
   const home = useHome();
   const { liveBackground, toggleLiveBackground } = useMotionPreference();
   const [viewMode, setViewMode] = useState<"orbit" | "list">("orbit");
@@ -150,7 +152,7 @@ export function HomeScreen({
 
   const handleOrbitNode = (node: OrbitNodeKey) => {
     if (node === "people") {
-      onOpenCommunity?.();
+      if (window.location.hash !== "#/people") window.location.hash = "#/people";
       return;
     }
     if (node === "events") {
@@ -158,10 +160,10 @@ export function HomeScreen({
       return;
     }
     if (node === "ideas") {
-      onOpenProjects?.();
+      if (window.location.hash !== "#/ideas") window.location.hash = "#/ideas";
       return;
     }
-    onOpenProjects?.();
+    if (window.location.hash !== "#/teams") window.location.hash = "#/teams";
   };
 
   return (
@@ -350,7 +352,11 @@ export function HomeScreen({
           data.active_project && onOpenProject ? (
             <TypographyFeedCard
               title={displayProjectTitle(data.active_project.title)}
-              dateLine="Дата уточняется"
+              dateLine={formatProjectFeedDate({
+                proposedDate: data.active_project.proposed_date,
+                proposedTime: data.active_project.proposed_time,
+                dateIsTentative: data.active_project.date_is_tentative,
+              })}
               onClick={() => onOpenProject(data.active_project!.id)}
             />
           ) : data.active_task && onOpenTask ? (

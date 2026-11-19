@@ -59,6 +59,16 @@ const sample = { date: "2026-12-12", time: "17:30" };
 const fixed = formatFeedDateLine(sample);
 assertEqual(fixed, "12 декабря · 17:30", "date-only stays on 12 Dec");
 
+function formatTentative(options) {
+  const base = formatFeedDateLine(options);
+  return options.tentative ? `Предварительно: ${base}` : base;
+}
+assertEqual(
+  formatTentative({ date: "2026-12-12", time: "18:00", tentative: true }),
+  "Предварительно: 12 декабря · 18:00",
+  "tentative project date prefix",
+);
+
 if (process.env.TZ === "Asia/Tokyo" || process.env.FORCE_TZ_CHECK === "1") {
   const broken = brokenFormat(sample.date, sample.time);
   if (broken.startsWith("12 декабря")) {

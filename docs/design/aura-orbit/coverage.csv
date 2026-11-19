@@ -1,16 +1,18 @@
 screen,route,role,source,destination,states,check_status,evidence
-Орбита (Home),#/home,participant,HomeScreen light afisha,Orbit + TypographyFeedCard,loading/error/empty/data,IN_PROGRESS,Stage B code
-Афиша list,#/events · #/participation,participant,ActivityScreen/EventsTab posters,EventsScreen + TypographyFeedCard,loading/error/empty/data,IN_PROGRESS,Stage B code
-Event detail,#/events/:id,participant,EventsTab detail + poster,same detail after card click (poster after open),register/waitlist/cancel,IN_PROGRESS,Stage B code
-Проекты list,#/projects,participant,ProjectsList cover+status,open/completed/proposals → TypographyFeedCard; mine workflow,draft delete,IN_PROGRESS,Stage B code
-Открытия,#/opportunities,participant,Возможности tab,Открытия nav label → CommunityScreen,feature gates,IN_PROGRESS,nav only Stage B
-Я,#/profile,participant,Профиль tab,Я nav label,workspace entry,IN_PROGRESS,nav only Stage B
-Orbit nodes,home,participant,n/a,Люди→opportunities; События→events; Идеи/Команды→projects,empty via destination,IN_PROGRESS,Stage B code
-OrbitAmbient,AppShell,all,n/a,fixed CSS ambient + pause/reduced,hidden tab pause,IN_PROGRESS,Stage B code
-Admin shell,admin workspace,admin,AdminLayout,AppShell ambient,—,IN_PROGRESS,Stage B code
-Leader shell,leader workspace,leader,LeaderLayout,AppShell ambient,—,IN_PROGRESS,Stage B code
-People catalog,orbit→people,participant,missing public directory,opportunities until Stage C,—,NOT STARTED,blocked on API projection
-Ideas catalog,orbit→ideas,participant,project create entry,projects,—,IN_PROGRESS,uses projects
-Project event_date,public cards,participant,updated_at misuse risk,«Дата уточняется» until API,—,BLOCKED,Stage C
-Local Onest WOFF2,index.html,all,Google Fonts CDN,local fonts+license,—,NOT STARTED,Stage B partial (CDN Onest)
+Орбита (Home),#/home,participant,HomeScreen light afisha,Orbit + TypographyFeedCard,loading/error/empty/data,CODE COMPLETE,Stage B+C PR #713
+Афиша list,#/events · #/participation,participant,ActivityScreen/EventsTab posters,EventsScreen + TypographyFeedCard,loading/error/empty/data,CODE COMPLETE,Stage B PR #713
+Event detail,#/events/:id,participant,EventsTab detail + poster,same detail after card click (poster after open),register/waitlist/cancel,CODE COMPLETE,Stage B PR #713
+Проекты list,#/projects,participant,ProjectsList cover+status,open/completed/proposals → TypographyFeedCard; mine workflow,draft delete,CODE COMPLETE,proposed_date via formatProjectFeedDate
+Открытия,#/opportunities,participant,Возможности tab,Открытия nav label → CommunityScreen,feature gates,IN_PROGRESS,AURA tokens; surface polish Stage D partial
+Я,#/profile,participant,Профиль tab,Я nav label,workspace entry,IN_PROGRESS,AURA tokens; surface polish Stage D partial
+Orbit nodes,home,participant,n/a,#/people #/events #/ideas #/teams,empty via destination,CODE COMPLETE,e2e orbit nodes
+OrbitAmbient,AppShell,all,n/a,fixed CSS ambient + pause/reduced,hidden tab pause,CODE COMPLETE,Stage B
+Admin shell,admin workspace,admin,AdminLayout,AppShell ambient,—,IN_PROGRESS,shell dark; panels Stage D partial
+Leader shell,leader workspace,leader,LeaderLayout,AppShell ambient,—,IN_PROGRESS,shell dark; panels Stage D partial
+People catalog,#/people,participant,GET /api/v1/users,PeopleScreen search+departments,loading/error/empty/data,CODE COMPLETE,privacy tests + directory list
+Teams catalog,#/teams,participant,projects mine/open,TeamsScreen TypographyFeedCard,loading/error/empty/data,CODE COMPLETE,reuses projects API
+Ideas catalog,#/ideas,participant,createProject + mine drafts,IdeasScreen constructor entry,loading/error/empty/create,CODE COMPLETE,one path into project builder
+Project proposed_date,public cards,participant,Project.proposed_date/time,Предварительно / Дата уточняется,—,CODE COMPLETE,ProjectSummaryOut + feedDate adapter
+Local Onest WOFF2,/fonts/onest.css,all,Google Fonts CDN,local latin+cyrillic 400–800 + OFL.txt,—,CODE COMPLETE,frontend/public/fonts
+Light islands,AchievementOverlay/Auctions/mediaRichEditor,all,hardcoded #fff fallbacks,AURA surfaces,—,IN_PROGRESS,P0 darkened; admin accent debt remains
 Device Telegram iOS/Android,—,participant,—,—,—,NOT STARTED,E14

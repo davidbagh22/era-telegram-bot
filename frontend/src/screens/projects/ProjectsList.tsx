@@ -7,6 +7,7 @@ import { StatusBadge } from "../../components/StatusBadge";
 import { TypographyFeedCard } from "../../components/TypographyFeedCard";
 import { useAsync } from "../../hooks/useAsync";
 import type { ProjectScope, ProjectSummary } from "../../types/project";
+import { formatProjectFeedDate } from "../../utils/feedDate";
 import { displayProjectTitle } from "./displayTitle";
 import { projectStatusLabel } from "./statusLabels";
 
@@ -93,10 +94,10 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
       </BottomSheet>
 
       {scope === "mine" && (
-        <Card style={{ background: "linear-gradient(135deg, rgba(255,48,72,0.11), rgba(107,60,255,0.10)), var(--era-surface)" }}>
+        <Card style={{ background: "linear-gradient(135deg, rgba(36,85,255,0.16), rgba(117,221,255,0.08)), var(--era-surface)" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
             <div>
-              <p style={{ margin: "0 0 0.2rem", color: "var(--era-red)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Новый проект</p>
+              <p style={{ margin: "0 0 0.2rem", color: "var(--era-cyan)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Новый проект</p>
               <strong style={{ fontSize: "var(--era-text-xl)" }}>Начните с одной мысли</strong>
               <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.45 }}>
                 Не нужно заполнять проект целиком сейчас. Опишите идею одним предложением — дальше конструктор проведёт по аудитории, сценарию, команде, бюджету и продвижению.
@@ -125,7 +126,11 @@ export function ProjectsList({ onSelect }: ProjectsListProps) {
           <TypographyFeedCard
             key={project.id}
             title={displayProjectTitle(project.title)}
-            dateLine="Дата уточняется"
+            dateLine={formatProjectFeedDate({
+              proposedDate: project.proposed_date,
+              proposedTime: project.proposed_time,
+              dateIsTentative: project.date_is_tentative,
+            })}
             onClick={() => onSelect(project.id)}
           />
         ) : (

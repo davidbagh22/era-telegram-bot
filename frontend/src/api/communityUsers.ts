@@ -12,6 +12,14 @@ export interface CommunityUser {
   participation_status: string;
   participation_label: string;
   departments: string[];
+  directions?: string[];
+}
+
+export interface CommunityUserList {
+  items: CommunityUser[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 function devTelegramId(): number | undefined {
@@ -33,9 +41,9 @@ async function token(): Promise<string> {
   return tokenPromise;
 }
 
-export async function fetchCommunityUser(userId: number): Promise<CommunityUser> {
+async function authorizedGet<T>(path: string): Promise<T> {
   const sessionToken = await token();
-  const response = await fetch(`${API_BASE_URL}/api/v1/users/${userId}`, {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: { Authorization: `Bearer ${sessionToken}` },
   });
   if (!response.ok) {
@@ -47,5 +55,24 @@ export async function fetchCommunityUser(userId: number): Promise<CommunityUser>
     }
     throw new ApiError(response.status, detail);
   }
-  return (await response.json()) as CommunityUser;
+  return (await response.json()) as T;
+}
+
+export async function fetchCommunityUser(userId: number): Promise<CommunityUser> {
+  return authorizedGet<CommunityUser>(`/api/v1/users/${userId}`);
+}
+
+export async function fetchCommunityUsers(options: {
+  q?: string;
+  department?: string;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<CommunityUserList> {
+  const params = new URLSearchParams();
+  if (options.q?.trim()) params.set("q", options.q.trim());
+  if (options.department?.trim()) params.set("department", options.department.trim());
+  params.set("limit", String(options.limit ?? 20));
+  params.set("offset", String(options.offset ?? 0));
+  const qs = params.toString();
+  return authorizedGet<CommunityUserList>(`/api/v1/users${qs ? `?${qs}` : ""}`);
 }

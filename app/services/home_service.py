@@ -75,6 +75,9 @@ class ProjectSummary:
     id: int
     title: str
     status: str
+    proposed_date: str | None = None
+    proposed_time: str | None = None
+    date_is_tentative: bool = True
 
 
 @dataclass(frozen=True)
@@ -508,10 +511,21 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
 
     active_project_summary = None
     if active_project is not None:
+        proposed_date = getattr(active_project, "proposed_date", None)
+        proposed_time = getattr(active_project, "proposed_time", None)
+        if proposed_date is not None and hasattr(proposed_date, "isoformat"):
+            proposed_date = proposed_date.isoformat()
+        if proposed_time is not None and hasattr(proposed_time, "strftime"):
+            proposed_time = proposed_time.strftime("%H:%M")
+        elif proposed_time is not None:
+            proposed_time = str(proposed_time).strip()[:5] or None
         active_project_summary = ProjectSummary(
             id=active_project.id,
             title=active_project.title,
             status=active_project.status,
+            proposed_date=proposed_date,
+            proposed_time=proposed_time,
+            date_is_tentative=True,
         )
 
     return HomeSnapshot(
