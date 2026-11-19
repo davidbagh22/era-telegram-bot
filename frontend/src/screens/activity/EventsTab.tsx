@@ -393,6 +393,7 @@ export function EventPoster({ event, compact = false }: { event: EventItem; comp
 }
 
 interface EventDetailProps {
+  openSignup?: boolean;
   event: EventItem;
   pending: boolean;
   actionError: string | null;
@@ -401,8 +402,8 @@ interface EventDetailProps {
   onBack: () => void;
 }
 
-function EventDetail({ event, pending, actionError, onRegister, onCancelRequest, onBack }: EventDetailProps) {
-  const [showForm, setShowForm] = useState(false);
+function EventDetail({ event, openSignup, pending, actionError, onRegister, onCancelRequest, onBack }: EventDetailProps) {
+  const [showForm, setShowForm] = useState(Boolean(openSignup && event.signup_defaults));
   const anniversary = event.anniversary_registered != null;
   const registered = ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "");
   const waitlisted = event.registration_status === WAITLIST_STATUS;
@@ -558,7 +559,7 @@ function EventDetail({ event, pending, actionError, onRegister, onCancelRequest,
         ) : anniversary ? (
           <AnniversaryRegistration key={event.id} event={event} />
         ) : event.can_register && event.signup_defaults && showForm ? (
-          <form style={{ display: "grid", gap: 8 }} onSubmit={e => {
+          <form style={{ display: "grid", gap: 8, maxHeight: "55dvh", overflowY: "auto" }} onSubmit={e => {
             e.preventDefault();
             const data = new FormData(e.currentTarget);
             onRegister({ full_name: String(data.get("full_name")).trim(), phone: String(data.get("phone")).trim(),
@@ -758,6 +759,8 @@ export function EventsTab({ initialItemId, initialScope, canEdit }: EventsTabPro
         <>
           {canEdit && <button onClick={() => setEditing(true)}>Редактировать мероприятие</button>}
           <EventDetail
+            key={selected.id}
+            openSignup={selected.id === initialItemId}
             event={selected}
             pending={pendingId === selected.id}
             actionError={actionError}

@@ -263,7 +263,8 @@ async def _broadcast_estimate(session: AsyncSession, experience: EventExperience
 
 async def _draft_out(session: AsyncSession, event: Event, experience: EventExperience) -> EventDraftOut:
     return EventDraftOut(
-        issue_certificate=experience.issue_certificate,        creation_mode=experience.creation_mode,
+        issue_certificate=experience.issue_certificate,
+        creation_mode=experience.creation_mode,
         announcement_status=experience.announcement_status,
         id=event.id,
         status=event.status,

@@ -139,6 +139,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "office-vacancy-reconciliation",
                 "configured-event-reminders",
                 "event-lifecycle-notifications",
+                "event-certificates",
                 "event-announcement-recovery",
                 "event-registration-notice-recovery",
                 "event-wizard-task-sync",
