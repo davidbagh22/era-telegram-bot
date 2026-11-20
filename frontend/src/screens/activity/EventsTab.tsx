@@ -565,8 +565,22 @@ function EventDetail({ event, openSignup, pending, actionError, onRegister, onCa
           </div>
         ) : anniversary ? (
           <AnniversaryRegistration key={event.id} event={event} />
-        ) : event.can_register && event.signup_defaults && showForm ? (
-          <form style={{ display: "grid", gap: 10, maxHeight: "58dvh", overflowY: "auto", paddingBottom: 8 }} onSubmit={e => {
+        ) : event.can_register ? (
+          <button type="button" className="era-btn-primary" disabled={pending} onClick={() => event.signup_defaults ? setShowForm(true) : onRegister()} style={{ width: "100%" }}>
+            {pending ? "● Сохраняем…" : event.remaining_count === 0 && event.waitlist_enabled ? "Встать в лист ожидания" : "Участвовать"}
+          </button>
+        ) : (
+          <button type="button" disabled style={{ width: "100%" }}>
+            {!event.registration_required
+              ? "Регистрация не нужна"
+              : event.display_status || "Регистрация недоступна"}
+          </button>
+        )}
+      </div>
+      {event.can_register && event.signup_defaults && (
+        <BottomSheet open={showForm} title="Регистрация на мероприятие"
+          onClose={() => { if (!pending) { setFormError(null); setShowForm(false); } }}>
+          <form style={{ display: "grid", gap: 10, maxHeight: "min(65dvh, 630px)", overflowY: "auto", paddingBottom: 8 }} onSubmit={e => {
             e.preventDefault();
             const data = new FormData(e.currentTarget);
             const fullName = String(data.get("full_name") ?? "").trim().replace(/\s+/g, " ");
@@ -602,21 +616,12 @@ function EventDetail({ event, openSignup, pending, actionError, onRegister, onCa
             <label>Номер телефона<input required type="tel" autoComplete="tel" inputMode="tel" name="phone" maxLength={32} defaultValue={event.signup_defaults.phone} onChange={() => setFormError(null)} /></label>
             <small>Данные доступны только организаторам мероприятия.</small>
             {formError && <p role="alert" style={{ color: "var(--era-error)", margin: 0 }}>{formError}</p>}
+            {actionError && <p role="alert" style={{ color: "var(--era-error)", margin: 0 }}>{actionError}</p>}
             <button type="submit" className="era-btn-primary" disabled={pending}>{pending ? "Регистрируем…" : "Подтвердить регистрацию"}</button>
             <button type="button" disabled={pending} onClick={() => { setFormError(null); setShowForm(false); }}>Назад</button>
           </form>
-        ) : event.can_register ? (
-          <button type="button" className="era-btn-primary" disabled={pending} onClick={() => event.signup_defaults ? setShowForm(true) : onRegister()} style={{ width: "100%" }}>
-            {pending ? "● Сохраняем…" : event.remaining_count === 0 && event.waitlist_enabled ? "Встать в лист ожидания" : "Участвовать"}
-          </button>
-        ) : (
-          <button type="button" disabled style={{ width: "100%" }}>
-            {!event.registration_required
-              ? "Регистрация не нужна"
-              : event.display_status || "Регистрация недоступна"}
-          </button>
-        )}
-      </div>
+        </BottomSheet>
+      )}
     </div>
   );
 }
