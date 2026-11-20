@@ -18,12 +18,20 @@ export function EventDetailsEditor({ eventId, onClose }: { eventId: number; onCl
     const data = new FormData(e.currentTarget);
     const value = (key: string) => String(data.get(key) ?? "").trim();
     const patch: AdminEventDraftPatch = {};
-    for (const key of ["title", "full_description", "location", "event_date", "event_time", "chat_url"] as const) {
+    for (const key of ["title", "full_description", "location", "event_date", "event_time", "chat_url", "registration_url"] as const) {
       const old = key === "event_time" ? event.event_time.slice(0, 5) : event[key] ?? "";
       if (value(key) !== old) patch[key] = value(key);
     }
     if (!value("title") || !value("location")) { setError("Заполните название и место."); return; }
     if (Number(value("points")) !== event.points_for_visit) patch.points_for_visit = Number(value("points"));
+    // Preserve custom reminders configured in the detailed wizard.
+    const presets = new Set([1440, 180, 60]);
+    const custom = event.reminders.filter(value => !presets.has(value));
+    const reminders = [...custom, ...data.getAll("reminder").map(value => Number(value))]
+      .filter(value => Number.isInteger(value) && value >= 5).sort((a, b) => a - b);
+    if (reminders.join(",") !== [...event.reminders].sort((a, b) => a - b).join(",")) patch.reminders = reminders;
+    const nativeRegistration = data.has("native_registration") && !value("registration_url");
+    if (nativeRegistration !== event.registration_required) patch.registration_required = nativeRegistration;
     const certificate = data.has("certificate");
     if (certificate !== Boolean(event.issue_certificate)) patch.issue_certificate = certificate;
     if (!Object.keys(patch).length) { onClose(); return; }
@@ -39,7 +47,14 @@ export function EventDetailsEditor({ eventId, onClose }: { eventId: number; onCl
     <label>Дата<input required type="date" name="event_date" defaultValue={event.event_date}/></label>
     <label>Начало по Еревану<input required type="time" name="event_time" defaultValue={event.event_time.slice(0,5)}/></label>
     <label>Место<input required maxLength={255} name="location" defaultValue={event.location}/></label>
-    <label>Ссылка на чат<input type="url" maxLength={500} name="chat_url" defaultValue={event.chat_url ?? ""}/></label>
+    <label>Ссылка на тему обсуждения<input type="url" maxLength={500} name="chat_url" defaultValue={event.chat_url ?? ""}/></label>
+    <label>Внешняя регистрация (необязательно)<input type="url" maxLength={500} name="registration_url" defaultValue={event.registration_url ?? ""} placeholder="https://t.me/..." /></label>
+    <label><input type="checkbox" name="native_registration" defaultChecked={event.registration_required} /> Регистрация через Mini App ЭРА (если нет внешней ссылки)</label>
+    <details><summary>Напоминания зарегистрированным</summary>
+      {[[1440, "За 24 часа"], [180, "За 3 часа"], [60, "За 1 час"]].map(([mins, label]) =>
+        <label key={mins}><input type="checkbox" name="reminder" value={mins} defaultChecked={event.reminders.includes(Number(mins))} /> {label}</label>)}
+      <small>Напоминания ЭРА работают только для регистраций, оформленных внутри Mini App.</small>
+    </details>
     <label>Баллы за посещение<input required type="number" min={0} max={200} name="points" defaultValue={event.points_for_visit}/></label>
     <label><input type="checkbox" name="certificate" defaultChecked={Boolean(event.issue_certificate)} /> Сертификат после посещения</label>
     <small>При изменении даты, времени или места бот отправит обновление в «Мероприятия», записанным и в лист ожидания.</small>
