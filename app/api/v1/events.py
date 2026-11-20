@@ -145,7 +145,7 @@ async def _to_event_out(
     organizer = experience.organizer if experience else None
     external_signup = bool(
         experience and not experience.registration_required
-        and (experience.registration_url or str(experience.contact or "").startswith("https://t.me/"))
+        and (getattr(experience, "registration_url", None) or str(experience.contact or "").startswith("https://t.me/"))
     )
     # For events hosted by other organizers, the ERA admin who shared the
     # listing is not necessarily its organizer.
@@ -225,7 +225,7 @@ async def _to_event_out(
         participant_value=experience.participant_value if experience else None,
         contact=experience.contact if experience else None,
         chat_url=experience.chat_url if experience else None,
-        registration_url=experience.registration_url if experience else None,
+        registration_url=getattr(experience, "registration_url", None) if experience else None,
         points_for_visit=event.points_for_visit,
         project_id=event.project_id,
         status=event.status,
