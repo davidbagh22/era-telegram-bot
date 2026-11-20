@@ -496,12 +496,14 @@ function EventDetail({ event, openSignup, pending, actionError, onRegister, onCa
         </section>
       )}
 
-      <Card>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.7rem" }}>
-          <div><span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>УЧАСТНИКИ</span><div style={{ fontSize: "1.25rem", fontWeight: 900 }}>{capacityText(event)}</div>{event.remaining_count !== null && <div style={{ color: "var(--era-text-muted)", fontSize: "0.82rem" }}>Осталось {event.remaining_count}</div>}</div>
-          <div><span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>ЗА ПОСЕЩЕНИЕ</span><div style={{ fontSize: "1.25rem", fontWeight: 900 }}>{event.points_for_visit > 0 ? `+${event.points_for_visit}` : "—"}</div><div style={{ color: "var(--era-text-muted)", fontSize: "0.82rem" }}>баллов</div></div>
-        </div>
-      </Card>
+      {!externalSignupUrl && (
+        <Card>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.7rem" }}>
+            <div><span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>УЧАСТНИКИ</span><div style={{ fontSize: "1.25rem", fontWeight: 900 }}>{capacityText(event)}</div>{event.remaining_count !== null && <div style={{ color: "var(--era-text-muted)", fontSize: "0.82rem" }}>Осталось {event.remaining_count}</div>}</div>
+            <div><span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>ЗА ПОСЕЩЕНИЕ</span><div style={{ fontSize: "1.25rem", fontWeight: 900 }}>{event.points_for_visit > 0 ? `+${event.points_for_visit}` : "—"}</div><div style={{ color: "var(--era-text-muted)", fontSize: "0.82rem" }}>баллов</div></div>
+          </div>
+        </Card>
+      )}
 
       {(registered || waitlisted) && (
         <Card style={registered ? { borderColor: "rgba(85,189,130,.18)" } : undefined}>
