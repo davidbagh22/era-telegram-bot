@@ -188,9 +188,10 @@ async def read_event_share_text(
 
     general_link = str(settings.general_chat_url or "").strip()
     topic_link = str(experience.chat_url or "").strip() if experience else ""
-    external_url = (str(getattr(experience, "contact", None) or "").strip()
-                    if experience and not getattr(experience, "registration_required", True) else "")
-    register_link = (external_url if external_url.startswith("https://t.me/")
+    external_url = ""
+    if experience and not experience.registration_required:
+        external_url = str(experience.registration_url or experience.contact or "").strip()
+    register_link = (external_url if external_url.startswith("https://")
                      else telegram_event_miniapp_url(settings.bot_username or "ERA_1bot", event.id))
     if general_link:
         parts.append("💬 Общий чат ЭРА: " + general_link)
