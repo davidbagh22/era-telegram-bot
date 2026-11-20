@@ -40,6 +40,8 @@ def _body(text: str) -> str:
 
 def _kind(event):
     marker = str(getattr(event, "additional_info", "") or "")
+    if marker == "geo-dictation-2026-russian-house":
+        return ("🌍", "Ежегодная международная просветительская акция")
     if marker.startswith("november-2026-moscow-house:"):
         try:
             return NOVEMBER_KIND.get(int(marker.rsplit(":", 1)[-1]))

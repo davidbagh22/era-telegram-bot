@@ -99,9 +99,15 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
         url = f"https://t.me/c/{str(settings.general_chat_id)[4:]}/{thread}"
         if not experience.chat_url:
             experience.chat_url = url
-        register_url = markup.inline_keyboard[0][0].url
+        # External events keep the organizer's real signup link. Do not
+        # advertise the ERA Mini App as the registration destination when ERA
+        # itself does not collect registrations for this event.
+        external_url = (str(experience.contact or "").strip()
+                        if not experience.registration_required else "")
+        register_url = (external_url if external_url.startswith("https://t.me/")
+                        else markup.inline_keyboard[0][0].url)
         markup = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="Зарегистрироваться", url=register_url)
+            InlineKeyboardButton(text="Записаться" if external_url.startswith("https://t.me/") else "Зарегистрироваться", url=register_url)
         ]])
         text = event_topic_html(
             event, experience, registration=register_url,
