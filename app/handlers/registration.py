@@ -603,7 +603,7 @@ async def _show_registration_review(message: Message, state: FSMContext) -> None
     chunks = _review_chunks(_registration_review_text(data))
     for index, chunk in enumerate(chunks):
         await message.answer(chunk, parse_mode='HTML',
-            reply_markup=registration_review_keyboard() if index == len(chunks)-1 else None)
+            reply_markup=registration_review_keyboard(has_photo=bool(data.get('profile_photo_file_id'))) if index == len(chunks)-1 else None)
 
 
 _PHOTO_PROMPT = '📷 Фото для анкеты — по желанию. Пришлите обычное фото в Telegram или нажмите «Продолжить без фото». Снимок увидит только команда, рассматривающая заявку. Это не согласие на публичную публикацию фотографии.'
