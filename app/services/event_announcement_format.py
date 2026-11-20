@@ -73,7 +73,11 @@ def event_topic_html(event, experience, *, registration: str, chat: str | None, 
         f"🗓 <b>{escape(date_label)}</b>",
         f"📍 {escape(str(event.location))}",
         "",
-        "<i>Для участия необходима регистрация.</i>",
+        ("<i>Запись проходит по ссылке организаторов.</i>"
+         if (getattr(experience, "registration_url", None)
+             or (not getattr(experience, "registration_required", True)
+                 and str(getattr(experience, "contact", "") or "").startswith("https://t.me/")))
+         else "<i>Для участия необходима регистрация.</i>"),
     ]
     actions = [_link("Зарегистрироваться", registration), _link("Обсуждение проекта", topic),
                _link("Общий чат ЭРА", chat)]
