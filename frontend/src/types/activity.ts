@@ -44,6 +44,7 @@ export interface EventItem {
   participant_value: string | null;
   contact: string | null;
   chat_url: string | null;
+  registration_url?: string | null;
   points_for_visit: number;
   project_id: number | null;
   status: string;
