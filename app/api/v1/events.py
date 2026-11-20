@@ -177,6 +177,10 @@ async def _to_event_out(
         registration_required=registration_required,
         registration_closed=registration_closed,
     )
+    if (display_status == "Без регистрации" and experience
+            and str(getattr(experience, "contact", "") or "").startswith("https://t.me/")
+            and not registration_required):
+        display_status = "Запись по ссылке организаторов"
     if guest_event:
         waitlisted = registration is not None and registration.status == RegistrationStatus.WAITLIST
         anniversary_registered = (
