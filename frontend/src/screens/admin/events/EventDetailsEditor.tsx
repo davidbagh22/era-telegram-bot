@@ -24,7 +24,11 @@ export function EventDetailsEditor({ eventId, onClose }: { eventId: number; onCl
     }
     if (!value("title") || !value("location")) { setError("Заполните название и место."); return; }
     if (Number(value("points")) !== event.points_for_visit) patch.points_for_visit = Number(value("points"));
-    const reminders = data.getAll("reminder").map(value => Number(value)).filter(value => Number.isInteger(value) && value >= 5);
+    // Preserve custom reminders configured in the detailed wizard.
+    const presets = new Set([1440, 180, 60]);
+    const custom = event.reminders.filter(value => !presets.has(value));
+    const reminders = [...custom, ...data.getAll("reminder").map(value => Number(value))]
+      .filter(value => Number.isInteger(value) && value >= 5).sort((a, b) => a - b);
     if (reminders.join(",") !== [...event.reminders].sort((a, b) => a - b).join(",")) patch.reminders = reminders;
     const nativeRegistration = data.has("native_registration") && !value("registration_url");
     if (nativeRegistration !== event.registration_required) patch.registration_required = nativeRegistration;
