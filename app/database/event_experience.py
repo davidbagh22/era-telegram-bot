@@ -33,6 +33,8 @@ class EventExperience(Base):
     participant_value: Mapped[str | None] = mapped_column(Text)
     contact: Mapped[str | None] = mapped_column(String(255))
     chat_url: Mapped[str | None] = mapped_column(String(500))
+    # Separate link for a partner's own registration; never mistaken for ERA RSVP.
+    registration_url: Mapped[str | None] = mapped_column(String(500))
 
     registration_required: Mapped[bool] = mapped_column(Boolean, default=True)
     registration_close_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
