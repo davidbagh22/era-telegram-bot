@@ -180,6 +180,7 @@ class EventDraftPatch(BaseModel):
     registration_audience: str | None = Field(default=None, max_length=64)
 
     chat_url: str | None = Field(default=None, max_length=500)
+    registration_url: str | None = Field(default=None, max_length=500)
     organizer: str | None = Field(default=None, max_length=255)
     participant_value: str | None = Field(default=None, max_length=5000)
     contact: str | None = Field(default=None, max_length=255)
@@ -220,6 +221,7 @@ class EventDraftOut(BaseModel):
     waitlist_enabled: bool
     registration_audience: str
     chat_url: str | None
+    registration_url: str | None = None
     organizer: str | None
     participant_value: str | None
     contact: str | None
@@ -288,6 +290,7 @@ async def _draft_out(session: AsyncSession, event: Event, experience: EventExper
         waitlist_enabled=experience.waitlist_enabled,
         registration_audience=experience.registration_audience,
         chat_url=experience.chat_url,
+        registration_url=getattr(experience, "registration_url", None),
         organizer=experience.organizer,
         participant_value=experience.participant_value,
         contact=experience.contact,
@@ -476,6 +479,13 @@ async def save_event_draft_step(
 
     if "chat_url" in payload.model_fields_set:
         experience.chat_url = payload.chat_url.strip() if payload.chat_url else None
+    if "registration_url" in payload.model_fields_set:
+        value = (payload.registration_url or "").strip()
+        if value and (not value.startswith("https://") or any(char.isspace() for char in value)):
+            raise HTTPException(status_code=422, detail="registration_url_invalid")
+        experience.registration_url = value or None
+        if value:
+            experience.registration_required = False
     if "organizer" in payload.model_fields_set:
         experience.organizer = payload.organizer.strip() if payload.organizer else None
     if "participant_value" in payload.model_fields_set:

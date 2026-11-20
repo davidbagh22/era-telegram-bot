@@ -79,6 +79,7 @@ function patchFromDraft(draft: AdminEventDraft, wizardStep = draft.wizard_step):
     waitlist_enabled: draft.waitlist_enabled,
     registration_audience: draft.registration_audience,
     chat_url: draft.chat_url,
+    registration_url: draft.registration_url,
     organizer: draft.organizer,
     participant_value: draft.participant_value,
     contact: draft.contact,
@@ -424,7 +425,8 @@ export function AdminEventCreatePanel() {
         {step === 4 && (
           <>
             <Question title="Нужна регистрация?" hint="Настройте места один раз — Mini App сам покажет остаток и при необходимости включит лист ожидания." />
-            <Toggle checked={draft.registration_required} onChange={(checked) => mutate((current) => ({ ...current, registration_required: checked }))} title="Регистрация нужна" />
+            <Field label="Внешняя регистрация у организаторов (необязательно)" hint="Если запись проходит в отдельном чате или на сайте партнёра, укажите ссылку — она станет главной кнопкой. Участники не будут считаться зарегистрированными в ЭРА."><input type="url" value={draft.registration_url ?? ""} onChange={(event) => mutate((current) => ({ ...current, registration_url: event.target.value, registration_required: event.target.value ? false : current.registration_required }))} placeholder="https://t.me/..." /></Field>
+            {!draft.registration_url && <Toggle checked={draft.registration_required} onChange={(checked) => mutate((current) => ({ ...current, registration_required: checked }))} title="Регистрация внутри ЭРА" />}
             {draft.registration_required && (
               <>
                 <Field label="Количество мест"><input inputMode="numeric" value={draft.participant_limit ?? ""} onChange={(event) => mutate((current) => ({ ...current, participant_limit: event.target.value ? Number(event.target.value) : null }))} placeholder="40" /></Field>

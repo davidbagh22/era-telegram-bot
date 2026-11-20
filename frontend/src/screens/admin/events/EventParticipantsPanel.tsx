@@ -9,6 +9,8 @@ import { EmptyState } from "../../../components/EmptyState";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { useAsync } from "../../../hooks/useAsync";
 import { RegistrantMessagePanel } from "./RegistrantMessagePanel";
+import { EventDetailsEditor } from "./EventDetailsEditor";
+import { EventPosterEditor } from "./EventPosterEditor";
 import { EventLifecyclePanel } from "./EventLifecyclePanel";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -49,6 +51,7 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
   const state = useAsync(() => fetchEventParticipants(eventId), [eventId, refreshKey]);
   const [exporting, setExporting] = useState<"xlsx" | "csv" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [editor, setEditor] = useState<"details" | "poster" | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
   const [shareText, setShareText] = useState<string | null>(null);
   const [shareStatus, setShareStatus] = useState("");
@@ -114,6 +117,16 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       <button type="button" onClick={onBack} style={{ alignSelf: "flex-start" }}>← К мероприятиям</button>
+
+      <Card>
+        <strong>Управление карточкой</strong>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: ".5rem", marginTop: ".75rem" }}>
+          <button type="button" className="era-btn-primary" onClick={() => setEditor(editor === "details" ? null : "details")}>✎ Данные и ссылки</button>
+          <button type="button" onClick={() => setEditor(editor === "poster" ? null : "poster")}>▧ Афиша</button>
+        </div>
+        {editor === "details" && <EventDetailsEditor eventId={eventId} onClose={() => { setEditor(null); refresh(); }} />}
+        {editor === "poster" && <EventPosterEditor eventId={eventId} onBack={() => { setEditor(null); refresh(); }} />}
+      </Card>
 
       <Card gradient>
         <p style={{ margin: "0 0 .3rem", fontSize: ".75rem", fontWeight: 800, color: "var(--era-text-secondary)" }}>УЧАСТНИКИ СОБЫТИЯ</p>
