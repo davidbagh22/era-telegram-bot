@@ -87,6 +87,15 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
     if bot is None:
         return False
     markup = await public_event_keyboard(bot, settings, event)
+    external_registration = str(getattr(experience, "registration_url", None) or "").strip()
+    if not external_registration and not experience.registration_required:
+        contact = str(experience.contact or "").strip()
+        if contact.startswith("https://t.me/"):
+            external_registration = contact
+    if external_registration:
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Записаться у организаторов", url=external_registration)
+        ]])
     text = announcement_text(event, experience)
     poster = getattr(experience, "poster_bytes", None)
     targets = set(experience.broadcast_targets or [])
@@ -102,12 +111,9 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
         # External events keep the organizer's real signup link. Do not
         # advertise the ERA Mini App as the registration destination when ERA
         # itself does not collect registrations for this event.
-        external_url = (str(experience.contact or "").strip()
-                        if not experience.registration_required else "")
-        register_url = (external_url if external_url.startswith("https://t.me/")
-                        else markup.inline_keyboard[0][0].url)
+        register_url = external_registration or markup.inline_keyboard[0][0].url
         markup = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="Записаться" if external_url.startswith("https://t.me/") else "Зарегистрироваться", url=register_url)
+            InlineKeyboardButton(text="Записаться у организаторов" if external_registration else "Зарегистрироваться", url=register_url)
         ]])
         text = event_topic_html(
             event, experience, registration=register_url,
