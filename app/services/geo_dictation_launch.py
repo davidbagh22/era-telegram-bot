@@ -57,7 +57,7 @@ async def publish_geo_dictation(bot, settings, factory):
 async def _ensure_event_and_publish(bot, settings, session):
     matches = list(await session.scalars(select(Event).where(
         Event.event_date == EVENT_DATE,
-        or_(Event.title == TITLE, Event.additional_info == KEY),
+        or_(Event.title.ilike("%Географический диктант%"), Event.additional_info == KEY),
     )))
     if len(matches) > 1 or (matches and matches[0].additional_info != KEY):
         logger.warning("Geographic Dictation already exists without matching marker; manual reconciliation required")
