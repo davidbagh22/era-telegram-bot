@@ -71,7 +71,7 @@ async def update_topic_status(bot, settings, session, event_id: int, action: str
             await bot.reopen_forum_topic(chat_id=settings.general_chat_id, message_thread_id=thread)
     except TelegramBadRequest as exc:
         msg = str(exc).lower()
-        expected = ("already closed", "topic is closed", "topic_closed") if action == "close" else (
+        expected = ("already closed", "topic is closed", "topic_closed", "topic_not_modified", "topic not modified") if action == "close" else (
             "already open", "not closed", "topic_not_modified"
         )
         if not any(needle in msg for needle in expected):
