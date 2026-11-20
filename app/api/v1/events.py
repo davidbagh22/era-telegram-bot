@@ -454,7 +454,7 @@ async def register_event(
     # Match detail/poster privacy: do not confirm CANCELLED existence via 409.
     event, _existing = await _require_participant_event(session, event_id, user)
     policy = await session.get(EventExperience, event_id)
-    if policy is not None and not policy.registration_required and (policy.registration_url or str(policy.contact or "").startswith("https://t.me/")):
+    if policy is not None and not policy.registration_required and (getattr(policy, "registration_url", None) or str(policy.contact or "").startswith("https://t.me/")):
         raise HTTPException(status_code=409, detail="external_registration_only")
     if signup is not None:
         policy = await session.get(EventExperience, event_id)
