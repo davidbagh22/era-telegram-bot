@@ -1,0 +1,71 @@
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
+from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock, patch
+from zoneinfo import ZoneInfo
+
+from app.services import event_topic_lifecycle as topics
+
+
+class EventTopicLifecycleTests(IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.exp = SimpleNamespace(
+            topic_close_state="open", topic_close_at=None, topic_closed_at=None,
+        )
+        self.event = SimpleNamespace(id=42)
+        self.record = SimpleNamespace(value={"thread": 26690})
+        self.session = SimpleNamespace(
+            get=AsyncMock(return_value=self.event),
+            scalar=AsyncMock(side_effect=[self.exp, self.record]),
+            commit=AsyncMock(),
+        )
+        self.bot = SimpleNamespace(
+            close_forum_topic=AsyncMock(),
+            reopen_forum_topic=AsyncMock(),
+        )
+        self.settings = SimpleNamespace(general_chat_id=-1002973371133)
+
+    async def test_only_bot_owned_thread_can_be_closed(self):
+        result = await topics.update_topic_status(
+            self.bot, self.settings, self.session, 42, "close"
+        )
+        self.assertEqual(result.topic_close_state, "closed")
+        self.bot.close_forum_topic.assert_awaited_once_with(
+            chat_id=-1002973371133, message_thread_id=26690
+        )
+        self.assertIsNotNone(self.exp.topic_closed_at)
+        self.session.commit.assert_awaited_once()
+
+    async def test_reopen_clears_stale_schedule(self):
+        self.exp.topic_close_state = "closed"
+        self.exp.topic_closed_at = datetime.now(timezone.utc)
+        self.exp.topic_close_at = datetime.now(timezone.utc) - timedelta(minutes=2)
+        await topics.update_topic_status(self.bot, self.settings, self.session, 42, "reopen")
+        self.bot.reopen_forum_topic.assert_awaited_once_with(
+            chat_id=-1002973371133, message_thread_id=26690
+        )
+        self.assertEqual(self.exp.topic_close_state, "open")
+        self.assertIsNone(self.exp.topic_close_at)
+        self.assertIsNone(self.exp.topic_closed_at)
+
+    async def test_unowned_topic_is_never_closed(self):
+        self.record.value = {"thread": 1}
+        with self.assertRaises(topics.TopicActionError) as caught:
+            await topics.update_topic_status(
+                self.bot, self.settings, self.session, 42, "close"
+            )
+        self.assertEqual(caught.exception.code, "event_topic_not_owned")
+        self.bot.close_forum_topic.assert_not_awaited()
+        self.session.commit.assert_not_awaited()
+
+    async def test_idempotent_closed_state_does_not_send_duplicate_calls(self):
+        self.exp.topic_close_state = "closed"
+        await topics.update_topic_status(self.bot, self.settings, self.session, 42, "close")
+        self.bot.close_forum_topic.assert_not_awaited()
+
+    def test_naive_admin_time_means_yerevan_not_utc(self):
+        when = datetime(2026, 11, 24, 19, 0)
+        self.assertEqual(topics.utc_aware(when),
+                         datetime(2026, 11, 24, 15, 0, tzinfo=timezone.utc))
+        self.assertEqual(topics.utc_aware(when.replace(tzinfo=ZoneInfo("Asia/Yerevan"))),
+                         datetime(2026, 11, 24, 15, 0, tzinfo=timezone.utc))
