@@ -71,6 +71,7 @@ class EventOut(BaseModel):
     participant_value: str | None = None
     contact: str | None = None
     chat_url: str | None = None
+    registration_url: str | None = None
     points_for_visit: int
     project_id: int | None
     status: str
@@ -177,6 +178,8 @@ async def _to_event_out(
         registration_required=registration_required,
         registration_closed=registration_closed,
     )
+    if experience and experience.registration_url and not registration_required:
+        display_status = "Регистрация по ссылке"
     if guest_event:
         waitlisted = registration is not None and registration.status == RegistrationStatus.WAITLIST
         anniversary_registered = (
@@ -216,6 +219,7 @@ async def _to_event_out(
         participant_value=experience.participant_value if experience else None,
         contact=experience.contact if experience else None,
         chat_url=experience.chat_url if experience else None,
+        registration_url=experience.registration_url if experience else None,
         points_for_visit=event.points_for_visit,
         project_id=event.project_id,
         status=event.status,
@@ -443,6 +447,9 @@ async def register_event(
 ) -> EventOut:
     # Match detail/poster privacy: do not confirm CANCELLED existence via 409.
     event, _existing = await _require_participant_event(session, event_id, user)
+    experience = await session.get(EventExperience, event_id)
+    if experience is not None and experience.registration_url and not experience.registration_required:
+        raise HTTPException(status_code=409, detail="external_registration_only")
     if signup is not None:
         policy = await session.get(EventExperience, event_id)
         if policy is None or "project_topic" not in (policy.broadcast_targets or []):
