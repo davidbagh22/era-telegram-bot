@@ -142,7 +142,13 @@ async def _to_event_out(
     remaining = None if event.participant_limit is None else max(0, event.participant_limit - count)
 
     organizer = experience.organizer if experience else None
-    if not organizer:
+    external_signup = bool(
+        experience and not experience.registration_required
+        and str(experience.contact or "").startswith("https://t.me/")
+    )
+    # For events hosted by other organizers, the ERA admin who shared the
+    # listing is not necessarily its organizer.
+    if not organizer and not external_signup:
         creator = await session.get(User, event.created_by)
         if creator is not None:
             organizer = f"{creator.first_name} {creator.last_name or ''}".strip()
