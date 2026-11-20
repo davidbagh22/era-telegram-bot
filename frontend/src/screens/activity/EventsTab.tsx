@@ -409,6 +409,8 @@ function EventDetail({ event, openSignup, pending, actionError, onRegister, onCa
   const registered = ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "");
   const waitlisted = event.registration_status === WAITLIST_STATUS;
   const chatUrl = safeEvidenceUrl(event.chat_url);
+  const externalSignupUrl = !event.registration_required && event.contact?.startsWith("https://t.me/")
+    ? safeEvidenceUrl(event.contact) : null;
   const rawDescription = (event.full_description || event.description || event.short_description || "").trim();
   const summary = event.short_description?.trim() || "";
   const cleanedBody = cleanEventDescriptionBody(rawDescription, event);
@@ -516,9 +518,9 @@ function EventDetail({ event, openSignup, pending, actionError, onRegister, onCa
       {event.project_id && <button type="button" onClick={() => { window.location.hash = `#/projects/${event.project_id}`; }}>Открыть связанный проект →</button>}
       <EventCalendarButton event={event} />
       {chatUrl && <a href={chatUrl} target="_blank" rel="noopener noreferrer" className="era-btn-secondary" style={{ textAlign: "center", textDecoration: "none" }}>Открыть чат</a>}
-      {safeEvidenceUrl(event.contact) ? (
+      {!externalSignupUrl && safeEvidenceUrl(event.contact) ? (
         <a href={safeEvidenceUrl(event.contact)!} target="_blank" rel="noopener noreferrer" className="era-btn-secondary" style={{ textAlign: "center", textDecoration: "none" }}>Открыть ссылку</a>
-      ) : event.contact ? <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.86rem" }}>Связь: {event.contact}</p> : null}
+      ) : !externalSignupUrl && event.contact ? <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.86rem" }}>Связь: {event.contact}</p> : null}
       <MediaRequestButton sourceType="event" sourceId={event.id} />
       {actionError && <p style={{ color: "var(--era-error)", margin: 0 }}>{actionError}</p>}
 
@@ -557,6 +559,11 @@ function EventDetail({ event, openSignup, pending, actionError, onRegister, onCa
             </div>
             <button type="button" disabled={pending} onClick={onCancelRequest} style={{ minWidth: 106 }}>Покинуть</button>
           </div>
+        ) : externalSignupUrl ? (
+          <a href={externalSignupUrl} target="_blank" rel="noopener noreferrer" className="era-btn-primary"
+            style={{ display: "grid", placeItems: "center", minHeight: 48, textDecoration: "none" }}>
+            Записаться по ссылке ↗
+          </a>
         ) : anniversary ? (
           <AnniversaryRegistration key={event.id} event={event} />
         ) : event.can_register && event.signup_defaults && showForm ? (
