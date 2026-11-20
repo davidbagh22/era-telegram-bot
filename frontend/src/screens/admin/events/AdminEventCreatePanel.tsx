@@ -76,6 +76,7 @@ function patchFromDraft(draft: AdminEventDraft, wizardStep = draft.wizard_step):
     registration_required: draft.registration_required,
     participant_limit: draft.participant_limit,
     registration_close_at: draft.registration_close_at,
+    topic_close_at: draft.topic_close_at,
     waitlist_enabled: draft.waitlist_enabled,
     registration_audience: draft.registration_audience,
     chat_url: draft.chat_url,
@@ -443,6 +444,12 @@ export function AdminEventCreatePanel() {
             <Question title="Есть отдельный чат мероприятия?" hint="Это отдельная сущность. Ссылка появится только на странице события и после регистрации." />
             <Toggle checked={Boolean(draft.chat_url)} onChange={(checked) => mutate((current) => ({ ...current, chat_url: checked ? "https://t.me/" : null }))} title="Да, есть чат" />
             {draft.chat_url !== null && <Field label="Ссылка на Telegram-чат"><input type="url" value={draft.chat_url} onChange={(event) => mutate((current) => ({ ...current, chat_url: event.target.value }))} placeholder="https://t.me/+..." /></Field>}
+            <Field label="Автоматически закрыть тему (Ереван, необязательно)"
+              hint="Закроется обсуждение именно этого мероприятия. История сохранится. Регистрация не изменится.">
+              <input type="datetime-local" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }}
+                value={(draft.topic_close_at ?? "").slice(0, 16)}
+                onChange={(event) => mutate((current) => ({ ...current, topic_close_at: event.target.value || null }))} />
+            </Field>
             <Field label="Организатор"><input value={draft.organizer ?? ""} onChange={(event) => mutate((current) => ({ ...current, organizer: event.target.value }))} placeholder="Команда ЭРА / имя ответственного" /></Field>
             <Field label="Контакт"><input value={draft.contact ?? ""} onChange={(event) => mutate((current) => ({ ...current, contact: event.target.value }))} placeholder="К кому обратиться по вопросам" /></Field>
             <Field label="Что получит участник"><textarea rows={4} value={draft.participant_value ?? ""} onChange={(event) => mutate((current) => ({ ...current, participant_value: event.target.value }))} placeholder="Практика, сертификат, новые знакомства, результат…" /></Field>
