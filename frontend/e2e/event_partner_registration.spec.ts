@@ -28,7 +28,7 @@ test("partner event in Mini App uses the external registration CTA", async ({ pa
     route.fulfill({ json: [partnerEvent] }));
   await page.goto("/app/?devTelegramId=900001#/events/88");
   await expect(page.getByRole("heading", { name: "Географический диктант — 2026" })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Зарегистрироваться у организаторов/ })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: /Записаться по ссылке/ })).toHaveAttribute(
     "href", "https://t.me/+quri_BnuHaxjZTVi",
   );
   await expect(page.getByRole("button", { name: "Подтвердить регистрацию" })).toHaveCount(0);
