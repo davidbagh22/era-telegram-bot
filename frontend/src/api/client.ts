@@ -139,6 +139,8 @@ const ACTION_ERROR_MESSAGES: Record<string, string> = {
   poster_invalid_image: "Файл не похож на изображение. Выберите другое фото.",
   poster_too_large: "Фото должно быть не больше 5 МБ.",
   event_not_publishable: "Это мероприятие уже завершено или отменено.",
+  external_registration_only: "Запись на это мероприятие проходит по внешней ссылке организаторов.",
+  registration_url_invalid: "Ссылка регистрации должна начинаться с https:// и не содержать пробелов.",
 
   user_not_found: "Пользователь не найден — возможно, запись уже изменилась.",
   already_approved: "Заявка уже была одобрена ранее.",
