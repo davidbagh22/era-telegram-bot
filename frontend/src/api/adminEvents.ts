@@ -103,6 +103,7 @@ export type AdminEventDraftPatch = Partial<{
   registration_required: boolean;
   participant_limit: number | null;
   registration_close_at: string | null;
+  topic_close_at: string | null;
   waitlist_enabled: boolean;
   registration_audience: string;
   chat_url: string | null;
