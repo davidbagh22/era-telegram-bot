@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
 
 from app.services import event_topic_lifecycle as topics
@@ -69,3 +69,34 @@ class EventTopicLifecycleTests(IsolatedAsyncioTestCase):
                          datetime(2026, 11, 24, 15, 0, tzinfo=timezone.utc))
         self.assertEqual(topics.utc_aware(when.replace(tzinfo=ZoneInfo("Asia/Yerevan"))),
                          datetime(2026, 11, 24, 15, 0, tzinfo=timezone.utc))
+
+    async def test_due_worker_closes_only_the_recorded_topic(self):
+        old = datetime.now(timezone.utc) - timedelta(minutes=1)
+        exp = SimpleNamespace(topic_close_state="open", topic_close_at=old, topic_closed_at=None)
+        list_session = SimpleNamespace(
+            scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [42])),
+        )
+        update_session = SimpleNamespace(
+            get=AsyncMock(return_value=SimpleNamespace(id=42)),
+            scalar=AsyncMock(side_effect=[
+                exp, exp, SimpleNamespace(value={"thread": 26690}),
+            ]),
+            commit=AsyncMock(), rollback=AsyncMock(),
+        )
+
+        class Context:
+            def __init__(self, value):
+                self.value = value
+            async def __aenter__(self):
+                return self.value
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        sessions = iter([list_session, update_session])
+        factory = lambda: Context(next(sessions))
+        await topics.close_due_event_topics(self.bot, self.settings, factory)
+        self.bot.close_forum_topic.assert_awaited_once_with(
+            chat_id=-1002973371133, message_thread_id=26690
+        )
+        self.assertEqual(exp.topic_close_state, "closed")
+        update_session.commit.assert_awaited_once()
