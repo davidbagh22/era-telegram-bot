@@ -290,7 +290,7 @@ async def _draft_out(session: AsyncSession, event: Event, experience: EventExper
         waitlist_enabled=experience.waitlist_enabled,
         registration_audience=experience.registration_audience,
         chat_url=experience.chat_url,
-        registration_url=experience.registration_url,
+        registration_url=getattr(experience, "registration_url", None),
         organizer=experience.organizer,
         participant_value=experience.participant_value,
         contact=experience.contact,
