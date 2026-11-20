@@ -88,7 +88,7 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
         return False
     markup = await public_event_keyboard(bot, settings, event)
     external_registration = str(getattr(experience, "registration_url", None) or "").strip()
-    if not external_registration and not experience.registration_required:
+    if not external_registration and not getattr(experience, "registration_required", True):
         contact = str(experience.contact or "").strip()
         if contact.startswith("https://t.me/"):
             external_registration = contact
