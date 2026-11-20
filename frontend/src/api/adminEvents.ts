@@ -70,6 +70,7 @@ export interface AdminEventDraft {
   waitlist_enabled: boolean;
   registration_audience: string;
   chat_url: string | null;
+  registration_url: string | null;
   organizer: string | null;
   participant_value: string | null;
   contact: string | null;
@@ -102,6 +103,7 @@ export type AdminEventDraftPatch = Partial<{
   waitlist_enabled: boolean;
   registration_audience: string;
   chat_url: string | null;
+  registration_url: string | null;
   organizer: string | null;
   participant_value: string | null;
   contact: string | null;
