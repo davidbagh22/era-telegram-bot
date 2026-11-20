@@ -39,6 +39,17 @@ class EventShareTextTests(IsolatedAsyncioTestCase):
         self.assertIn("https://t.me/+era", reply.text)
         self.assertIn("startapp=event_42", reply.text)
 
+    async def test_external_event_share_uses_organizer_signup(self):
+        session, settings = self.make_context()
+        experience = await session.get(EventExperience, 42)
+        experience.registration_required = False
+        experience.contact = "https://t.me/+quri_BnuHaxjZTVi"
+        reply = await read_event_share_text(
+            42, _admin=SimpleNamespace(), session=session, settings=settings,
+        )
+        self.assertIn("Зарегистрироваться: https://t.me/+quri_BnuHaxjZTVi", reply.text)
+        self.assertNotIn("startapp=event_42", reply.text)
+
     async def test_missing_topic_is_not_invented(self):
         session, settings = self.make_context(topic=None)
         reply = await read_event_share_text(
