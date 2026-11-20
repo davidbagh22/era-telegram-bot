@@ -269,7 +269,9 @@ async def registration_resume(call: CallbackQuery, state: FSMContext, settings: 
     elif current == RegistrationStates.review.state:
         await _show_registration_review(call.message, state)
     elif current == RegistrationStates.profile_photo.state:
-        await call.message.answer(_PHOTO_PROMPT, reply_markup=_photo_back_keyboard())
+        # Legacy applicants may have been trapped on the once-required photo step.
+        # Resume the review instead: uploading a photo is optional.
+        await _show_registration_review(call.message, state)
     elif current == RegistrationStates.consent.state:
         await state.update_data(consent_policy_version=CURRENT_POLICY_VERSION)
         await call.message.answer(CONSENT_SUMMARY, reply_markup=consent_keyboard())
@@ -559,7 +561,7 @@ def _registration_review_text(data: dict) -> str:
         f"Интересы: {html.escape(directions)}\n"
         f"Время: {html.escape(str(data.get('available_time') or '—'))}\n"
         f"Формат участия: {html.escape(str(data.get('desired_path') or '—'))}\n\n"
-        f"Фото: {'добавлено' if data.get('profile_photo_file_id') else 'нужно добавить перед отправкой'}\n\n"
+        f"Фото: {'добавлено' if data.get('profile_photo_file_id') else 'не добавлено (необязательно)'}\n\n"
         f"<b>Опыт / чем полезны</b>\n{html.escape(str(data.get('experience') or '—'))}\n\n"
         f"<b>Почему ЭРА</b>\n{html.escape(str(data.get('motivation') or '—'))}"
     )
@@ -604,7 +606,7 @@ async def _show_registration_review(message: Message, state: FSMContext) -> None
             reply_markup=registration_review_keyboard() if index == len(chunks)-1 else None)
 
 
-_PHOTO_PROMPT = 'Добавьте фотографию для анкеты обычным фото в Telegram. Её увидит команда, которая рассматривает заявку. Это не согласие на публичную публикацию фотографии.'
+_PHOTO_PROMPT = '📷 Фото для анкеты — по желанию. Пришлите обычное фото в Telegram или нажмите «Продолжить без фото». Снимок увидит только команда, рассматривающая заявку. Это не согласие на публичную публикацию фотографии.'
 _SOCIAL_PROMPT = 'Ссылка на Ваш профиль или портфолио (необязательно). Отправьте https-ссылку или пропустите этот шаг.'
 
 
@@ -613,12 +615,9 @@ def _social_keyboard():
 
 
 async def _after_social(message, state):
-    data = await state.get_data()
-    if data.get('profile_photo_file_id'):
-        await _show_registration_review(message, state)
-    else:
-        await state.set_state(RegistrationStates.profile_photo)
-        await message.answer(_PHOTO_PROMPT, reply_markup=_photo_back_keyboard())
+    # Photo is optional: all answers go straight to review. The review
+    # offers a separate upload action without blocking submission.
+    await _show_registration_review(message, state)
 
 
 @router.callback_query(RegistrationStates.social_url, F.data == 'reg:social:skip')
@@ -656,7 +655,6 @@ async def _ensure_complete(message, state, data):
         ('available_time', RegistrationStates.available_time, texts.REG_TIME),
         ('desired_path', RegistrationStates.desired_path, texts.REG_PATH),
         ('motivation', RegistrationStates.motivation, texts.REG_MOTIVATION),
-        ('profile_photo_file_id', RegistrationStates.profile_photo, _PHOTO_PROMPT),
     ]
     for key, target, prompt in requirements:
         present = data.get('region') or data.get('city') if key == 'region' else data.get(key)
@@ -670,9 +668,10 @@ async def _ensure_complete(message, state, data):
 
 
 def _photo_back_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text='Вернуться к анкете', callback_data='reg:photo:back'),
-    ]])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='✅ Продолжить без фото', callback_data='reg:photo:skip')],
+        [InlineKeyboardButton(text='← Вернуться к анкете', callback_data='reg:photo:back')],
+    ])
 
 
 @router.callback_query(RegistrationStates.review, F.data == 'reg:photo:add')
@@ -682,7 +681,7 @@ async def registration_photo_start(call: CallbackQuery, state: FSMContext) -> No
     await call.message.answer(_PHOTO_PROMPT, reply_markup=_photo_back_keyboard())
 
 
-@router.callback_query(RegistrationStates.profile_photo, F.data == 'reg:photo:back')
+@router.callback_query(RegistrationStates.profile_photo, F.data.in_({'reg:photo:back', 'reg:photo:skip'}))
 async def registration_photo_back(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
     await _show_registration_review(call.message, state)
@@ -697,7 +696,7 @@ async def registration_photo(message: Message, state: FSMContext) -> None:
 
 @router.message(RegistrationStates.profile_photo)
 async def registration_photo_invalid(message: Message) -> None:
-    await message.answer('Отправьте изображение как фото, а не файл, или вернитесь к анкете.',
+    await message.answer('Можно отправить фотографию обычным фото Telegram или продолжить без неё.',
                          reply_markup=_photo_back_keyboard())
 
 
