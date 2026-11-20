@@ -143,7 +143,13 @@ async def _to_event_out(
     remaining = None if event.participant_limit is None else max(0, event.participant_limit - count)
 
     organizer = experience.organizer if experience else None
-    if not organizer:
+    external_signup = bool(
+        experience and not experience.registration_required
+        and (experience.registration_url or str(experience.contact or "").startswith("https://t.me/"))
+    )
+    # For events hosted by other organizers, the ERA admin who shared the
+    # listing is not necessarily its organizer.
+    if not organizer and not external_signup:
         creator = await session.get(User, event.created_by)
         if creator is not None:
             organizer = f"{creator.first_name} {creator.last_name or ''}".strip()
@@ -178,8 +184,8 @@ async def _to_event_out(
         registration_required=registration_required,
         registration_closed=registration_closed,
     )
-    if experience and experience.registration_url and not registration_required:
-        display_status = "Регистрация по ссылке"
+    if display_status == "Без регистрации" and external_signup:
+        display_status = "Запись по ссылке организаторов"
     if guest_event:
         waitlisted = registration is not None and registration.status == RegistrationStatus.WAITLIST
         anniversary_registered = (
@@ -447,8 +453,8 @@ async def register_event(
 ) -> EventOut:
     # Match detail/poster privacy: do not confirm CANCELLED existence via 409.
     event, _existing = await _require_participant_event(session, event_id, user)
-    experience = await session.get(EventExperience, event_id)
-    if experience is not None and experience.registration_url and not experience.registration_required:
+    policy = await session.get(EventExperience, event_id)
+    if policy is not None and not policy.registration_required and (policy.registration_url or str(policy.contact or "").startswith("https://t.me/")):
         raise HTTPException(status_code=409, detail="external_registration_only")
     if signup is not None:
         policy = await session.get(EventExperience, event_id)
