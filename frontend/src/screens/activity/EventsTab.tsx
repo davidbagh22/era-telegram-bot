@@ -409,6 +409,7 @@ function EventDetail({ event, openSignup, pending, actionError, onRegister, onCa
   const registered = ACTIVE_REGISTRATION_STATUSES.has(event.registration_status ?? "");
   const waitlisted = event.registration_status === WAITLIST_STATUS;
   const chatUrl = safeEvidenceUrl(event.chat_url);
+  const externalRegistrationUrl = safeEvidenceUrl(event.registration_url ?? null);
   const rawDescription = (event.full_description || event.description || event.short_description || "").trim();
   const summary = event.short_description?.trim() || "";
   const cleanedBody = cleanEventDescriptionBody(rawDescription, event);
@@ -515,7 +516,7 @@ function EventDetail({ event, openSignup, pending, actionError, onRegister, onCa
 
       {event.project_id && <button type="button" onClick={() => { window.location.hash = `#/projects/${event.project_id}`; }}>Открыть связанный проект →</button>}
       <EventCalendarButton event={event} />
-      {chatUrl && <a href={chatUrl} target="_blank" rel="noopener noreferrer" className="era-btn-secondary" style={{ textAlign: "center", textDecoration: "none" }}>Открыть чат</a>}
+      {chatUrl && <a href={chatUrl} target="_blank" rel="noopener noreferrer" className="era-btn-secondary" style={{ textAlign: "center", textDecoration: "none" }}>Обсуждение мероприятия</a>}
       {safeEvidenceUrl(event.contact) ? (
         <a href={safeEvidenceUrl(event.contact)!} target="_blank" rel="noopener noreferrer" className="era-btn-secondary" style={{ textAlign: "center", textDecoration: "none" }}>Открыть ссылку</a>
       ) : event.contact ? <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.86rem" }}>Связь: {event.contact}</p> : null}
@@ -538,7 +539,12 @@ function EventDetail({ event, openSignup, pending, actionError, onRegister, onCa
           boxShadow: "var(--era-shadow-dock)",
         }}
       >
-        {registered ? (
+        {externalRegistrationUrl && !registered ? (
+          <a href={externalRegistrationUrl} target="_blank" rel="noopener noreferrer" className="era-btn-primary"
+            style={{ minHeight: 48, display: "grid", placeItems: "center", textAlign: "center", textDecoration: "none" }}>
+            Зарегистрироваться у организаторов ↗
+          </a>
+        ) : registered ? (
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: ".5rem" }}>
             <div
               className="era-success-state"
