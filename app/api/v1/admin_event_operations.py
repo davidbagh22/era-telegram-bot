@@ -188,13 +188,14 @@ async def read_event_share_text(
 
     general_link = str(settings.general_chat_url or "").strip()
     topic_link = str(experience.chat_url or "").strip() if experience else ""
-    register_link = telegram_event_miniapp_url(settings.bot_username or "ERA_1bot", event.id)
+    external_link = (experience.registration_url if experience else None) or None
+    register_link = external_link or telegram_event_miniapp_url(settings.bot_username or "ERA_1bot", event.id)
     if general_link:
         parts.append("💬 Общий чат ЭРА: " + general_link)
     if topic_link:
         parts.append("📌 Тема мероприятия: " + topic_link)
     if register_link:
-        parts.append("📝 Зарегистрироваться: " + register_link)
+        parts.append(("📝 Записаться у организаторов: " if external_link else "📝 Зарегистрироваться: ") + register_link)
     return EventShareTextOut(text="\n\n".join(parts))
 
 
