@@ -15,7 +15,7 @@ test("registration deadline fits a 320px Telegram viewport", async ({ page }) =>
     await expect(page.getByText(`ШАГ ${step} ИЗ 10`)).toBeVisible();
   }
 
-  const registrationToggle = page.getByLabel("Регистрация нужна", { exact: true });
+  const registrationToggle = page.getByLabel("Регистрация внутри ЭРА", { exact: true });
   if (!(await registrationToggle.isChecked())) await registrationToggle.check();
   const capacity = page.getByLabel("Количество мест", { exact: true });
   const deadline = page.getByLabel("Закрыть регистрацию", { exact: true });
