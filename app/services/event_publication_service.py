@@ -87,6 +87,11 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
     if bot is None:
         return False
     markup = await public_event_keyboard(bot, settings, event)
+    external_registration = getattr(experience, "registration_url", None)
+    if external_registration:
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Зарегистрироваться у организаторов", url=external_registration)
+        ]])
     text = announcement_text(event, experience)
     poster = getattr(experience, "poster_bytes", None)
     targets = set(experience.broadcast_targets or [])
@@ -99,7 +104,7 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
         url = f"https://t.me/c/{str(settings.general_chat_id)[4:]}/{thread}"
         if not experience.chat_url:
             experience.chat_url = url
-        register_url = markup.inline_keyboard[0][0].url
+        register_url = external_registration or markup.inline_keyboard[0][0].url
         markup = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="Зарегистрироваться", url=register_url)
         ]])
