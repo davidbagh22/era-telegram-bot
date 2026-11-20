@@ -40,8 +40,8 @@ def _body(text: str) -> str:
 
 def _kind(event):
     marker = str(getattr(event, "additional_info", "") or "")
-    if marker == "geography-dictation-2026":
-        return ("🌍", "Международная просветительская акция")
+    if marker == "geo-dictation-2026-russian-house":
+        return ("🌍", "Ежегодная международная просветительская акция")
     if marker.startswith("november-2026-moscow-house:"):
         try:
             return NOVEMBER_KIND.get(int(marker.rsplit(":", 1)[-1]))
@@ -73,7 +73,10 @@ def event_topic_html(event, experience, *, registration: str, chat: str | None, 
         f"🗓 <b>{escape(date_label)}</b>",
         f"📍 {escape(str(event.location))}",
         "",
-        ("<i>Запись проходит по ссылке организаторов.</i>" if getattr(experience, "registration_url", None)
+        ("<i>Запись проходит по ссылке организаторов.</i>"
+         if (getattr(experience, "registration_url", None)
+             or (not getattr(experience, "registration_required", True)
+                 and str(getattr(experience, "contact", "") or "").startswith("https://t.me/")))
          else "<i>Для участия необходима регистрация.</i>"),
     ]
     actions = [_link("Зарегистрироваться", registration), _link("Обсуждение проекта", topic),
