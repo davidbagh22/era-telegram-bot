@@ -67,6 +67,9 @@ export interface AdminEventDraft {
   registration_required: boolean;
   participant_limit: number | null;
   registration_close_at: string | null;
+  topic_close_at: string | null;
+  topic_closed_at: string | null;
+  topic_close_state: "open" | "closed" | "attention";
   waitlist_enabled: boolean;
   registration_audience: string;
   chat_url: string | null;
@@ -175,6 +178,14 @@ export function listEventDrafts(): Promise<AdminEventDraft[]> {
 
 export function fetchEventDraft(eventId: number): Promise<AdminEventDraft> {
   return requestJson<AdminEventDraft>(`/api/v1/admin/events/${eventId}/draft`);
+}
+
+export function changeEventTopic(eventId: number, action: "close" | "reopen"): Promise<{
+  state: "open" | "closed";
+  closed_at: string | null;
+  close_at: string | null;
+}> {
+  return requestJson(`/api/v1/admin/events/${eventId}/topic/${action}`, { method: "POST" });
 }
 
 export function fetchEventShareText(eventId: number): Promise<{ text: string }> {
