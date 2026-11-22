@@ -436,7 +436,16 @@ async def save_event_draft_step(
     bot: Bot | None = Depends(get_bot),
 ) -> EventDraftOut:
     event = await _managed_event(session, event_id)
-    experience = await _experience(session, event)
+    # Serialize schedule edits with the topic-closing worker, and refresh any
+    # previously loaded experience before checking its current close state.
+    experience = await session.scalar(
+        select(EventExperience)
+        .where(EventExperience.event_id == event_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if experience is None:
+        experience = await _experience(session, event)
     was_public = event.status != EventStatus.DRAFT
     changes: list[str] = []
 
