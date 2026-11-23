@@ -492,7 +492,7 @@ async def save_event_draft_step(
     if "topic_close_at" in payload.model_fields_set:
         if payload.topic_close_at is not None:
             closing_at = utc_aware(payload.topic_close_at)
-            if closing_at <= datetime.now(timezone.utc):
+            if closing_at <= datetime.now(timezone.utc) and (\n                experience.topic_close_at is None or utc_aware(experience.topic_close_at) != closing_at\n            ):
                 raise HTTPException(status_code=422, detail="topic_close_time_must_be_future")
             if experience.topic_close_state == "closed":
                 raise HTTPException(status_code=409, detail="topic_already_closed_reopen_first")
