@@ -51,7 +51,18 @@ function taskDeadlineInput(value: string | null | undefined): string {
   return new Date(instant.getTime() - instant.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
 
-// Display absolute instants in the event's timezone, not the browser or UTC.\nfunction topicCloseInput(value: string | null | undefined): string {\n  if (!value) return "";\n  if (!/(?:Z|[+-][0-9]{2}:[0-9]{2})$/i.test(value)) return value.slice(0, 16);\n  const instant = new Date(value);\n  if (Number.isNaN(instant.getTime())) return value.slice(0, 16);\n  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Yerevan", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(instant);\n  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";\n  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}`;\n}\n\nfunction taskDeadlineIso(value: string): string {
+// Display absolute instants in the event's timezone, not the browser or UTC.
+function topicCloseInput(value: string | null | undefined): string {
+  if (!value) return "";
+  if (!/(?:Z|[+-][0-9]{2}:[0-9]{2})$/i.test(value)) return value.slice(0, 16);
+  const instant = new Date(value);
+  if (Number.isNaN(instant.getTime())) return value.slice(0, 16);
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Yerevan", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(instant);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}`;
+}
+
+function taskDeadlineIso(value: string): string {
   if (!value) return "";
   const instant = new Date(value);
   return Number.isNaN(instant.getTime()) ? value : instant.toISOString();
