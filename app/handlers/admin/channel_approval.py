@@ -1,20 +1,21 @@
 """Exact-day ERA channel publication approval (E09). Fail closed by default."""
 from __future__ import annotations
 
-import hashlib
 from datetime import datetime
 
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.database.models import User
+from app.database.models import AppSetting, User
 from app.services.authorization_service import is_full_admin
 from app.services.daily_public_content_service import (
     MOSCOW,
     _channel_target,
+    _publication_digest,
     approve_channel_publication,
     text_for_day,
 )
@@ -23,11 +24,46 @@ from app.utils import texts
 router = Router(name="channel_approval")
 
 
+def _pending_key(user_id: int) -> str:
+    return f"era_daily_channel_approval_pending:{user_id}"
+
+
 def _preview(text: str) -> str:
     body = text.strip()
     if len(body) > 700:
         return body[:700] + "…"
     return body
+
+
+async def _store_pending(
+    session: AsyncSession, *, user_id: int, day: str, target: str, digest: str
+) -> None:
+    key = _pending_key(user_id)
+    payload = {"day": day, "target": target, "digest": digest}
+    row = await session.scalar(select(AppSetting).where(AppSetting.key == key))
+    if row is None:
+        session.add(AppSetting(key=key, value=payload, updated_by=user_id))
+    else:
+        row.value = payload
+        row.updated_by = user_id
+    await session.flush()
+
+
+async def _load_pending(session: AsyncSession, user_id: int) -> dict | None:
+    row = await session.scalar(
+        select(AppSetting).where(AppSetting.key == _pending_key(user_id))
+    )
+    if row is None or not isinstance(row.value, dict):
+        return None
+    day, target, digest = row.value.get("day"), row.value.get("target"), row.value.get("digest")
+    if (
+        isinstance(day, str)
+        and isinstance(target, str)
+        and isinstance(digest, str)
+        and len(digest) == 64
+    ):
+        return {"day": day, "target": target, "digest": digest}
+    return None
 
 
 @router.message(Command("approve_channel_post"))
@@ -43,13 +79,21 @@ async def approve_channel_post_preview(
         return
     day = datetime.now(MOSCOW).date().isoformat()
     content = text_for_day(day, "channel_post")
-    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    digest = _publication_digest(content)
+    await _store_pending(
+        session,
+        user_id=user.id,
+        day=day,
+        target=str(target),
+        digest=digest,
+    )
+    await session.commit()
     markup = InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="✅ Согласовать этот текст на сегодня",
-                    callback_data=f"admin:channel_approve:{day}",
+                    callback_data=f"admin:channel_approve:{day}:{digest[:16]}",
                 )
             ]
         ]
@@ -65,27 +109,42 @@ async def approve_channel_post_preview(
     )
 
 
-@router.callback_query(F.data.regexp(r"^admin:channel_approve:\d{4}-\d{2}-\d{2}$"))
+@router.callback_query(F.data.regexp(r"^admin:channel_approve:\d{4}-\d{2}-\d{2}:[0-9a-f]{16}$"))
 async def approve_channel_post_confirm(
     call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession
 ) -> None:
     if not is_full_admin(user, settings, call.from_user.id):
         await call.answer(texts.NO_ACCESS, show_alert=True)
         return
-    day = call.data.rsplit(":", 1)[-1]
+    _, _, day, digest_prefix = call.data.split(":", 3)
     today = datetime.now(MOSCOW).date().isoformat()
     if day != today:
         await call.answer("Можно согласовать только сегодняшний текст.", show_alert=True)
         return
-    target = _channel_target(settings)
-    if target is None:
-        await call.answer("Канал не настроен.", show_alert=True)
+    pending = await _load_pending(session, user.id)
+    if (
+        pending is None
+        or pending["day"] != day
+        or not pending["digest"].startswith(digest_prefix)
+    ):
+        await call.answer(
+            "Превью устарело. Снова выполните /approve_channel_post.",
+            show_alert=True,
+        )
         return
+    # Reject if the live bank/channel no longer matches what was previewed.
+    target = _channel_target(settings)
     content = text_for_day(day, "channel_post")
+    if target is None or str(target) != pending["target"]:
+        await call.answer("Канал изменился. Откройте превью заново.", show_alert=True)
+        return
+    if _publication_digest(content) != pending["digest"]:
+        await call.answer("Текст изменился. Откройте превью заново.", show_alert=True)
+        return
     digest, already = await approve_channel_publication(
         session,
-        day=day,
-        target=str(target),
+        day=pending["day"],
+        target=pending["target"],
         text=content,
         actor_id=user.id if user else None,
     )
@@ -98,6 +157,6 @@ async def approve_channel_post_confirm(
         return
     await call.message.answer(
         f"✅ Публикация на {day} согласована.\n"
-        f"Канал: {target}\nSHA-256: {digest[:16]}…\n"
+        f"Канал: {pending['target']}\nSHA-256: {digest[:16]}…\n"
         "Планировщик отправит её только в согласованное окно, без повторной отправки."
     )
