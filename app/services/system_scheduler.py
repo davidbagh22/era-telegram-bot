@@ -8,6 +8,7 @@ from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import Settings
+from app.services.anniversary_campaign_service import run_campaign
 from app.services.media_recruitment_service import publish_media_recruitment
 from app.services.telegram_analytics_service import refresh_sources_job, mark_coverage_gap, source_targets
 from app.services.application_review_service import deliver_application_notices
@@ -61,6 +62,8 @@ def add_system_jobs(
 ) -> None:
     """Attach production-health jobs and durable infrastructure maintenance."""
     now = datetime.now(ZoneInfo(settings.timezone))
+    # Campaign sends stay dormant until ANNIVERSARY_2026_CAMPAIGN / activation gate opens.
+    scheduler.add_job(run_campaign, "interval", minutes=1, args=(bot, settings, session_factory), id="anniversary-2026", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     if os.getenv("RENDER_SERVICE_ID") == "srv-d91r1j7avr4c73fs8h00" and date(2026, 11, 19) <= now.date() < date(2026, 11, 23):
         from app.services.moscow_house_november import publish_november_program
         scheduler.add_job(publish_november_program, "interval", minutes=15, args=(bot, settings, session_factory), id="moscow-house-november", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now, misfire_grace_time=300)
