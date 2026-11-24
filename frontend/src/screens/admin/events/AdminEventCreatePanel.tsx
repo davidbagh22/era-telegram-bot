@@ -51,14 +51,29 @@ function taskDeadlineInput(value: string | null | undefined): string {
   return new Date(instant.getTime() - instant.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 }
 
+// Display absolute instants in the event's timezone, not the browser or UTC.
+function topicCloseInput(value: string | null | undefined): string {
+  if (!value) return "";
+  if (!/(?:Z|[+-][0-9]{2}:[0-9]{2})$/i.test(value)) return value.slice(0, 16);
+  const instant = new Date(value);
+  if (Number.isNaN(instant.getTime())) return value.slice(0, 16);
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Yerevan", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(instant);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}T${part("hour")}:${part("minute")}`;
+}
+
 function taskDeadlineIso(value: string): string {
   if (!value) return "";
   const instant = new Date(value);
   return Number.isNaN(instant.getTime()) ? value : instant.toISOString();
 }
 
-function patchFromDraft(draft: AdminEventDraft, wizardStep = draft.wizard_step): AdminEventDraftPatch {
-  return {
+function patchFromDraft(
+  draft: AdminEventDraft,
+  wizardStep = draft.wizard_step,
+  baseline: AdminEventDraft | null = null,
+): AdminEventDraftPatch {
+  const patch: AdminEventDraftPatch = {
     issue_certificate: draft.issue_certificate,
     wizard_step: wizardStep,
     creation_mode: draft.creation_mode,
@@ -90,6 +105,12 @@ function patchFromDraft(draft: AdminEventDraft, wizardStep = draft.wizard_step):
     broadcast_enabled: draft.broadcast_enabled,
     broadcast_targets: draft.broadcast_targets,
   };
+  // Only resubmit the schedule when the Yerevan-local input actually changed.
+  // An unchanged expired deadline must not block wizard next/back navigation.
+  if (!baseline || topicCloseInput(draft.topic_close_at) !== topicCloseInput(baseline.topic_close_at)) {
+    patch.topic_close_at = draft.topic_close_at ? topicCloseInput(draft.topic_close_at) || null : null;
+  }
+  return patch;
 }
 
 function StepHeader({ step }: { step: number }) {
@@ -118,6 +139,7 @@ export function AdminEventCreatePanel() {
   const [posterUrl, setPosterUrl] = useState<string | null>(null);
   const [posterRevision, setPosterRevision] = useState(0);
   const versionRef = useRef(0);
+  const baselineRef = useRef<AdminEventDraft | null>(null);
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const projectsState = useAsync(() => fetchProjects("open"), []);
 
@@ -183,10 +205,11 @@ export function AdminEventCreatePanel() {
     setError(null);
     try {
       const pending = saveQueue.current.catch(() => undefined).then(() =>
-        saveEventDraft(draft.id, patchFromDraft(draft, targetStep ?? draft.wizard_step)));
+        saveEventDraft(draft.id, patchFromDraft(draft, targetStep ?? draft.wizard_step, baselineRef.current)));
       saveQueue.current = pending;
       const result = await pending;
       if (capturedVersion === versionRef.current) {
+        baselineRef.current = result;
         setDraft(result);
         setDirty(false);
         setSaveLabel("Сохранено ✓");
@@ -212,6 +235,7 @@ export function AdminEventCreatePanel() {
     setError(null);
     try {
       const item = await createEventDraft(mode);
+      baselineRef.current = item;
       setDraft(item);
       setSaveLabel("Черновик создан ✓");
     } catch (reason) {
@@ -257,6 +281,7 @@ export function AdminEventCreatePanel() {
         setError("Пока загружался список черновиков, появились новые изменения. Проверьте их и повторите выход.");
         return;
       }
+      baselineRef.current = null;
       setDraft(null);
       setError(null);
     } catch (reason) {
@@ -325,7 +350,7 @@ export function AdminEventCreatePanel() {
             <h3 style={{ margin: "0 0 .55rem" }}>Продолжить создание</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
               {(drafts ?? []).map((item) => (
-                <button key={item.id} type="button" onClick={() => { setDraft(item); setSaveLabel("Черновик восстановлен ✓"); }} style={{ textAlign: "left", padding: ".85rem" }}>
+                <button key={item.id} type="button" onClick={() => { baselineRef.current = item; setDraft(item); setSaveLabel("Черновик восстановлен ✓"); }} style={{ textAlign: "left", padding: ".85rem" }}>
                   <strong>{item.title || "Новое мероприятие"}</strong>
                   <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: ".8rem" }}>{item.creation_mode === "quick" ? "Быстрый ввод · текст и фото" : `Шаг ${item.wizard_step} из 10 · ${STEP_TITLES[item.wizard_step - 1]}`}</span>
                 </button>
@@ -443,6 +468,12 @@ export function AdminEventCreatePanel() {
             <Question title="Есть отдельный чат мероприятия?" hint="Это отдельная сущность. Ссылка появится только на странице события и после регистрации." />
             <Toggle checked={Boolean(draft.chat_url)} onChange={(checked) => mutate((current) => ({ ...current, chat_url: checked ? "https://t.me/" : null }))} title="Да, есть чат" />
             {draft.chat_url !== null && <Field label="Ссылка на Telegram-чат"><input type="url" value={draft.chat_url} onChange={(event) => mutate((current) => ({ ...current, chat_url: event.target.value }))} placeholder="https://t.me/+..." /></Field>}
+            <Field label="Автоматически закрыть тему (Ереван, необязательно)"
+              hint="Закроется обсуждение именно этого мероприятия. История сохранится. Регистрация не изменится.">
+              <input type="datetime-local" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }}
+                value={topicCloseInput(draft.topic_close_at)}
+                onChange={(event) => mutate((current) => ({ ...current, topic_close_at: event.target.value || null }))} />
+            </Field>
             <Field label="Организатор"><input value={draft.organizer ?? ""} onChange={(event) => mutate((current) => ({ ...current, organizer: event.target.value }))} placeholder="Команда ЭРА / имя ответственного" /></Field>
             <Field label="Контакт"><input value={draft.contact ?? ""} onChange={(event) => mutate((current) => ({ ...current, contact: event.target.value }))} placeholder="К кому обратиться по вопросам" /></Field>
             <Field label="Что получит участник"><textarea rows={4} value={draft.participant_value ?? ""} onChange={(event) => mutate((current) => ({ ...current, participant_value: event.target.value }))} placeholder="Практика, сертификат, новые знакомства, результат…" /></Field>

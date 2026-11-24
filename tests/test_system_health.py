@@ -138,6 +138,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "application-notices",
                 "office-vacancy-reconciliation",
                 "configured-event-reminders",
+                "event-topic-auto-close",
                 "event-lifecycle-notifications",
                 "event-certificates",
                 "event-announcement-recovery",

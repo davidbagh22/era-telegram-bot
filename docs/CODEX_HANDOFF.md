@@ -1,5 +1,7 @@
 # ERA bot and Mini App handoff
 
+- 24 November / release unblock (owner registry): 18/40 shipped-or-checked (45%), 3/40 fully accepted (7.5%); LIVE=`aaf7cdbe`=main tip; 10 open PRs. P0: finish #723 → rebase #670 anniversary → security/QR/points. Stop feature sprawl; merge+test+ship only.
+- 24 November / #723 (`b45dd720`): Codex P2 closed — permanent topic-close failures → `attention`+clear due queue; wizard omits unchanged `topic_close_at`. Await CI then owner merge (no manual Render).
 - Event management: published cards open a role-gated details editor. The home orbit opens assessments. Release and Telegram device acceptance pending.
 - Release scope includes project topics, scoped recipient preview, notice routing, attendance certificates and the four November events. Reconcile any uncertain Telegram creation before retrying.
 - 19 November / AURA×ORBIT follow-through prepared locally for #713: persistent ambient above layouts/auth, organic blue-glass nodes, actual Discover/reading/game-gated surfaces, own+accepted team memberships, project title/date cards in every list scope and explicit workspace entry. Local typecheck/build PASS; 80 targeted tests PASS (CI dummy BOT_TOKEN required). New E2E is configured to record screenshots/video in CI; local Chromium is BLOCKED by socket() policy, so no local browser/device VERIFIED claim. Public git push was rejected by automatic approval review pending explicit owner authorization; PR remote head remains 952f8e08, no merge/deploy.

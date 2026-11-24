@@ -21,6 +21,7 @@ from app.utils.constants import EventStatus, RegistrationStatus
 from app.utils.deep_links import telegram_event_miniapp_url
 from app.services import event_registration_service
 from app.services.authorization_service import can_manage_events
+from app.services.event_topic_lifecycle import TopicActionError, update_topic_status
 
 router = APIRouter(prefix="/admin/events", tags=["admin-event-operations"])
 
@@ -243,3 +244,35 @@ async def message_registrants(
     )
     return {"sent": result.sent, "failed": result.failed, "total": result.total,
             "already_sent": result.total - result.sent - result.failed}
+
+
+class TopicActionResult(BaseModel):
+    state: str
+    closed_at: str | None = None
+    close_at: str | None = None
+
+
+@router.post("/{event_id}/topic/{action}", response_model=TopicActionResult)
+async def manage_event_topic(
+    event_id: int,
+    action: str,
+    admin: User = Depends(require_event_manager),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    bot: Bot | None = Depends(get_bot),
+) -> TopicActionResult:
+    """Close/reopen only a forum thread created by our bot for this event."""
+    if action not in {"close", "reopen"}:
+        raise HTTPException(status_code=404, detail="unknown_topic_action")
+    try:
+        exp = await update_topic_status(bot, settings, session, event_id, action, actor_id=admin.id)
+    except TopicActionError as exc:
+        raise HTTPException(
+            status_code=404 if exc.code == "event_not_found" else 409,
+            detail=exc.code,
+        ) from exc
+    return TopicActionResult(
+        state=exp.topic_close_state,
+        closed_at=exp.topic_closed_at.isoformat() if exp.topic_closed_at else None,
+        close_at=exp.topic_close_at.isoformat() if exp.topic_close_at else None,
+    )
