@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, time
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, LargeBinary, String, Text, Time, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, LargeBinary, String, Text, Time, UniqueConstraint, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
@@ -22,6 +22,7 @@ class EventExperience(Base):
     event_id: Mapped[int] = mapped_column(
         ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
     )
+    issue_certificate: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     short_description: Mapped[str | None] = mapped_column(Text)
     full_description: Mapped[str | None] = mapped_column(Text)
     category: Mapped[str | None] = mapped_column(String(100))
@@ -32,6 +33,13 @@ class EventExperience(Base):
     participant_value: Mapped[str | None] = mapped_column(Text)
     contact: Mapped[str | None] = mapped_column(String(255))
     chat_url: Mapped[str | None] = mapped_column(String(500))
+    # Separate link for a partner's own registration; never mistaken for ERA RSVP.
+    registration_url: Mapped[str | None] = mapped_column(String(500))
+
+    # Telegram forum topic lifecycle (independent of registration deadline).
+    topic_close_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    topic_closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    topic_close_state: Mapped[str] = mapped_column(String(24), default="open", server_default="open")
 
     registration_required: Mapped[bool] = mapped_column(Boolean, default=True)
     registration_close_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -52,6 +60,9 @@ class EventExperience(Base):
     is_complete: Mapped[bool] = mapped_column(Boolean, default=False)
     creation_mode: Mapped[str] = mapped_column(String(16), default="wizard", server_default="wizard")
     announcement_status: Mapped[str] = mapped_column(String(24), default="not_requested", server_default="not_requested", index=True)
+
+    # Reversible public-discovery visibility; direct links and personal history are independent.
+    show_in_public_listing: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=true())
 
     poster_content_type: Mapped[str | None] = mapped_column(String(100))
     poster_bytes: Mapped[bytes | None] = mapped_column(LargeBinary)

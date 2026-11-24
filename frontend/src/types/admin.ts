@@ -159,9 +159,12 @@ export interface OperationalEvent {
   points_for_visit: number;
   registered: number;
   free: number | string;
+  show_in_public_listing: boolean;
 }
 
 export interface EventParticipant {
+  organization?: string | null;
+  phone?: string | null;
   registration_id: number;
   participant_id: number;
   participant_name: string;
@@ -203,6 +206,7 @@ export interface Office {
   title: string;
   description: string | null;
   is_active: boolean;
+  permission_template?: string[];
   assignments: OfficeAssignment[];
 }
 

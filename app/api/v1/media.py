@@ -166,6 +166,8 @@ class MediaAnalyticsOut(BaseModel):
 
 class MediaRequestIn(BaseModel):
     package_type: Literal["announcement", "photo", "video", "reels", "full"] = "full"
+    # Optional desired delivery instant; drives content.scheduled_at → task deadlines.
+    due_at: datetime | None = None
 
 
 class MediaRequestOut(BaseModel):
@@ -307,7 +309,14 @@ async def apply_to_media(
     try:
         await media_service.apply_for_media(session, user)
     except ValueError as error:
-        raise HTTPException(status_code=500, detail=str(error)) from error
+        # A missing Media direction is a deployment/configuration outage, not
+        # an applicant error. Return a retryable 503 without exposing unknown
+        # internal ValueErrors as API response details.
+        if str(error) == "media_direction_missing":
+            raise HTTPException(status_code=503, detail="media_direction_missing") from error
+        if str(error) == "media_apply_forbidden":
+            raise HTTPException(status_code=403, detail="media_apply_requires_approved_membership") from error
+        raise
     return await read_media_hub(user=user, session=session, settings=settings)
 
 
@@ -629,6 +638,7 @@ async def _request_media(
     user: User,
     session: AsyncSession,
     settings: Settings,
+    bot: Bot,
 ) -> MediaRequestOut:
     try:
         item = await media_service.request_media_package(
@@ -638,6 +648,8 @@ async def _request_media(
             package_type=payload.package_type,
             requester=user,
             settings=settings,
+            due_at=payload.due_at,
+            bot=bot,
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail="forbidden") from exc
@@ -657,8 +669,9 @@ async def request_event_media(
     user: User = Depends(require_media_hub),
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
+    bot: Bot = Depends(get_bot),
 ) -> MediaRequestOut:
-    return await _request_media("event", event_id, payload, user, session, settings)
+    return await _request_media("event", event_id, payload, user, session, settings, bot)
 
 
 @router.post("/requests/project/{project_id}", response_model=MediaRequestOut)
@@ -668,5 +681,6 @@ async def request_project_media(
     user: User = Depends(require_media_hub),
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
+    bot: Bot = Depends(get_bot),
 ) -> MediaRequestOut:
-    return await _request_media("project", project_id, payload, user, session, settings)
+    return await _request_media("project", project_id, payload, user, session, settings, bot)

@@ -13,8 +13,13 @@ const SECTIONS: { value: ProjectsSectionKey; label: string; description: string;
   { value: "team-posts", label: "Поиск команды", description: "Проверить объявления о наборе людей в проекты", icon: "◎" },
 ];
 
-export function AdminProjectsScreen() {
-  const [section, setSection] = useState<ProjectsSectionKey | null>(null);
+interface AdminProjectsScreenProps {
+  /** Deep-link from «Решить сегодня» into moderation, not the menu. */
+  initialSection?: ProjectsSectionKey | null;
+}
+
+export function AdminProjectsScreen({ initialSection = null }: AdminProjectsScreenProps) {
+  const [section, setSection] = useState<ProjectsSectionKey | null>(initialSection);
 
   if (!section) {
     return (

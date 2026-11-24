@@ -3,7 +3,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Badge, PointTransaction, PortfolioItem, User, UserBadge
+from app.database.models import Badge, PortfolioItem, User, UserBadge
 from app.keyboards.common import back_keyboard
 from app.keyboards.participant import portfolio_keyboard
 from app.repositories.users import user_stats
@@ -24,20 +24,20 @@ async def badges_for_user(session: AsyncSession, user_id: int) -> list[Badge]:
     return (await session.scalars(select(Badge).join(UserBadge, UserBadge.badge_id == Badge.id).where(UserBadge.user_id == user_id).order_by(Badge.name))).all()
 
 
-async def recent_points(session: AsyncSession, user_id: int) -> list[PointTransaction]:
-    return (await session.scalars(select(PointTransaction).where(PointTransaction.user_id == user_id).order_by(desc(PointTransaction.created_at)).limit(8))).all()
-
-
 def achievements_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="⭐ Баллы", callback_data="cabinet:points"),
+            InlineKeyboardButton(text="🏆 Рейтинг", callback_data="cabinet:rating"),
+        ],
         [InlineKeyboardButton(text="🎓 Портфолио", callback_data="cabinet:portfolio")],
-        [InlineKeyboardButton(text="🏆 Рейтинг", callback_data="cabinet:rating")],
         [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
     ])
 
 
-@router.callback_query(F.data.in_({"cabinet:achievements", "cabinet:points", "cabinet:badges", "badges:menu"}))
+@router.callback_query(F.data.in_({"cabinet:achievements", "cabinet:badges", "badges:menu"}))
 async def achievements(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
+    """Знаки и сводка вклада. Баллы/история — отдельный cabinet:points."""
     await call.answer()
     if not approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
@@ -45,23 +45,14 @@ async def achievements(call: CallbackQuery, user: User | None, session: AsyncSes
     stats = await user_stats(session, user.id)
     balance = await total_points(session, user.id)
     badges = await badges_for_user(session, user.id)
-    points = await recent_points(session, user.id)
-    badge_lines = "\n".join(f"• {badge.name} — {badge.description or 'знак ЭРА'}" for badge in badges) or "Пока нет знаков. Они появятся за вклад, ответственность и реальные результаты."
-    point_lines = "\n".join(f"• {item.points:+d} — {item.reason}" for item in points) or "Пока нет операций по баллам."
+    badge_lines = "\n".join(f"• {badge.name} — {badge.description or 'знак ЭРА'}" for badge in badges) or "Пока нет знаков. Они появятся за вклад и результат."
     body = (
-        "🏆 Мои достижения\n\n"
+        "🏅 Знаки ЭРА\n\n"
         f"Роль: {ROLE_LABELS.get(user.role, user.role)}\n"
-        f"Статус роста: {STATUS_LABELS.get(user.participation_status, user.participation_status)}\n\n"
-        f"⭐ Баллы: {balance}\n"
-        f"🏅 Знаки: {len(badges)}\n"
-        f"📅 Мероприятия: {stats.get('events', 0)}\n"
-        f"✅ Выполненные задачи: {stats.get('tasks', 0)}\n"
-        f"💡 Проекты: {stats.get('projects', 0)}\n"
-        f"🎓 Портфолио: {stats.get('portfolio', 0)}\n\n"
-        "🏅 Знаки\n"
-        f"{badge_lines}\n\n"
-        "Последние баллы\n"
-        f"{point_lines}"
+        f"Статус: {STATUS_LABELS.get(user.participation_status, user.participation_status)}\n\n"
+        f"⭐ Баллы: {balance} · 🏅 знаков: {len(badges)}\n"
+        f"📅 {stats.get('events', 0)} · ✅ {stats.get('tasks', 0)} · 💡 {stats.get('projects', 0)} · 🎓 {stats.get('portfolio', 0)}\n\n"
+        f"{badge_lines}"
     )
     await send_long_text(call.message, body, reply_markup=achievements_keyboard())
 

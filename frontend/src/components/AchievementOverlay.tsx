@@ -37,10 +37,10 @@ export function AchievementOverlay({ open, onClose, kicker, title, description, 
         textAlign: "center",
         overflow: "hidden",
         background:
-          "radial-gradient(120% 90% at 50% -10%, rgba(99,44,255,0.55), transparent 55%)," +
-          "radial-gradient(110% 90% at 100% 110%, rgba(255,100,0,0.5), transparent 55%)," +
-          "radial-gradient(90% 80% at 0% 110%, rgba(215,25,120,0.4), transparent 55%)," +
-          "#ffffff",
+          "radial-gradient(120% 90% at 50% -10%, rgba(188, 33, 132,0.45), transparent 55%)," +
+          "radial-gradient(110% 90% at 100% 110%, rgba(255, 165, 234,0.28), transparent 55%)," +
+          "radial-gradient(90% 80% at 0% 110%, rgba(134, 32, 155,0.35), transparent 55%)," +
+          "var(--era-bg)",
       }}
     >
       <GrainOverlay opacity={0.035} />
@@ -58,8 +58,9 @@ export function AchievementOverlay({ open, onClose, kicker, title, description, 
           minHeight: 40,
           padding: 0,
           borderRadius: "50%",
-          border: "1px solid rgba(17,17,24,0.12)",
-          background: "rgba(255,255,255,0.7)",
+          border: "1px solid var(--era-border)",
+          background: "var(--era-glass)",
+          color: "var(--era-text)",
           zIndex: 2,
         }}
       >

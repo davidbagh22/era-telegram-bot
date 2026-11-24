@@ -18,7 +18,8 @@ from app.services.event_publication_service import escaped_text_parts
 from app.services.notification_service import safe_send, safe_answer_photo
 from app.utils import texts
 from app.utils.constants import EVENT_STATUS_LABELS, EventStatus
-from app.utils.deep_links import telegram_event_miniapp_url
+from app.utils.deep_links import telegram_event_registration_url
+from app.services.event_service import PUBLIC_EVENT_STATUSES
 from app.utils.validators import clean_text
 
 router = Router(name="admin_events_block6")
@@ -53,17 +54,17 @@ def public_text(event: Event) -> str:
 async def public_event_keyboard(
     bot: Bot, settings: Settings, event: Event
 ) -> InlineKeyboardMarkup | None:
-    """Group-safe direct link to the exact event screen in the Main Mini App."""
+    """Group-safe link to the published event registration card in the bot."""
     username = (settings.bot_username or "").strip()
     if not username:
         me = await bot.get_me()
         username = me.username or ""
-    url = telegram_event_miniapp_url(username, event.id)
+    url = telegram_event_registration_url(username, event.id)
     if not url:
         return None
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Открыть мероприятие", url=url)]
+            [InlineKeyboardButton(text="Зарегистрироваться", url=url)]
         ]
     )
 
@@ -79,6 +80,8 @@ def event_kb(event: Event, *, settings: Settings | None = None, telegram_id: int
         rows.append([InlineKeyboardButton(text="✅ Подготовить рассылку 1/2", callback_data=f"admin:event:broadcast_prepare:{event.id}")])
     elif event.status in {EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN, EventStatus.REGISTRATION_CLOSED, EventStatus.ACTIVE, EventStatus.COMPLETED}:
         rows.append([InlineKeyboardButton(text="👥 Участники и посещение", callback_data=f"admin:event:participants:{event.id}")])
+        if event.status in PUBLIC_EVENT_STATUSES:
+            rows.append([InlineKeyboardButton(text="🔗 Ссылка на регистрацию", callback_data=f"admin:event:share:{event.id}")])
         if event.status == EventStatus.PUBLISHED:
             rows.append([InlineKeyboardButton(text="🟢 Открыть регистрацию", callback_data=f"admin:event:status:registration_open:{event.id}")])
         elif event.status == EventStatus.REGISTRATION_OPEN:
@@ -116,6 +119,35 @@ async def events_list(call: CallbackQuery, user: User | None, settings: Settings
             header=f"📅 Мероприятие #{event.id}\nСтатус: {EVENT_STATUS_LABELS.get(event.status, event.status)}",
             keyboard=event_kb(event, settings=settings, telegram_id=call.from_user.id),
         )
+
+
+@router.callback_query(F.data.regexp(r"^admin:event:share:[0-9]+$"))
+async def share_event_registration(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, bot: Bot) -> None:
+    if not await guard(call, user, settings):
+        return
+    event_id = int(call.data.rsplit(":", 1)[-1])
+    if not 0 < event_id <= 2_147_483_647:
+        await call.message.answer("Некорректный номер мероприятия.")
+        return
+    event = await session.get(Event, event_id)
+    if event is None or event.status not in PUBLIC_EVENT_STATUSES:
+        await call.message.answer("Ссылка доступна после публикации мероприятия.")
+        return
+    username = (settings.bot_username or "").strip()
+    if not username:
+        me = await bot.get_me()
+        username = me.username or ""
+    link = telegram_event_registration_url(username, event.id)
+    if not link:
+        await call.message.answer("Не удалось определить адрес бота.")
+        return
+    await call.message.answer(
+        f"Ссылка на мероприятие «{event.title}»:\n{link}\n\n"
+        "Она откроет карточку и кнопку регистрации. Запись доступна в рамках действующих правил ЭРА.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Открыть регистрацию", url=link),
+        ]]), parse_mode=None,
+    )
 
 
 @router.callback_query(F.data.startswith("admin:event:approve:"))

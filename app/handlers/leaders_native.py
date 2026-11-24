@@ -40,16 +40,25 @@ async def show_home(message, session, settings, user):
         rows.append([('📢 Новая рассылка','lc:new'),('История рассылок','lc:history')])
     if await access.executive(session,user,settings):
         rows.append([('👥 Команда и лидеры','leaders_team:list:0')])
-    rows.append([('← Главное меню','home')])
+    rows.append([('← Главное меню','menu:main')])
     await message.answer('🧭 Лидеры ЭРА\n\nЗадачи, результаты и сообщения команды. Пульс недели доступен по /pulse.',reply_markup=kb(rows))
 
 
 @router.message(Command('leader','leaders'),F.chat.type=='private')
 @router.message(CommandStart(deep_link=True,magic=F.args=='leaders'),F.chat.type=='private')
-@router.message(F.text.in_({'🧭 Панель лидера','🧭 Лидеры','Лидеры'}),F.chat.type=='private')
+@router.message(StateFilter('*'),F.text.in_({'🧭 Панель лидера','🧭 Лидеры','Лидеры'}),F.chat.type=='private')
 async def native_leaders(message,state,user,settings,session,bot):
     if not await allowed(message,bot,settings,session,user):
-        await message.answer('Рабочий центр доступен участникам площадки лидеров. Для подключения аккаунта начните с /start.')
+        from app.utils.constants import ApplicationStatus
+        if user and user.application_status == ApplicationStatus.APPROVED and not user.is_blocked and not user.is_archived:
+            await message.answer(
+                'Раздел «Лидеры» открыт участникам площадки лидеров.\n'
+                'Если нужен доступ — напишите через «💬 Связь».'
+            )
+        else:
+            await message.answer(
+                'Рабочий центр лидеров доступен после регистрации в ЭРА. Начните с /start.'
+            )
         return
     await state.clear()
     await show_home(message,session,settings,user)
@@ -165,10 +174,10 @@ async def campaign_callback(call,state,user,settings,session,bot):
             direction=scope['id'] if scope['kind']=='direction' else None
             people=await campaigns.recipients(session,settings,user,dept,direction)
             await state.update_data(department_id=dept,direction_id=direction)
-            modes=[('Лично','dm')] if dept or direction else [('В чат','group'),('Лично','dm'),('В чат и лично','both')]
+            modes, route_notice = await campaigns.delivery_options(session, settings, scoped=bool(dept or direction))
             await call.message.answer(f'Проверьте рассылку\n\n{data["body"]}\n\nКоманда: {scope["name"]}\n'
                 f'Известных доступных аккаунтов: {len(people)}. Доставка будет отражена отдельно.\n'
-                'Нажатие следующей кнопки подтвердит отправку.',reply_markup=kb(
+                + (route_notice or 'Нажатие следующей кнопки подтвердит отправку.'),reply_markup=kb(
                     [[(label,f'lc:send:{mode}')] for label,mode in modes]+[[('Отмена','lc:cancel')]]))
         elif action=='send':
             data=await state.get_data()
@@ -194,7 +203,15 @@ async def campaign_callback(call,state,user,settings,session,bot):
             await show_campaign(call.message,session,item)
     except (ValueError,PermissionError) as exc:
         await session.rollback()
-        await call.message.answer(str(exc))
+        if (action == 'send' and isinstance(exc, ValueError)
+                and await state.get_state() == CampaignState.confirm.state):
+            data = await state.get_data()
+            modes, route_notice = await campaigns.delivery_options(session, settings,
+                scoped=bool(data.get('department_id') or data.get('direction_id')))
+            await call.message.answer(route_notice or str(exc), reply_markup=kb(
+                [[(label, f'lc:send:{mode}')] for label, mode in modes] + [[('Отмена', 'lc:cancel')]]))
+        else:
+            await call.message.answer(str(exc))
 
 
 @router.message(CampaignState.text,~F.text.startswith('/'))
@@ -252,4 +269,4 @@ async def leader_operations(call, user, settings, session, bot):
     if not data.month_goals:
         lines.append('Цели пока не заданы.')
     lines.append('Результаты — подтверждённые проверки задач, без цифровых баллов и субъективного рейтинга людей.')
-    await edit_text_or_answer(call.message, '\n'.join(lines), reply_markup=kb([[('Назад', 'wc:home'), ('Главная', 'home')]]))
+    await edit_text_or_answer(call.message, '\n'.join(lines), reply_markup=kb([[('Назад', 'wc:home'), ('Главная', 'menu:main')]]))

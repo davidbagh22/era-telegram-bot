@@ -1,9 +1,12 @@
 """Game launch announcement must be gated, topic-specific and idempotent."""
 from types import SimpleNamespace
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from unittest.mock import AsyncMock, patch
 
 from unittest import IsolatedAsyncioTestCase
 
+from app.services import games_launch_service as launch
 from app.services.games_launch_service import publish_games_launch
 
 
@@ -33,9 +36,30 @@ class GameLaunchTests(IsolatedAsyncioTestCase):
         send.assert_not_awaited()
 
 
-    async def test_games_update_posts_once_in_game_topic_and_launch_link_in_notifications(self):
+    async def test_games_all_without_specific_approval_does_not_touch_telegram(self):
         settings = SimpleNamespace(feature_games="ALL", general_chat_id=-100123456)
-        with patch("app.services.games_launch_service.ensure_topic", new=AsyncMock(return_value=99)), patch(
+        with patch("app.services.games_launch_service.ensure_topic", new_callable=AsyncMock) as topic, patch(
+            "app.services.games_launch_service._send_announcement_once", new_callable=AsyncMock
+        ) as send:
+            await publish_games_launch(object(), settings, object())
+        topic.assert_not_awaited()
+        send.assert_not_awaited()
+
+    def test_games_approval_key_binds_destination_topic_and_copy(self):
+        day = "2026-11-03"
+        key = launch.games_launch_approval_key(day, -100123456, 99, "ERA_1bot")
+        assert key != launch.games_launch_approval_key(day, -100123457, 99, "ERA_1bot")
+        assert key != launch.games_launch_approval_key(day, -100123456, 100, "ERA_1bot")
+        assert key != launch.games_launch_approval_key(day, -100123456, 99, "other_bot")
+        assert key != launch.games_launch_approval_key("2026-11-04", -100123456, 99, "ERA_1bot")
+
+    async def test_games_update_posts_once_in_game_topic_and_launch_link_in_notifications(self):
+        settings = SimpleNamespace(feature_games="ALL", general_chat_id=-100123456, bot_username="ERA_1bot")
+        day = datetime.now(ZoneInfo("Asia/Yerevan")).date().isoformat()
+        key = launch.games_launch_approval_key(day, settings.general_chat_id, 99, settings.bot_username)
+        with patch.object(launch, "APPROVED_SCHEDULED_GAMES_LAUNCHES", frozenset({key})), patch(
+            "app.services.games_launch_service.ensure_topic", new=AsyncMock(return_value=99)
+        ), patch(
             "app.services.games_launch_service._send_announcement_once", new=AsyncMock(return_value=True)
         ) as send:
             await publish_games_launch(object(), settings, object())

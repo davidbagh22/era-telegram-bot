@@ -45,6 +45,7 @@ export interface EventTaskDraftItem {
 }
 
 export interface AdminEventDraft {
+  issue_certificate?: boolean | null;
   creation_mode: "wizard" | "quick";
   announcement_status: "not_requested" | "pending" | "sent" | "needs_attention";
   id: number;
@@ -63,12 +64,17 @@ export interface AdminEventDraft {
   address: string | null;
   attendance_mode: "offline" | "online" | "hybrid";
   has_poster: boolean;
+  show_in_public_listing: boolean;
   registration_required: boolean;
   participant_limit: number | null;
   registration_close_at: string | null;
+  topic_close_at: string | null;
+  topic_closed_at: string | null;
+  topic_close_state: "open" | "closed" | "attention";
   waitlist_enabled: boolean;
   registration_audience: string;
   chat_url: string | null;
+  registration_url: string | null;
   organizer: string | null;
   participant_value: string | null;
   contact: string | null;
@@ -82,7 +88,7 @@ export interface AdminEventDraft {
 }
 
 export type AdminEventDraftPatch = Partial<{
-  creation_mode: "wizard" | "quick";
+  issue_certificate: boolean | null;  creation_mode: "wizard" | "quick";
   wizard_step: number;
   title: string;
   short_description: string;
@@ -98,9 +104,11 @@ export type AdminEventDraftPatch = Partial<{
   registration_required: boolean;
   participant_limit: number | null;
   registration_close_at: string | null;
+  topic_close_at: string | null;
   waitlist_enabled: boolean;
   registration_audience: string;
   chat_url: string | null;
+  registration_url: string | null;
   organizer: string | null;
   participant_value: string | null;
   contact: string | null;
@@ -174,6 +182,18 @@ export function fetchEventDraft(eventId: number): Promise<AdminEventDraft> {
   return requestJson<AdminEventDraft>(`/api/v1/admin/events/${eventId}/draft`);
 }
 
+export function changeEventTopic(eventId: number, action: "close" | "reopen"): Promise<{
+  state: "open" | "closed";
+  closed_at: string | null;
+  close_at: string | null;
+}> {
+  return requestJson(`/api/v1/admin/events/${eventId}/topic/${action}`, { method: "POST" });
+}
+
+export function fetchEventShareText(eventId: number): Promise<{ text: string }> {
+  return requestJson<{ text: string }>(`/api/v1/admin/events/${eventId}/share-text`);
+}
+
 export function saveEventDraft(eventId: number, patch: AdminEventDraftPatch): Promise<AdminEventDraft> {
   return requestJson<AdminEventDraft>(`/api/v1/admin/events/${eventId}/draft`, {
     method: "PATCH",
@@ -182,7 +202,13 @@ export function saveEventDraft(eventId: number, patch: AdminEventDraftPatch): Pr
 }
 
 export function publishEventDraft(eventId: number): Promise<AdminEventDraft> {
-  return requestJson<AdminEventDraft>(`/api/v1/admin/events/${eventId}/publish`, { method: "POST" });
+  return requestJson<AdminEventDraft>(`/api/v1/admin/events/${eventId}/publish?project_topic=true`, { method: "POST" });
+}
+
+export function setEventPublicListing(eventId: number, visible: boolean): Promise<AdminEventDraft> {
+  return requestJson<AdminEventDraft>(`/api/v1/admin/events/${eventId}/listing`, {
+    method: "PATCH", body: JSON.stringify({ visible }),
+  });
 }
 
 export function cancelAdminEvent(eventId: number): Promise<AdminEventDraft> {
@@ -196,6 +222,22 @@ export async function uploadEventPoster(eventId: number, file: File): Promise<Ad
     method: "POST",
     body,
   });
+}
+
+// Blob URLs are created only by the editor and revoked when the preview changes.
+// <img> requests cannot attach the Mini App's bearer token.
+export async function fetchAdminEventPoster(eventId: number): Promise<Blob> {
+  const sessionToken = await token();
+  const response = await fetch(`${API_BASE_URL}/api/v1/admin/events/${eventId}/poster/preview`, {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  if (!response.ok) return parseError(response);
+  const mime = (response.headers.get("content-type") ?? "").split(";", 1)[0].trim().toLowerCase();
+  if (!new Set(["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif", "image/heic", "image/heif"]).has(mime)) {
+    throw new ApiError(502, "poster_invalid_image");
+  }
+  return response.blob();
 }
 
 export function removeEventPoster(eventId: number): Promise<AdminEventDraft> {
@@ -218,4 +260,18 @@ export async function downloadEventParticipants(
   anchor.download = `ERA_event_${eventId}_participants.${format}`;
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+
+export function previewRegistrantMessage(eventId: number, message: string) {
+  return requestJson<{ confirmation: string; message: string; count: number }>(
+    `/api/v1/admin/events/${eventId}/participants/message`,
+    { method: "POST", body: JSON.stringify({ message }) },
+  );
+}
+
+export function sendRegistrantMessage(eventId: number, message: string, confirmation: string) {
+  return requestJson<{ sent: number; failed: number; already_sent: number }>(
+    `/api/v1/admin/events/${eventId}/participants/message`,
+    { method: "POST", body: JSON.stringify({ message, confirmation }) },
+  );
 }

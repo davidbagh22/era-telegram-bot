@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { describeActionError, fetchSurvey, fetchSurveys, submitSurvey } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
+import { SkeletonList } from "../../components/Skeleton";
 import { StatusBadge } from "../../components/StatusBadge";
 import { useAsync } from "../../hooks/useAsync";
 import type { SurveyQuestionSpec } from "../../types/opportunity";
@@ -100,8 +101,17 @@ export function SurveysPanel() {
     }
   }, [drafts, refresh]);
 
-  if (state.status === "loading") return <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>;
-  if (state.status === "error") return <EmptyState text="Не удалось загрузить опросы." />;
+  if (state.status === "loading") return <SkeletonList count={2} />;
+  if (state.status === "error") {
+    return (
+      <EmptyState
+        title="Не удалось загрузить опросы"
+        text="Проверьте соединение и обновите список."
+        actionLabel="Обновить"
+        onAction={state.reload}
+      />
+    );
+  }
   if (state.data.length === 0) return <EmptyState text="Активных опросов пока нет." />;
 
   return (

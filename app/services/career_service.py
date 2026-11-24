@@ -3,6 +3,7 @@ from __future__ import annotations
 import secrets
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,6 +51,28 @@ def clean_text(value: str | None, *, max_length: int | None = None) -> str:
     return text
 
 
+def valid_evidence_url(value: str | None) -> str | None:
+    """Accept browser-navigable HTTP(S) evidence without rewriting legacy rows.
+
+    This is a validation boundary, not a URL fetcher. Existing stored values
+    are never rewritten; callers can still use uploaded files as evidence.
+    """
+    text = (value or "").strip()
+    if not text:
+        return None
+    if len(text) > 500 or "\\" in text or any(ch.isspace() or ord(ch) < 32 or ord(ch) == 127 for ch in text):
+        raise ValueError("invalid_evidence_url")
+    try:
+        parsed = urlsplit(text)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname or "@" in parsed.netloc:
+            raise ValueError("invalid_evidence_url")
+        # Accessing port also rejects malformed and out-of-range port numbers.
+        _ = parsed.port
+    except ValueError as exc:
+        raise ValueError("invalid_evidence_url") from exc
+    return text
+
+
 async def get_or_create_profile(session: AsyncSession, user_id: int) -> CareerProfile:
     profile = await session.get(CareerProfile, user_id)
     if profile is None:
@@ -66,6 +89,7 @@ async def update_profile(
     headline: str | None,
     about: str | None,
     languages: list[dict[str, Any]] | None,
+    skills: list[str] | None = None,
 ) -> CareerProfile:
     profile = await get_or_create_profile(session, user_id)
     profile.headline = clean_text(headline, max_length=180) or None
@@ -78,6 +102,22 @@ async def update_profile(
             if name:
                 normalized.append({"name": name, "level": level})
         profile.languages = normalized
+    if skills is not None:
+        user = await session.get(User, user_id)
+        if user is not None:
+            # Match registration limits (20 × 120). PDF rendering may show fewer.
+            cleaned_skills: list[str] = []
+            seen: set[str] = set()
+            for skill in skills[:20]:
+                cleaned = clean_text(str(skill), max_length=120)
+                if not cleaned:
+                    continue
+                identity = cleaned.casefold()
+                if identity in seen:
+                    continue
+                seen.add(identity)
+                cleaned_skills.append(cleaned)
+            user.skills = cleaned_skills
     await session.commit()
     await session.refresh(profile)
     return profile
@@ -119,7 +159,7 @@ async def create_item(
         organization=clean_text(organization, max_length=255) or None,
         description=clean_text(description, max_length=3000) or None,
         issued_at=issued_at,
-        url=clean_text(url, max_length=500) or None,
+        url=valid_evidence_url(url),
         status="self_reported",
         include_in_resume=include_in_resume,
     )
@@ -134,8 +174,20 @@ async def update_item(
     item: CareerPortfolioItem,
     **changes: Any,
 ) -> CareerPortfolioItem:
-    if item.status in {"verified", "revoked"}:
+    # Verified facts stay locked, but the participant may hide them from PDF.
+    privacy_only = set(changes) <= {"include_in_resume"} and changes.get("include_in_resume") is not None
+    if item.status == "revoked":
         raise ValueError("verified_item_locked")
+    if item.status == "verified" and not privacy_only:
+        raise ValueError("verified_item_locked")
+    if item.status == "verified" and privacy_only:
+        item.include_in_resume = bool(changes["include_in_resume"])
+        await session.commit()
+        await session.refresh(item)
+        return item
+    # Validate before mutating any field: a rejected PATCH must not leave a
+    # partially changed ORM object that another operation could later commit.
+    evidence_url = valid_evidence_url(changes["url"]) if "url" in changes else None
     if "item_type" in changes and changes["item_type"] is not None:
         if changes["item_type"] not in CAREER_ITEM_TYPES:
             raise ValueError("invalid_item_type")
@@ -152,7 +204,7 @@ async def update_item(
     if "issued_at" in changes:
         item.issued_at = changes["issued_at"]
     if "url" in changes:
-        item.url = clean_text(changes["url"], max_length=500) or None
+        item.url = evidence_url
     if "include_in_resume" in changes and changes["include_in_resume"] is not None:
         item.include_in_resume = bool(changes["include_in_resume"])
     if item.status in {"pending", "rejected"}:
@@ -184,6 +236,16 @@ async def attach_file(
     return item
 
 
+def has_usable_evidence(item: CareerPortfolioItem) -> bool:
+    if item.file_id:
+        return True
+    try:
+        return bool(valid_evidence_url(item.url))
+    except ValueError:
+        # Keep legacy rows unchanged, but unsafe URL-only proof is insufficient.
+        return False
+
+
 async def request_verification(
     session: AsyncSession, item: CareerPortfolioItem
 ) -> CareerPortfolioItem:
@@ -191,7 +253,7 @@ async def request_verification(
         raise ValueError("verified_item_locked")
     if item.status == "verified":
         return item
-    if not item.file_id and not item.url:
+    if not has_usable_evidence(item):
         raise ValueError("evidence_required")
     item.status = "pending"
     item.submitted_at = utcnow()
@@ -213,6 +275,10 @@ async def review_item(
         raise ValueError("invalid_decision")
     if item.status != "pending":
         raise ValueError("item_not_pending")
+    # Rejecting an old request stays possible, but approving one requires
+    # usable evidence even if it predates today's URL validation policy.
+    if decision == "approve" and not has_usable_evidence(item):
+        raise ValueError("evidence_required")
     if decision == "approve":
         item.status = "verified"
         item.verified_by = reviewer_id
@@ -508,6 +574,7 @@ async def dashboard(session: AsyncSession, user: User) -> dict[str, Any]:
             "headline": profile.headline or "",
             "about": profile.about or "",
             "languages": profile.languages or [],
+            "skills": [str(skill).strip() for skill in (user.skills or []) if str(skill).strip()],
         },
         "counts": {
             "confirmed": era_confirmed + len(verified_user_items),

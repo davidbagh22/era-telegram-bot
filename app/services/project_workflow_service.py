@@ -283,10 +283,13 @@ class ProjectDecisionConflict(ValueError):
 def project_review_version(project: Project) -> str:
     import hashlib
     import json
+    # Skip timestamps and deferred blobs — getattr(cover_bytes) would lazy-load
+    # LargeBinary outside an async greenlet (MissingGreenlet in CI).
+    skip = {"created_at", "updated_at", "cover_bytes"}
     return hashlib.sha256(json.dumps({
         column.key: str(getattr(project, column.key))
         for column in Project.__table__.columns
-        if column.key not in {"created_at", "updated_at"}
+        if column.key not in skip
     }, sort_keys=True).encode()).hexdigest()[:24]
 
 

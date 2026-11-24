@@ -5,12 +5,16 @@ import { EmptyState } from "../../components/EmptyState";
 import { MetricCard } from "../../components/MetricCard";
 import { useAsync } from "../../hooks/useAsync";
 
+// Match TaskStatus / AdminWorkcenter labels — not open-task application states.
 const TASK_STATUS_LABELS: Record<string, string> = {
+  draft: "Черновик",
   new: "Новая",
+  published: "Открыт набор",
   in_progress: "В работе",
-  submitted: "На проверке",
-  approved: "Выполнена",
-  rejected: "Отклонена",
+  review: "На проверке",
+  completed: "Выполнена",
+  overdue: "Просрочена",
+  cancelled: "Отменена",
 };
 
 export function OverviewTab() {
@@ -111,7 +115,7 @@ export function OverviewTab() {
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             {data.projects.map((project) => (
               <Card key={project.id}>
-                <strong>{project.title}</strong>
+                <strong style={{ display: "block", minWidth: 0, lineHeight: 1.3, overflowWrap: "anywhere", textWrap: "balance" }}>{project.title.replace(/\s+/g, " ").trim() || "Без названия"}</strong>
               </Card>
             ))}
           </div>
@@ -130,7 +134,7 @@ export function OverviewTab() {
               <Card key={task.id}>
                 <strong>{task.title}</strong>
                 <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>
-                  {TASK_STATUS_LABELS[task.status] ?? task.status} · {task.points} баллов
+                  {TASK_STATUS_LABELS[task.status] ?? "Статус обновлён"} · {task.points} баллов
                 </p>
               </Card>
             ))}

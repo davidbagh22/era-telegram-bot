@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ContextHelp } from "../components/ContextHelp";
+import { OrbitContextBoundary } from "./AppShell";
 
 interface AdminLayoutProps {
   children: ReactNode;
@@ -8,42 +9,44 @@ interface AdminLayoutProps {
 
 export function AdminLayout({ children, onExitWorkspace }: AdminLayoutProps) {
   return (
-    <div style={{ minHeight: "100vh", paddingTop: "env(safe-area-inset-top, 0px)" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "0.75rem",
-          padding: "0.625rem 1.25rem",
-          borderBottom: "1px solid var(--era-border)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem", minWidth: 0 }}>
-          <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "0.9375rem" }}>ЭРА</strong>
-          <span style={{ fontSize: "0.75rem", color: "var(--era-text-muted)" }}>Управление</span>
+    <OrbitContextBoundary context="workspace">
+      <div style={{ minHeight: "100vh", paddingTop: "var(--era-safe-top)" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "0.75rem",
+            padding: "0.625rem 1.25rem",
+            borderBottom: "1px solid var(--era-border)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem", minWidth: 0 }}>
+            <strong style={{ fontFamily: "var(--era-font-display)", fontSize: "0.9375rem" }}>ЭРА</strong>
+            <span style={{ fontSize: "0.75rem", color: "var(--era-text-muted)" }}>Управление</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
+            <ContextHelp mode="admin" inline />
+            {onExitWorkspace && (
+              <button
+                type="button"
+                onClick={onExitWorkspace}
+                style={{
+                  minHeight: "auto",
+                  padding: "0.3rem 0.7rem",
+                  fontSize: "0.75rem",
+                  border: "1px solid var(--era-border)",
+                  background: "var(--era-surface)",
+                  borderRadius: "var(--era-radius-pill)",
+                }}
+              >
+                ← Личное
+              </button>
+            )}
+          </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexShrink: 0 }}>
-          <ContextHelp mode="admin" inline />
-          {onExitWorkspace && (
-            <button
-              type="button"
-              onClick={onExitWorkspace}
-              style={{
-                minHeight: "auto",
-                padding: "0.3rem 0.7rem",
-                fontSize: "0.75rem",
-                border: "1px solid var(--era-border)",
-                background: "var(--era-surface)",
-                borderRadius: "var(--era-radius-pill)",
-              }}
-            >
-              ← Личное
-            </button>
-          )}
-        </div>
+        {children}
       </div>
-      {children}
-    </div>
+    </OrbitContextBoundary>
   );
 }

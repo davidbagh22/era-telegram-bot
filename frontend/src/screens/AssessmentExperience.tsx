@@ -74,13 +74,15 @@ export function AssessmentExperience({ onBack }: AssessmentExperienceProps) {
     }
   }
 
-  async function answer(questionCode: string, value: number) {
-    if (!runner) return;
+  async function answer(questionCode: string, value: number): Promise<boolean> {
+    if (!runner) return false;
     setBusy(true);
     try {
       setRunner(await saveAssessmentAnswer(runner.id, questionCode, value));
+      return true;
     } catch {
       toast.show("Ответ не сохранился. Попробуй ещё раз.", "error");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -94,12 +96,26 @@ export function AssessmentExperience({ onBack }: AssessmentExperienceProps) {
       setResult(completed);
       setRunner(null);
       await reloadList();
+      if (completed.points_awarded && completed.points_awarded > 0) {
+        toast.show(`+${completed.points_awarded} баллов за исследование`, "success");
+      }
     } catch {
       toast.show("Не удалось завершить исследование. Проверь ответы и попробуй ещё раз.", "error");
     } finally {
       setBusy(false);
     }
   }
+
+  const ordered = useMemo(() => {
+    if (!items) return null;
+    const priority = ["WHO5_RU", "ERA_RIASEC_RU", "ERA_NEEDS_RU"];
+    return [...items].sort((a, b) => {
+      const ai = priority.indexOf(a.code);
+      const bi = priority.indexOf(b.code);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+  }, [items]);
+  const who5Done = Boolean(items?.find((item) => item.code === "WHO5_RU")?.last_result);
 
   if (runner) {
     return (
@@ -120,6 +136,10 @@ export function AssessmentExperience({ onBack }: AssessmentExperienceProps) {
         result={result}
         busy={busy}
         onStart={begin}
+        onOpenNext={(code) => {
+          const next = items?.find((entry) => entry.code === code);
+          if (next) void openAssessment(next);
+        }}
         onBack={() => {
           setSelected(null);
           setResult(null);
@@ -132,32 +152,39 @@ export function AssessmentExperience({ onBack }: AssessmentExperienceProps) {
     <div className="era-page" style={{ padding: "1.2rem", display: "grid", gap: 10 }}>
       <Header title="Все исследования" onBack={onBack} />
       <p style={{ marginTop: 0, color: "var(--era-text-muted)" }}>
-        Не нужно проходить всё сразу. Выбирай то, что сейчас действительно хочется понять о себе.
+        Начни с короткого «Как мне сейчас?» (~2 мин) — дальше откроется лестница интересов и потребностей.
       </p>
-      {items === null ? (
+      {ordered === null ? (
         <>
           <SkeletonCard />
           <SkeletonCard />
         </>
-      ) : items.length === 0 ? (
+      ) : ordered.length === 0 ? (
         <Card>
           <strong>Исследования временно недоступны</strong>
           <p>Попробуй открыть раздел ещё раз.</p>
         </Card>
       ) : (
-        items.map((item) => (
-          <Card key={item.code} onClick={busy ? undefined : () => void openAssessment(item)}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-              <strong>{item.title}</strong>
-              {item.last_result ? <span aria-label="Пройдено">✓</span> : null}
-            </div>
-            <p style={{ color: "var(--era-text-muted)" }}>{item.description}</p>
-            <small>
-              {item.estimated_minutes > 0 ? `≈ ${item.estimated_minutes} мин` : "Собирается автоматически"}
-              {item.question_count ? ` · ${item.question_count} вопросов` : ""}
-            </small>
-          </Card>
-        ))
+        ordered.map((item) => {
+          const lockedHint =
+            !who5Done && item.code !== "WHO5_RU" && item.construct_type !== "derived"
+              ? "Сначала короткий тест самочувствия"
+              : null;
+          return (
+            <Card key={item.code} onClick={busy ? undefined : () => void openAssessment(item)}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                <strong>{item.title}</strong>
+                {item.last_result ? <span aria-label="Пройдено">✓</span> : null}
+              </div>
+              <p style={{ color: "var(--era-text-muted)" }}>{item.description}</p>
+              <small>
+                {item.estimated_minutes > 0 ? `≈ ${item.estimated_minutes} мин` : "Собирается автоматически"}
+                {item.question_count ? ` · ${item.question_count} вопросов` : ""}
+                {lockedHint ? ` · ${lockedHint}` : ""}
+              </small>
+            </Card>
+          );
+        })
       )}
     </div>
   );
@@ -168,12 +195,14 @@ function AssessmentDetail({
   result,
   busy,
   onStart,
+  onOpenNext,
   onBack,
 }: {
   item: AssessmentCard;
   result: AssessmentResult | null;
   busy: boolean;
   onStart: () => void;
+  onOpenNext?: (code: string) => void;
   onBack: () => void;
 }) {
   const isDerived = item.construct_type === "derived";
@@ -218,7 +247,7 @@ function AssessmentDetail({
         </Card>
       ) : (
         <>
-          {result ? <AssessmentResultCard result={result} /> : null}
+          {result ? <AssessmentResultCard result={result} onOpenNext={onOpenNext} /> : null}
           <button className="era-btn-primary" disabled={!item.available || busy} onClick={onStart}>
             {result ? "Пройти ещё раз" : "Начать"}
           </button>
@@ -247,7 +276,7 @@ function AssessmentRunner({
 }: {
   session: AssessmentSession;
   busy: boolean;
-  onAnswer: (questionCode: string, value: number) => Promise<void>;
+  onAnswer: (questionCode: string, value: number) => Promise<boolean>;
   onComplete: () => Promise<void>;
   onBack: () => void;
 }) {
@@ -351,8 +380,14 @@ function AssessmentRunner({
               borderColor: selectedValue === option.value ? "var(--era-red)" : undefined,
             }}
             onClick={async () => {
-              await onAnswer(current.code, option.value);
+              const saved = await onAnswer(current.code, option.value);
+              if (!saved) return;
+              // Re-answering the last item after «Проверить последний ответ» does not
+              // change answered_count, so the review effect alone never re-fires.
+              // Only enter review after a successful save so a failed last answer stays
+              // on the question for retry instead of claiming «Все ответы сохранены».
               if (cursor < session.questions.length - 1) setCursor(cursor + 1);
+              else setReviewing(true);
             }}
           >
             {option.label}
@@ -371,14 +406,33 @@ function AssessmentRunner({
   );
 }
 
-function AssessmentResultCard({ result }: { result: AssessmentResult }) {
+function AssessmentResultCard({
+  result,
+  onOpenNext,
+}: {
+  result: AssessmentResult;
+  onOpenNext?: (code: string) => void;
+}) {
   const entries = Object.entries(result.scores);
+  const shareText = [
+    `Мой профиль ЭРА: ${result.interpretation?.title ?? result.title}`,
+    result.interpretation?.summary,
+    result.points_awarded ? `+${result.points_awarded} баллов за исследование` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   return (
     <>
-      <Card gradient>
-        <small>ТВОЙ РЕЗУЛЬТАТ</small>
+      <Card gradient style={{ animation: "era-success-pop 420ms cubic-bezier(0.22, 1, 0.36, 1)" }}>
+        <small>ТВОЙ ПРОФИЛЬ ЭРА</small>
         <h2>{result.interpretation?.title ?? result.title}</h2>
         <p>{result.interpretation?.summary}</p>
+        {!!result.points_awarded && result.points_awarded > 0 ? (
+          <p style={{ margin: "0.75rem 0 0", fontWeight: 800, color: "var(--era-violet)" }}>
+            +{result.points_awarded} баллов · исследование засчитано
+          </p>
+        ) : null}
       </Card>
       {entries.length > 1 ? (
         <Card>
@@ -396,7 +450,7 @@ function AssessmentResultCard({ result }: { result: AssessmentResult }) {
                       width: `${Math.max(0, Math.min(100, score.normalized))}%`,
                       height: "100%",
                       borderRadius: 999,
-                      background: "var(--era-red)",
+                      background: "var(--era-violet)",
                     }}
                   />
                 </div>
@@ -404,6 +458,34 @@ function AssessmentResultCard({ result }: { result: AssessmentResult }) {
             ))}
           </div>
         </Card>
+      ) : null}
+      <div style={{ display: "grid", gap: "0.55rem" }}>
+        <button
+          type="button"
+          className="era-btn-signal"
+          onClick={() => {
+            window.location.hash = "#/events";
+          }}
+        >
+          Подобрать событие →
+        </button>
+        {result.next_unlock && onOpenNext ? (
+          <button type="button" className="era-btn-primary" onClick={() => onOpenNext(result.next_unlock!.code)}>
+            Дальше: {result.next_unlock.title}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="era-btn-secondary"
+          onClick={() => {
+            void navigator.clipboard?.writeText(shareText).catch(() => undefined);
+          }}
+        >
+          Скопировать карточку профиля
+        </button>
+      </div>
+      {result.next_unlock ? (
+        <p style={{ color: "var(--era-text-muted)", margin: 0 }}>{result.next_unlock.hint}</p>
       ) : null}
       <p style={{ color: "var(--era-text-muted)" }}>
         {result.interpretation?.note ?? result.notice}

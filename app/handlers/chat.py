@@ -147,14 +147,9 @@ async def welcome_members(message: Message, bot: Bot, settings: Settings, sessio
     welcomed = [member.first_name for member in message.new_chat_members if not member.is_bot]
     if not welcomed:
         return
-    if message.chat.id == settings.internal_department_chat_id:
-        chat_key = "internal"
-    elif message.chat.id == settings.external_department_chat_id:
-        chat_key = "external"
-    elif message.chat.id == settings.leaders_chat_id:
-        chat_key = "leaders"
-    else:
-        chat_key = "general"
+    chat_key = chat_key_for_id(settings, message.chat.id) or "general"
+    # Media / leaders / department chats must not fall through to the general
+    # welcome rotation — that misroutes newcomers into the wrong greeting.
     greeting = await session.scalar(select(ChatGreeting).where(ChatGreeting.chat_key == chat_key))
     if greeting is not None and not greeting.is_enabled:
         return
@@ -204,6 +199,3 @@ async def moderation_gate(message: Message, session: AsyncSession) -> None:
     if await _moderation_enabled(session, message.chat.id):
         await _soft_moderation(message)
 
-
-async def soft_moderation(message: Message) -> None:
-    await _soft_moderation(message)

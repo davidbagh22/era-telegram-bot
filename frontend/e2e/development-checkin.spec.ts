@@ -4,7 +4,7 @@ const PARTICIPANT_TELEGRAM_ID = 900001;
 
 async function openVector(page: Page) {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
-  await page.getByRole("button", { name: /Мой путь/ }).click();
+  await page.getByRole("button", { name: /Интересы и направление роста/ }).click();
   const consent = page.getByRole("button", { name: "Понятно, продолжить" });
   const vectorHeading = page.getByRole("heading", { name: "Где ты сейчас и куда двигаться дальше" });
   await expect(consent.or(vectorHeading)).toBeVisible();
@@ -13,7 +13,9 @@ async function openVector(page: Page) {
 }
 
 async function openCurrentCheckin(page: Page) {
-  await page.getByRole("button", { name: /Посмотрим, что изменилось|Посмотреть результат месяца|Начать отметку/ }).click();
+  await page.getByRole("button", {
+    name: /Посмотрим, что изменилось|Посмотреть результат месяца|Начать отметку|3 минуты — и карта снова станет твоей/,
+  }).click();
 }
 
 async function currentSurface(page: Page): Promise<"question" | "context" | "result"> {

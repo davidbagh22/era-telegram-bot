@@ -19,15 +19,14 @@ body,
 }
 
 :root {
-  /* DELTA ToR §56/60: the last card on a scrollable page must never end
-     up under the fixed bottom nav or the floating context-help "i"
-     (ContextHelp.tsx sits at bottom: 5.5rem, ~2.75rem tall, i.e. its top
-     edge is ~8.25rem from the viewport bottom) -- confirmed live: without
-     this, Home's last "Для тебя" card scrolls in underneath the FAB.
-     10rem clears the FAB with the ToR's "+24px" buffer on top; screens
-     that render ContextHelp should use this for their bottom padding. */
-  --era-page-bottom-safe: calc(10rem + env(safe-area-inset-bottom, 0px));
+  --era-safe-top: max(env(safe-area-inset-top, 0px), var(--era-tg-top, 0px));
+  --era-safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--era-tg-bottom, 0px));
+  /* Clears the fixed bottom nav. Event detail adds its own clearance for
+     the registration bar so ordinary screens do not keep a large empty tail. */
+  --era-page-bottom-safe: calc(5.75rem + var(--era-safe-bottom));
 }
+
+.era-user-layout { width: 100%; max-width: 512px; margin-inline: auto; }
 
 img,
 video,
@@ -37,20 +36,18 @@ svg {
 }
 
 /*
- * ERA visual refinement layer, light/signal identity. Imported after
- * tokens.css. Nav-specific tokens live here since FloatingNav is the only
- * consumer; everything else comes from tokens.css.
+ * AURA nav glass refinements. Imported after tokens.css.
  */
 :root {
-  --era-nav-border: rgba(17, 17, 24, 0.06);
-  --era-nav-muted: var(--era-text-faint);
-  --era-nav-glass: rgba(255, 255, 255, 0.78);
+  --era-nav-border: rgba(231, 167, 213, 0.25);
+  --era-nav-muted: #e8ccdf;
+  --era-nav-glass: rgba(38, 17, 36, 0.9);
 }
 
 .era-bottom-nav {
   box-shadow:
-    0 20px 50px rgba(17, 17, 24, 0.12),
-    0 0 0 1px rgba(255, 255, 255, 0.6) inset;
+    0 16px 40px rgba(0, 0, 0, 0.35),
+    0 0 0 1px rgba(231, 167, 213, 0.08) inset;
 }
 
 .era-bottom-nav::after {
@@ -59,7 +56,7 @@ svg {
   pointer-events: none;
   inset: 0.35rem 12% auto;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.9), transparent);
+  background: linear-gradient(90deg, transparent, rgba(231, 167, 213, 0.35), transparent);
   z-index: 2;
 }
 
@@ -76,4 +73,58 @@ svg {
 }
 .era-event-dialog {
   overscroll-behavior: contain;
+}
+
+.era-readable-copy {
+  color: var(--era-text-secondary);
+  line-height: 1.65;
+  overflow-wrap: break-word;
+  word-break: normal;
+  white-space: pre-line;
+}
+
+.era-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.era-discover-page { padding:20px 20px var(--era-page-bottom-safe); display:flex; flex-direction:column; gap:20px; }
+.era-discover-page h1 { font-size:32px; line-height:1.1; letter-spacing:-.035em; margin:8px 0; }
+.era-discover-title { display:block; margin-top:10px; font-size:clamp(24px,7vw,32px); line-height:1.1; letter-spacing:-.035em; }
+.era-discover-copy { color:var(--era-text-secondary); font-size:15px; line-height:1.55; margin:10px 0 0; }
+.era-discover-arrow { display:block; margin-top:14px; color:var(--era-cyan); font-size:24px; }
+.era-discover-tabs { display:flex; gap:4px; padding:4px; border:1px solid var(--era-border); border-radius:999px; background:var(--era-glass); }
+.era-discover-tabs button { flex:1; min-width:0; border:0; border-radius:999px; background:transparent; font-size:12px; padding:10px 5px; }
+.era-discover-tabs button[aria-pressed="true"] { color:var(--era-cyan); background:var(--era-selected); }
+.era-reader { background:var(--era-surface); padding:24px 20px; border:1px solid var(--era-border); border-radius:24px; }
+.era-reader h1 { font-size:28px; }
+.era-reader h2 { margin:28px 0 10px; font-size:18px; color:var(--era-cyan); }
+.era-reader p { font-size:16px; line-height:1.75; white-space:pre-line; color:var(--era-text-secondary); }
+.era-reader-archive summary { cursor:pointer; padding:16px 0; font-weight:700; }
+.era-reader-archive button { display:flex; gap:14px; width:100%; text-align:left; align-items:baseline; margin-bottom:8px; }
+.era-reader-archive button span { color:var(--era-cyan); min-width:20px; }
+@supports not (backdrop-filter:blur(1px)) { .era-bottom-nav,.era-orbit-node__shell { background:var(--era-surface) !important; } }
+@media(max-width:360px) { .era-discover-page { padding-left:16px; padding-right:16px; } }
+
+
+/* Android Telegram: compact listing and a reliable native vertical gesture.
+   Avoid oversized cards concealing that more events exist below the fold. */
+.era-events-feed { touch-action: pan-y; overscroll-behavior-y: auto; }
+.era-events-feed .era-typography-feed-card {
+  min-height: 110px;
+  padding: .95rem 1rem;
+  gap: .45rem;
+  touch-action: pan-y;
+}
+.era-events-feed .era-typography-feed-card__title {
+  font-size: clamp(1.25rem, 5.2vw, 1.65rem);
+  line-height: 1.12;
+  overflow-wrap: break-word;
 }

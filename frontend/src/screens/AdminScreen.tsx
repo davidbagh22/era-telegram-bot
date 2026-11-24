@@ -9,8 +9,10 @@ import { AdminDataRightsScreen } from "./admin/AdminDataRightsScreen";
 import { AdminDevelopmentScreen } from "./admin/AdminDevelopmentScreen";
 import { AdminEventsScreen } from "./admin/AdminEventsScreen";
 import { AdminMetricDetailScreen } from "./admin/AdminMetricDetailScreen";
+import { AdminAppointLeaderScreen } from "./admin/AdminAppointLeaderScreen";
 import { AdminOfficesScreen } from "./admin/AdminOfficesScreen";
 import { AdminOffersScreen, type OffersSection } from "./admin/AdminOffersScreen";
+import { AdminAttendanceProofsScreen } from "./admin/AdminAttendanceProofsScreen";
 import { AdminOverviewScreen } from "./admin/AdminOverviewScreen";
 import { AdminProjectsScreen } from "./admin/AdminProjectsScreen";
 import { AdminSurveysScreen } from "./admin/AdminSurveysScreen";
@@ -19,9 +21,11 @@ import { AdminToolsScreen } from "./admin/AdminToolsScreen";
 import { AdminUsersScreen } from "./admin/AdminUsersScreen";
 import { AdminVerificationScreen } from "./admin/AdminVerificationScreen";
 
-type PeopleSection = "participants" | "verification" | "development" | "career" | "applications" | "leaders-chat" | "offices" | "data-rights";
+type PeopleSection = "participants" | "verification" | "development" | "career" | "applications" | "leaders-chat" | "appoint-leader" | "offices" | "data-rights";
 type WorkSection = "pulse" | "projects" | "events" | "tasks" | "offers";
 type CommsSection = "surveys" | "tools";
+type EventsLaunch = { section: "moderation" | "activities" | "operations" | "create"; activitiesMode?: "review" | "manage" };
+type ProjectsLaunch = { section: "create" | "moderation" | "team-posts" };
 type SectionOption<T extends string> = { value: T; label: string; description: string };
 type MetricDetail = { metric: AdminMetricKey; total: number };
 
@@ -37,6 +41,7 @@ const PEOPLE_SECTIONS: SectionOption<PeopleSection>[] = [
   { value: "career", label: "Портфолио и рекомендации", description: "Проверка достижений и утверждение официальных рекомендательных писем" },
   { value: "applications", label: "Заявки", description: "Новые регистрации и решения по ним" },
   { value: "leaders-chat", label: "Лидеры", description: "Команда, задачи, рассылки и Пульс" },
+  { value: "appoint-leader", label: "Назначить руководителя", description: "Человек → пакеты функций → права открываются сразу" },
   { value: "offices", label: "Должности", description: "Роли, набор, заявки, назначения и ответственность" },
   { value: "data-rights", label: "Данные и права", description: "Запросы на удаление персональных данных" },
 ];
@@ -65,8 +70,14 @@ function initialAdminRoute(): InitialAdminRoute {
   if (section === "applications") {
     return { peopleSection: "applications", applicationId: positiveId(query.get("applicationId")) };
   }
+  if (section === "team-tasks") {
+    return { peopleSection: "leaders-chat", applicationId: null };
+  }
   if (section === "offices") {
     return { peopleSection: "offices", applicationId: null };
+  }
+  if (section === "appoint-leader") {
+    return { peopleSection: "appoint-leader", applicationId: null };
   }
   return { peopleSection: null, applicationId: null };
 }
@@ -101,14 +112,20 @@ export function AdminScreen() {
   const [peopleSection, setPeopleSection] = useState<PeopleSection | null>(launchRoute.peopleSection);
   const [workSection, setWorkSection] = useState<WorkSection | null>(null);
   const [offersInitialSection, setOffersInitialSection] = useState<OffersSection>("applications");
+  const [eventsLaunch, setEventsLaunch] = useState<EventsLaunch | null>(null);
+  const [projectsLaunch, setProjectsLaunch] = useState<ProjectsLaunch | null>(null);
   const [commsSection, setCommsSection] = useState<CommsSection | null>(null);
   const [metricDetail, setMetricDetail] = useState<MetricDetail | null>(null);
+  const [showAttendanceProofs, setShowAttendanceProofs] = useState(false);
 
   const clearSections = () => {
     setPeopleSection(null);
     setWorkSection(null);
     setCommsSection(null);
     setMetricDetail(null);
+    setShowAttendanceProofs(false);
+    setEventsLaunch(null);
+    setProjectsLaunch(null);
   };
 
   const changeGroup = (next: AdminGroup) => {
@@ -121,11 +138,17 @@ export function AdminScreen() {
     clearSections();
     setPeopleSection(section);
   };
-  const openWork = (section: WorkSection, offersSection: OffersSection = "applications") => {
+  const openWork = (
+    section: WorkSection,
+    offersSection: OffersSection = "applications",
+    launch?: { events?: EventsLaunch | null; projects?: ProjectsLaunch | null },
+  ) => {
     setGroup("work");
     clearSections();
     setWorkSection(section);
     if (section === "offers") setOffersInitialSection(offersSection);
+    if (section === "events") setEventsLaunch(launch?.events ?? null);
+    if (section === "projects") setProjectsLaunch(launch?.projects ?? null);
   };
   const openCommsSection = (section: CommsSection) => {
     setGroup("comms");
@@ -149,14 +172,26 @@ export function AdminScreen() {
     <div className="era-page" style={{ minHeight: "100vh", display: "flex", flexDirection: "column", minWidth: 0 }}>
       <div style={{ flex: "1 1 auto", minWidth: 0, padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
         {group === "overview" && metricDetail && <AdminMetricDetailScreen metric={metricDetail.metric} expectedTotal={metricDetail.total} onBack={() => setMetricDetail(null)} onOpenEntity={(entityType) => openMetricEntity(entityType)} />}
-        {group === "overview" && !metricDetail && (
+        {group === "overview" && !metricDetail && showAttendanceProofs && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <button type="button" onClick={() => setShowAttendanceProofs(false)} style={{ alignSelf: "flex-start" }}>← Пульт</button>
+            <h1 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>Фото-подтверждения</h1>
+            <AdminAttendanceProofsScreen />
+          </div>
+        )}
+        {group === "overview" && !metricDetail && !showAttendanceProofs && (
           <AdminOverviewScreen
             onOpenPeople={() => openPeople("participants")}
             onOpenApplications={() => openPeople("applications")}
             onOpenVerification={() => openPeople("verification")}
             onOpenCareer={() => openPeople("career")}
             onOpenProjects={() => openWork("projects")}
+            onOpenProjectReview={() => openWork("projects", "applications", { projects: { section: "moderation" } })}
             onOpenEvents={() => openWork("events")}
+            onOpenEventModeration={() => openWork("events", "applications", { events: { section: "moderation" } })}
+            onOpenEventWaitlist={() => openWork("events", "applications", { events: { section: "operations" } })}
+            onOpenActivityResults={() => openWork("events", "applications", { events: { section: "activities", activitiesMode: "review" } })}
+            onOpenAttendanceProofs={() => { clearSections(); setGroup("overview"); setShowAttendanceProofs(true); }}
             onOpenTasks={() => openWork("tasks")}
             onOpenOffers={() => openWork("offers", "rewards")}
             onOpenComms={openComms}
@@ -174,6 +209,7 @@ export function AdminScreen() {
             {peopleSection === "career" && <AdminCareerScreen />}
             {peopleSection === "applications" && <AdminApplicationsScreen initialApplicationId={launchRoute.applicationId} />}
             {peopleSection === "leaders-chat" && <AdminWorkcenterScreen />}
+            {peopleSection === "appoint-leader" && <AdminAppointLeaderScreen />}
             {peopleSection === "offices" && <AdminOfficesScreen />}
             {peopleSection === "data-rights" && <AdminDataRightsScreen />}
           </div>
@@ -184,8 +220,16 @@ export function AdminScreen() {
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <SectionHeader title={WORK_SECTIONS.find((item) => item.value === workSection)?.label ?? "Работа"} onBack={() => setWorkSection(null)} />
             {workSection === "pulse" && <AdminWorkcenterScreen />}
-            {workSection === "projects" && <AdminProjectsScreen />}
-            {workSection === "events" && <AdminEventsScreen />}
+            {workSection === "projects" && (
+              <AdminProjectsScreen key={projectsLaunch?.section ?? "menu"} initialSection={projectsLaunch?.section ?? null} />
+            )}
+            {workSection === "events" && (
+              <AdminEventsScreen
+                key={`${eventsLaunch?.section ?? "menu"}:${eventsLaunch?.activitiesMode ?? ""}`}
+                initialSection={eventsLaunch?.section ?? null}
+                initialActivitiesMode={eventsLaunch?.activitiesMode ?? null}
+              />
+            )}
             {workSection === "tasks" && <AdminTasksScreen />}
             {workSection === "offers" && <AdminOffersScreen key={offersInitialSection} initialSection={offersInitialSection} />}
           </div>

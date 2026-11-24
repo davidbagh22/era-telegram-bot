@@ -345,10 +345,10 @@ export function PersonDetail({ userId, onBack }: PersonDetailProps) {
               {person.first_name} {person.last_name ?? ""}
             </h2>
             <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
-              {person.username ? `@${person.username}` : `Telegram ID ${person.telegram_id}`} · #{person.id}
+              {person.username ? `@${person.username}` : `номер Telegram ${person.telegram_id}`}
             </p>
             <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap", marginTop: "0.55rem" }}>
-              <StatusBadge label={ROLE_LABELS[person.role] ?? person.role} tone="neutral" />
+              <StatusBadge label={ROLE_LABELS[person.role] ?? "Роль обновлена"} tone="neutral" />
               <StatusBadge label={prettyStatus(person.participation_status)} tone="neutral" />
               {person.is_blocked && <StatusBadge label="Заблокирован" tone="red" />}
               {person.is_archived && <StatusBadge label="В архиве" tone="neutral" />}

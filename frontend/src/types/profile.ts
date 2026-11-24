@@ -54,6 +54,7 @@ export interface Profile {
   stats: Record<string, number>;
   projects: PortfolioEntry[];
   events: PortfolioEntry[];
+  registrations: PortfolioEntry[];
   tasks: PortfolioEntry[];
   volunteer: PortfolioEntry[];
   leadership: PortfolioEntry[];

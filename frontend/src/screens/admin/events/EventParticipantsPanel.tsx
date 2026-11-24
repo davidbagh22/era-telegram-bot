@@ -3,11 +3,14 @@ import {
   describeActionError,
   fetchEventParticipants,
 } from "../../../api/client";
-import { downloadEventParticipants } from "../../../api/adminEvents";
+import { downloadEventParticipants, fetchEventShareText } from "../../../api/adminEvents";
 import { Card } from "../../../components/Card";
 import { EmptyState } from "../../../components/EmptyState";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { useAsync } from "../../../hooks/useAsync";
+import { RegistrantMessagePanel } from "./RegistrantMessagePanel";
+import { EventDetailsEditor } from "./EventDetailsEditor";
+import { EventPosterEditor } from "./EventPosterEditor";
 import { EventLifecyclePanel } from "./EventLifecyclePanel";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -48,6 +51,10 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
   const state = useAsync(() => fetchEventParticipants(eventId), [eventId, refreshKey]);
   const [exporting, setExporting] = useState<"xlsx" | "csv" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [editor, setEditor] = useState<"details" | "poster" | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareText, setShareText] = useState<string | null>(null);
+  const [shareStatus, setShareStatus] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterValue>("all");
 
@@ -62,6 +69,31 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
       setActionError(describeActionError(error));
     } finally {
       setExporting(null);
+    }
+  };
+
+  const copyAnnouncement = async () => {
+    setShareBusy(true);
+    setShareStatus("");
+    try {
+      // Fetch on every click: the text must reflect the latest published edit,
+      // topic link and registration deep link.
+      const { text } = await fetchEventShareText(eventId);
+      setShareText(text);
+      if (!navigator.clipboard?.writeText) {
+        setShareStatus("Выделите текст ниже и скопируйте вручную.");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        setShareStatus("Анонс со ссылками скопирован.");
+      } catch {
+        setShareStatus("Автокопирование недоступно. Выделите текст ниже.");
+      }
+    } catch (error) {
+      setShareStatus(describeActionError(error));
+    } finally {
+      setShareBusy(false);
     }
   };
 
@@ -86,6 +118,16 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       <button type="button" onClick={onBack} style={{ alignSelf: "flex-start" }}>← К мероприятиям</button>
 
+      <Card>
+        <strong>Управление карточкой</strong>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: ".5rem", marginTop: ".75rem" }}>
+          <button type="button" className="era-btn-primary" onClick={() => setEditor(editor === "details" ? null : "details")}>✎ Данные и ссылки</button>
+          <button type="button" onClick={() => setEditor(editor === "poster" ? null : "poster")}>▧ Афиша</button>
+        </div>
+        {editor === "details" && <EventDetailsEditor eventId={eventId} onClose={() => { setEditor(null); refresh(); }} />}
+        {editor === "poster" && <EventPosterEditor eventId={eventId} onBack={() => { setEditor(null); refresh(); }} />}
+      </Card>
+
       <Card gradient>
         <p style={{ margin: "0 0 .3rem", fontSize: ".75rem", fontWeight: 800, color: "var(--era-text-secondary)" }}>УЧАСТНИКИ СОБЫТИЯ</p>
         <h2 style={{ margin: 0 }}>Присутствие подтверждает участник</h2>
@@ -94,6 +136,19 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
         </p>
       </Card>
 
+      <Card>
+        <strong>Поделиться мероприятием</strong>
+        <p style={{ margin: ".3rem 0 .7rem", color: "var(--era-text-muted)", fontSize: ".82rem" }}>
+          Актуальные дата, место, ссылка на тему и прямая регистрация. Ничего не отправляется автоматически.
+        </p>
+        <button type="button" onClick={() => void copyAnnouncement()} disabled={shareBusy}>
+          {shareBusy ? "Подготавливаем…" : "Скопировать анонс"}
+        </button>
+        {shareStatus && <p role="status">{shareStatus}</p>}
+        {shareText && <textarea aria-label="Готовый анонс для копирования" readOnly value={shareText} rows={7} onFocus={(e) => e.currentTarget.select()}
+          style={{ display: "block", width: "100%", boxSizing: "border-box", marginTop: ".65rem" }} />}
+      </Card>
+      <RegistrantMessagePanel key={eventId} eventId={eventId} />
       <EventLifecyclePanel eventId={eventId} onChanged={refresh} />
 
       {state.status === "ready" && (
@@ -108,16 +163,16 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
 
       <Card>
         <strong>Скачать список</strong>
-        <p style={{ margin: ".3rem 0 .7rem", color: "var(--era-text-muted)", fontSize: ".82rem" }}>Только Имя, Фамилия и номер телефона из профиля. Никаких лишних персональных данных.</p>
+        <p style={{ margin: ".3rem 0 .7rem", color: "var(--era-text-muted)", fontSize: ".82rem" }}>ФИО, телефон и организация из регистрационной формы. Доступно только организаторам.</p>
         <div style={{ display: "grid", gridTemplateColumns: "1.2fr .8fr", gap: ".5rem" }}>
           <button type="button" className="era-btn-primary" disabled={exporting !== null} onClick={() => void handleExport("xlsx")}>{exporting === "xlsx" ? "Готовим…" : "↓ XLSX"}</button>
           <button type="button" disabled={exporting !== null} onClick={() => void handleExport("csv")}>{exporting === "csv" ? "Готовим…" : "↓ CSV"}</button>
         </div>
       </Card>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.25fr .75fr", gap: ".5rem" }}>
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск участника" />
-        <select value={filter} onChange={(event) => setFilter(event.target.value as FilterValue)}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: ".5rem", minWidth: 0 }}>
+        <input aria-label="Поиск участника" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск участника" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} />
+        <select aria-label="Фильтр участников" value={filter} onChange={(event) => setFilter(event.target.value as FilterValue)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }}>
           {FILTERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
         </select>
       </div>
@@ -125,7 +180,15 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
       {actionError && <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>}
 
       {state.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загрузка участников…</p>}
-      {state.status === "error" && <EmptyState text="Не удалось загрузить участников." />}
+      {state.status === "error" && (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: ".75rem" }}>
+          <EmptyState text="Не удалось загрузить участников." />
+          <button type="button" onClick={refresh}>Повторить загрузку участников</button>
+        </div>
+      )}
+      {state.status === "ready" && (
+        <button type="button" onClick={refresh} style={{ alignSelf: "flex-start" }}>Обновить участников</button>
+      )}
       {state.status === "ready" && participants.length === 0 && <EmptyState text="Пока никто не зарегистрирован. Как только появится первая регистрация, участник будет здесь." />}
       {state.status === "ready" && participants.length > 0 && filtered.length === 0 && <EmptyState text="По этому поиску участников нет. Измените имя или фильтр." />}
 
@@ -133,6 +196,7 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
         <Card key={participant.registration_id} style={{ padding: "0.8rem 0.9rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "center" }}>
             <strong>{participant.participant_name}</strong>
+            {participant.organization && <p>{participant.organization} · {participant.phone}</p>}
             <StatusBadge label={STATUS_LABELS[participant.status] ?? "Статус обновлён"} tone={participant.status === "attended" ? "violet" : "neutral"} />
           </div>
           {participant.status === "attended" && (

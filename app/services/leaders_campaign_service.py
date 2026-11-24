@@ -11,6 +11,22 @@ from app.services.admin_broadcast_service import _deliver_campaign, control_broa
 from app.utils.constants import ApplicationStatus
 
 
+async def delivery_options(session, settings, *, scoped=False):
+    """Offer only available destinations; personal delivery stays an explicit choice."""
+    if scoped:
+        return [('Лично', 'dm')], None
+    try:
+        from app.services.leaders_topics_service import delivery_topic
+        await delivery_topic(session, settings.leaders_chat_id, 'important')
+    except ValueError:
+        return [('Лично', 'dm')], (
+            'Отправка в чат пока недоступна: панель «Важно» не подтверждена. '
+            'Черновик сохранён. Можно выбрать личную доставку или отменить. '
+            'Для восстановления ответьте /leaders_repair important на существующую панель бота в теме «Важно».'
+        )
+    return [('В чат', 'group'), ('Лично', 'dm'), ('В чат и лично', 'both')], None
+
+
 async def recipients(session, settings, actor, department_id=None, direction_id=None):
     if not await access.permitted_scope(session, actor, settings, department_id=department_id,
                                        direction_id=direction_id, permission='broadcasts.create'):

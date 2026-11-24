@@ -1,5 +1,6 @@
 export type CareerItemStatus = "self_reported" | "pending" | "verified" | "rejected";
 export type CareerPurpose = "work" | "internship" | "university" | "grant" | "volunteer" | "universal";
+export type CareerResumeMode = "resume" | "portfolio" | "portfolio_with_certificates";
 
 export interface CareerLanguage {
   name: string;
@@ -10,6 +11,7 @@ export interface CareerProfileData {
   headline: string;
   about: string;
   languages: CareerLanguage[];
+  skills: string[];
 }
 
 export interface CareerPortfolioItem {

@@ -23,7 +23,7 @@ async def send_partners(target: Message, user: User | None, session: AsyncSessio
         return
     partners = (await session.scalars(select(Partner).where(Partner.is_active.is_(True), Partner.is_archived.is_(False)).order_by(Partner.name))).all()
     if not partners:
-        await target.answer("🤝 Партнёры ЭРА\n\nПартнёры скоро появятся в этом разделе.")
+        await target.answer("🤝 Партнёры ЭРА\n\nАктивных партнёров пока нет.")
         return
     await target.answer("🤝 Партнёры ЭРА\n\nПлощадки и организации, с которыми можно расти дальше.", reply_markup=partner_list_keyboard(partners))
 

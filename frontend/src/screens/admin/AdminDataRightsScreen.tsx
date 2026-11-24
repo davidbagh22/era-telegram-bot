@@ -56,7 +56,7 @@ export function AdminDataRightsScreen() {
             {request.last_name ? ` ${request.last_name}` : ""}
           </strong>
           <p style={{ margin: "0.25rem 0 0.5rem", color: "var(--era-text-muted)" }}>
-            Telegram ID {request.telegram_id}
+            номер Telegram {request.telegram_id}
             {request.note ? ` · «${request.note}»` : ""}
           </p>
           <div style={{ display: "flex", gap: "0.5rem" }}>

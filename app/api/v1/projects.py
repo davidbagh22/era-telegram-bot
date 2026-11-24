@@ -5,7 +5,8 @@ from typing import Literal
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,6 +49,12 @@ class ProjectSummaryOut(BaseModel):
     updated_at: str
     submitted_at: str | None
     admin_comment: str | None
+    cover_url: str | None = None
+    # Proposed schedule from the project wizard. Always tentative until a
+    # linked published event exists — never substitute updated_at/submitted_at.
+    proposed_date: str | None = None
+    proposed_time: str | None = None
+    date_is_tentative: bool = True
 
 
 class ProjectDetailOut(ProjectSummaryOut):
@@ -55,6 +62,7 @@ class ProjectDetailOut(ProjectSummaryOut):
     can_edit: bool
     can_submit: bool
     can_delete: bool
+    can_edit_cover: bool = False
 
 
 class CreateProjectIn(BaseModel):
@@ -201,7 +209,42 @@ class TeamMessageOut(BaseModel):
     failed: int
 
 
+_COVER_TYPES = {"image/jpeg", "image/png", "image/webp"}
+_COVER_MAX_BYTES = 5 * 1024 * 1024
+
+
+def _cover_url(project: Project) -> str | None:
+    # Presence via content_type only — cover_bytes is deferred and must not
+    # be loaded for list/detail payloads. Cache-bust with updated_at so a
+    # replaced cover remounts and skips the previous blob.
+    if not getattr(project, "cover_content_type", None):
+        return None
+    updated_at = getattr(project, "updated_at", None)
+    stamp = int(updated_at.timestamp()) if updated_at else 0
+    return f"/api/v1/projects/{project.id}/cover?v={stamp}"
+
+
+def _format_proposed_date(value) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    text = str(value).strip()
+    return text or None
+
+
+def _format_proposed_time(value) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "strftime"):
+        return value.strftime("%H:%M")
+    text = str(value).strip()
+    return text[:5] if text else None
+
+
 def _to_summary(project: Project) -> ProjectSummaryOut:
+    proposed_date = _format_proposed_date(getattr(project, "proposed_date", None))
+    proposed_time = _format_proposed_time(getattr(project, "proposed_time", None))
     return ProjectSummaryOut(
         id=project.id,
         title=project.title,
@@ -211,17 +254,26 @@ def _to_summary(project: Project) -> ProjectSummaryOut:
         updated_at=project.updated_at.isoformat(),
         submitted_at=project.submitted_at.isoformat() if project.submitted_at else None,
         admin_comment=project.admin_comment,
+        cover_url=_cover_url(project),
+        proposed_date=proposed_date,
+        proposed_time=proposed_time,
+        date_is_tentative=True,
     )
 
 
-def _to_detail(project: Project) -> ProjectDetailOut:
+def _to_detail(project: Project, *, viewer: User | None = None) -> ProjectDetailOut:
     summary = _to_summary(project)
+    can_edit = project_workflow_service.can_edit(project)
+    can_edit_cover = bool(
+        viewer is not None and (viewer.id == project.author_id or can_edit)
+    )
     return ProjectDetailOut(
         **summary.model_dump(),
         form_data=project.form_data or {},
-        can_edit=project_workflow_service.can_edit(project),
+        can_edit=can_edit,
         can_submit=project_workflow_service.can_submit_for_review(project),
         can_delete=project_workflow_service.can_delete(project),
+        can_edit_cover=can_edit_cover,
     )
 
 
@@ -395,7 +447,77 @@ async def read_project(
     project = await session.get(Project, project_id)
     if project is None or not _visible_to(project, user):
         raise HTTPException(status_code=404, detail="project_not_found")
-    return _to_detail(project)
+    return _to_detail(project, viewer=user)
+
+
+@router.get("/{project_id}/cover")
+async def read_project_cover(
+    project_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    project = await session.get(Project, project_id)
+    if project is None or not _visible_to(project, user) or not project.cover_bytes:
+        raise HTTPException(status_code=404, detail="project_cover_not_found")
+    mime = (project.cover_content_type or "image/jpeg").split(";", 1)[0].strip().lower()
+    if mime not in _COVER_TYPES:
+        raise HTTPException(status_code=404, detail="project_cover_not_found")
+    return Response(
+        content=project.cover_bytes,
+        media_type=mime,
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.post("/{project_id}/cover", response_model=ProjectDetailOut)
+async def upload_project_cover(
+    project_id: int,
+    upload: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> ProjectDetailOut:
+    project = await session.get(Project, project_id)
+    if project is None or not _visible_to(project, user):
+        raise HTTPException(status_code=404, detail="project_not_found")
+    if user.id != project.author_id and not project_workflow_service.can_edit(project):
+        raise HTTPException(status_code=403, detail="project_cover_forbidden")
+    if upload.content_type not in _COVER_TYPES:
+        raise HTTPException(status_code=422, detail="cover_must_be_image")
+    content = await upload.read(_COVER_MAX_BYTES + 1)
+    if not content:
+        raise HTTPException(status_code=400, detail="empty_cover_file")
+    if len(content) > _COVER_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="cover_too_large")
+    valid_image = (
+        (upload.content_type == "image/jpeg" and content.startswith(b"\xff\xd8\xff"))
+        or (upload.content_type == "image/png" and content.startswith(b"\x89PNG\r\n\x1a\n"))
+        or (upload.content_type == "image/webp" and content.startswith(b"RIFF") and content[8:12] == b"WEBP")
+    )
+    if not valid_image:
+        raise HTTPException(status_code=422, detail="cover_invalid_image")
+    project.cover_bytes = content
+    project.cover_content_type = upload.content_type
+    await _commit_if_possible(session)
+    await session.refresh(project)
+    return _to_detail(project, viewer=user)
+
+
+@router.post("/{project_id}/cover/remove", response_model=ProjectDetailOut)
+async def remove_project_cover(
+    project_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> ProjectDetailOut:
+    project = await session.get(Project, project_id)
+    if project is None or not _visible_to(project, user):
+        raise HTTPException(status_code=404, detail="project_not_found")
+    if user.id != project.author_id and not project_workflow_service.can_edit(project):
+        raise HTTPException(status_code=403, detail="project_cover_forbidden")
+    project.cover_bytes = None
+    project.cover_content_type = None
+    await _commit_if_possible(session)
+    await session.refresh(project)
+    return _to_detail(project, viewer=user)
 
 
 @router.get("/{project_id}/workspace", response_model=ProjectWorkspaceOut)
@@ -761,7 +883,7 @@ async def create_project(
 ) -> ProjectDetailOut:
     project = await project_workflow_service.create_draft(session, user, payload.idea)
     await _commit_if_possible(session)
-    return _to_detail(project)
+    return _to_detail(project, viewer=user)
 
 
 @router.patch("/{project_id}", response_model=ProjectDetailOut)
@@ -778,7 +900,7 @@ async def update_project(
         raise HTTPException(status_code=409, detail="project_not_editable")
     project_workflow_service.update_answers(project, payload.answers)
     await _commit_if_possible(session)
-    return _to_detail(project)
+    return _to_detail(project, viewer=user)
 
 
 @router.post("/{project_id}/submit", response_model=ProjectDetailOut)
@@ -798,7 +920,7 @@ async def submit_project(
     await _commit_if_possible(session)
     if bot is not None:
         await _notify_reviewers(bot, settings, project, user, document, session=session)
-    return _to_detail(project)
+    return _to_detail(project, viewer=user)
 
 
 @router.post("/{project_id}/cancel", response_model=ProjectDetailOut)
@@ -815,7 +937,7 @@ async def cancel_project(
     await project_workflow_service.cancel_project(session, project, user)
     await _commit_if_possible(session)
     await session.refresh(project)
-    return _to_detail(project)
+    return _to_detail(project, viewer=user)
 
 
 def _url_keyboard(text: str, url: str) -> InlineKeyboardMarkup | None:

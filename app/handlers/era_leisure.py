@@ -31,12 +31,17 @@ async def _markup(bot, settings: Settings, telegram_id: int = 0) -> InlineKeyboa
 
 
 async def show_leisure(message: Message, settings: Settings, telegram_id: int = 0) -> None:
-    games_line = ("🎮 <b>Интерактив</b> — одиночные игры в боте и команды в общем чате.\n"
-                  if _enabled(settings, telegram_id) else "🎮 <b>Интерактив</b> — скоро откроется.\n")
+    # Omit games copy when the feature is gated — no «Скоро» teaser for users.
+    games_line = (
+        "🎮 <b>Интерактив</b> — одиночные игры в боте и команды в общем чате.\n"
+        if _enabled(settings, telegram_id)
+        else ""
+    )
     await message.answer(
         "🎲 <b>ЭРА | Досуг</b>\n\n"
         "📚 <b>Литература</b> — ежедневные разборы, обсуждения и задания.\n"
-        + games_line + "\nВыбирай, чем заняться!",
+        + games_line
+        + "\nВыбирай, чем заняться!",
         reply_markup=await _markup(message.bot, settings, telegram_id),
         parse_mode="HTML",
     )

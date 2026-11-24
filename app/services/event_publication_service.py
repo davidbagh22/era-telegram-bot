@@ -13,8 +13,10 @@ from sqlalchemy import select, text as sql_text
 from app.database.event_experience import EventExperience
 from app.database.models import AppSetting, Event, User
 from app.database.system_models import NotificationDelivery
+from app.services.event_announcement_format import event_topic_html
+from app.services.event_forum_service import event_thread
 from app.services.general_topics_service import send_general_topic_once
-from app.services.notification_service import broadcast_detailed_once
+from app.services.notification_service import broadcast_detailed_once, safe_send_once
 from app.utils.constants import ApplicationStatus, EventStatus
 from app.utils.deep_links import telegram_event_miniapp_url
 
@@ -62,6 +64,9 @@ def escaped_text_parts(text: str, first_limit: int = 4000) -> list[str]:
 
 
 async def public_event_keyboard(bot, settings, event):
+    from app.services.anniversary_campaign_service import is_anniversary, keyboard
+    if is_anniversary(event):
+        return keyboard()
     username = (settings.bot_username or "").strip() or (await bot.get_me()).username
     url = telegram_event_miniapp_url(username or "", event.id)
     return InlineKeyboardMarkup(inline_keyboard=[[
@@ -85,15 +90,69 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
     if bot is None:
         return False
     markup = await public_event_keyboard(bot, settings, event)
+    external_registration = str(getattr(experience, "registration_url", None) or "").strip()
+    if not external_registration and not getattr(experience, "registration_required", True):
+        contact = str(experience.contact or "").strip()
+        if contact.startswith("https://t.me/"):
+            external_registration = contact
+    if external_registration:
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Записаться у организаторов", url=external_registration)
+        ]])
     text = announcement_text(event, experience)
     poster = getattr(experience, "poster_bytes", None)
-    parts = escaped_text_parts(text, 1000 if poster else 4000)
+    targets = set(experience.broadcast_targets or [])
+    thread = None
+    if "project_topic" in targets:
+        thread = await event_thread(bot, settings, event)
+        if not thread or not markup:
+            experience.announcement_status = "needs_attention"
+            return False
+        url = f"https://t.me/c/{str(settings.general_chat_id)[4:]}/{thread}"
+        if not experience.chat_url:
+            experience.chat_url = url
+        # External events keep the organizer's real signup link. Do not
+        # advertise the ERA Mini App as the registration destination when ERA
+        # itself does not collect registrations for this event.
+        register_url = external_registration or markup.inline_keyboard[0][0].url
+        markup = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="Записаться у организаторов" if external_registration else "Зарегистрироваться", url=register_url)
+        ]])
+        text = event_topic_html(
+            event, experience, registration=register_url,
+            chat=settings.general_chat_url, topic=url,
+        )
+    # The formatted version is already HTML-escaped token by token. Keep
+    # legacy safe plain-text splitting for very large descriptions/captions;
+    # never split through an HTML tag or expose raw user-provided markup.
+    limit = 1000 if poster else 4000
+    if thread and len(text.encode("utf-16-le")) // 2 <= limit:
+        parts = [text]
+    elif thread:
+        raw = f"{event.title}\n\n{experience.full_description or event.description}\n\n"
+        raw += f"📅 {event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n📍 {event.location}"
+        raw += f"\n\nРегистрация: {register_url}\nОбщий чат ЭРА: {settings.general_chat_url}\nТема мероприятия: {url}"
+        parts = escaped_text_parts(raw, limit)
+    else:
+        parts = escaped_text_parts(text, limit)
     for index, part in enumerate(parts):
         media = {}
         if index == 0 and poster:
             content_type = experience.poster_content_type or "image/jpeg"
             extension = {"image/png": "png", "image/webp": "webp"}.get(content_type, "jpg")
             media["photo"] = BufferedInputFile(poster, filename=f"event-{event.id}.{extension}")
+        if thread:
+            posted = await safe_send_once(
+                bot, settings, settings.general_chat_id, part,
+                message_thread_id=thread, parse_mode="HTML",
+                delivery_key=f"event-topic:{event.id}:{index}", max_attempts=1,
+                reply_markup=markup if index in {0, len(parts) - 1} else None, **media,
+            )
+            if not posted.sent:
+                experience.announcement_status = "needs_attention"
+                return False
+            if "digest_only" in targets or ("bot" in targets and "general" not in targets and "bot_and_chat" not in targets):
+                continue
         result = await send_general_topic_once(
             bot, settings, "announcements", part, parse_mode="HTML",
             reply_markup=markup if index == len(parts) - 1 else None,
@@ -115,11 +174,18 @@ async def publish_event_announcement(bot, settings, session, event, experience) 
             User.is_blocked.is_(False), User.is_archived.is_(False),
         ))
         summary = f"{event.title}\n\n{experience.short_description or event.description}"
-        await broadcast_detailed_once(
+        outcome = await broadcast_detailed_once(
             bot, settings, [int(value) for value in recipients.all() if value], summary[:3500],
             reply_markup=markup, delivery_key=f"event:{event.id}:published",
             notification_type="event_published",
         )
+        if outcome.failed:
+            experience.announcement_status = "needs_attention"
+            logger.warning(
+                "Event announcement requires personal delivery reconciliation event_id=%s failed=%s",
+                event.id, outcome.failed,
+            )
+            return False
     return True
 
 
@@ -176,9 +242,14 @@ async def _pending_announcement_ids(session_factory) -> list[int]:
             lock_id = int.from_bytes(hashlib.sha256(RECOVERY_CURSOR_KEY.encode()).digest()[:8], "big", signed=True)
             await session.execute(sql_text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_id})
         cursor_row = await session.scalar(select(AppSetting).where(AppSetting.key == RECOVERY_CURSOR_KEY))
+        # Event IDs use PostgreSQL INTEGER (signed 32-bit). A damaged
+        # AppSetting cursor beyond that range must not reach an asyncpg
+        # comparison and repeatedly abort the entire recovery batch.
         try:
-            cursor = max(0, int(cursor_row.value)) if cursor_row else 0
-        except (TypeError, ValueError):
+            cursor = int(cursor_row.value) if cursor_row else 0
+        except (TypeError, ValueError, OverflowError):
+            cursor = 0
+        if not 0 <= cursor <= 2_147_483_647:
             cursor = 0
         pending = select(EventExperience.event_id).join(
             Event, Event.id == EventExperience.event_id,

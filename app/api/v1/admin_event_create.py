@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 from typing import Any, Literal
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -17,6 +17,8 @@ from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration, User
 from app.services.audit_service import audit
 from app.services.authorization_service import can_manage_events
+from app.services.event_poster_security import normalized_event_poster_mime
+from app.services.event_topic_lifecycle import utc_aware
 from app.services.notification_service import broadcast_detailed
 from app.services.event_publication_service import public_event_keyboard, publish_event_announcement, record_announcement_status
 from app.services.general_topics_service import send_general_topic
@@ -156,6 +158,7 @@ async def create_event_from_admin(
 
 
 class EventDraftPatch(BaseModel):
+    issue_certificate: bool | None = None
     creation_mode: Literal["wizard", "quick"] | None = None
     wizard_step: int | None = Field(default=None, ge=1, le=10)
     title: str | None = Field(default=None, max_length=255)
@@ -174,10 +177,12 @@ class EventDraftPatch(BaseModel):
     registration_required: bool | None = None
     participant_limit: int | None = Field(default=None, ge=1, le=5000)
     registration_close_at: datetime | None = None
+    topic_close_at: datetime | None = None
     waitlist_enabled: bool | None = None
     registration_audience: str | None = Field(default=None, max_length=64)
 
     chat_url: str | None = Field(default=None, max_length=500)
+    registration_url: str | None = Field(default=None, max_length=500)
     organizer: str | None = Field(default=None, max_length=255)
     participant_value: str | None = Field(default=None, max_length=5000)
     contact: str | None = Field(default=None, max_length=255)
@@ -193,6 +198,7 @@ class EventDraftPatch(BaseModel):
 
 
 class EventDraftOut(BaseModel):
+    issue_certificate: bool | None = None
     creation_mode: str = "wizard"
     announcement_status: str = "not_requested"
     id: int
@@ -211,12 +217,17 @@ class EventDraftOut(BaseModel):
     address: str | None
     attendance_mode: str
     has_poster: bool
+    show_in_public_listing: bool = True
     registration_required: bool
     participant_limit: int | None
     registration_close_at: str | None
+    topic_close_at: str | None = None
+    topic_closed_at: str | None = None
+    topic_close_state: str = "open"
     waitlist_enabled: bool
     registration_audience: str
     chat_url: str | None
+    registration_url: str | None = None
     organizer: str | None
     participant_value: str | None
     contact: str | None
@@ -260,6 +271,7 @@ async def _broadcast_estimate(session: AsyncSession, experience: EventExperience
 
 async def _draft_out(session: AsyncSession, event: Event, experience: EventExperience) -> EventDraftOut:
     return EventDraftOut(
+        issue_certificate=experience.issue_certificate,
         creation_mode=experience.creation_mode,
         announcement_status=experience.announcement_status,
         id=event.id,
@@ -278,12 +290,17 @@ async def _draft_out(session: AsyncSession, event: Event, experience: EventExper
         address=experience.address,
         attendance_mode=experience.attendance_mode,
         has_poster=bool(experience.poster_bytes),
+        show_in_public_listing=bool(experience.show_in_public_listing),
         registration_required=experience.registration_required,
         participant_limit=event.participant_limit,
         registration_close_at=(experience.registration_close_at.isoformat() if experience.registration_close_at else None),
+        topic_close_at=(experience.topic_close_at.isoformat() if experience.topic_close_at else None),
+        topic_closed_at=(experience.topic_closed_at.isoformat() if experience.topic_closed_at else None),
+        topic_close_state=experience.topic_close_state or "open",
         waitlist_enabled=experience.waitlist_enabled,
         registration_audience=experience.registration_audience,
         chat_url=experience.chat_url,
+        registration_url=getattr(experience, "registration_url", None),
         organizer=experience.organizer,
         participant_value=experience.participant_value,
         contact=experience.contact,
@@ -377,6 +394,41 @@ async def read_event_draft(
     return await _draft_out(session, event, await _experience(session, event))
 
 
+class EventListingPatch(BaseModel):
+    visible: bool
+
+
+@router.patch("/{event_id}/listing", response_model=EventDraftOut)
+async def set_event_public_listing(
+    event_id: int,
+    payload: EventListingPatch,
+    admin: User = Depends(require_event_manager),
+    session: AsyncSession = Depends(get_session),
+) -> EventDraftOut:
+    """Reversible discovery-only switch; no publish, notifications or data deletion.
+
+    Registrations, attendance, personal history, points and direct event links
+    remain intact. A manager may restore the listing with visible=True.
+    """
+    event = await _managed_event(session, event_id)
+    if event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
+        raise HTTPException(status_code=409, detail="event_not_public")
+    experience = await _experience(session, event)
+    old_visible = bool(experience.show_in_public_listing)
+    if old_visible != payload.visible:
+        experience.show_in_public_listing = payload.visible
+        await audit(
+            session,
+            actor_id=admin.id,
+            action="event.public_listing_visibility_changed",
+            entity_type="event",
+            entity_id=event.id,
+            old_value={"visible": old_visible},
+            new_value={"visible": payload.visible},
+        )
+    return await _draft_out(session, event, experience)
+
+
 async def _notify_changed_event(
     bot: Bot | None,
     settings: Settings,
@@ -421,13 +473,24 @@ async def save_event_draft_step(
     bot: Bot | None = Depends(get_bot),
 ) -> EventDraftOut:
     event = await _managed_event(session, event_id)
-    experience = await _experience(session, event)
+    # Serialize schedule edits with the topic-closing worker, and refresh any
+    # previously loaded experience before checking its current close state.
+    experience = await session.scalar(
+        select(EventExperience)
+        .where(EventExperience.event_id == event_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if experience is None:
+        experience = await _experience(session, event)
     was_public = event.status != EventStatus.DRAFT
     changes: list[str] = []
 
     if payload.creation_mode is not None and not was_public:
         experience.creation_mode = payload.creation_mode
 
+    if payload.issue_certificate is not None:
+        experience.issue_certificate = payload.issue_certificate
     if payload.title is not None:
         event.title = payload.title.strip() or event.title
     if payload.short_description is not None:
@@ -463,6 +526,18 @@ async def save_event_draft_step(
         event.participant_limit = payload.participant_limit
     if "registration_close_at" in payload.model_fields_set:
         experience.registration_close_at = payload.registration_close_at
+    if "topic_close_at" in payload.model_fields_set:
+        if payload.topic_close_at is not None:
+            closing_at = utc_aware(payload.topic_close_at)
+            if closing_at <= datetime.now(timezone.utc) and (
+                experience.topic_close_at is None or utc_aware(experience.topic_close_at) != closing_at
+            ):
+                raise HTTPException(status_code=422, detail="topic_close_time_must_be_future")
+            if experience.topic_close_state == "closed":
+                raise HTTPException(status_code=409, detail="topic_already_closed_reopen_first")
+            experience.topic_close_at = closing_at
+        else:
+            experience.topic_close_at = None
     if payload.waitlist_enabled is not None:
         experience.waitlist_enabled = payload.waitlist_enabled
     if payload.registration_audience is not None:
@@ -470,6 +545,13 @@ async def save_event_draft_step(
 
     if "chat_url" in payload.model_fields_set:
         experience.chat_url = payload.chat_url.strip() if payload.chat_url else None
+    if "registration_url" in payload.model_fields_set:
+        value = (payload.registration_url or "").strip()
+        if value and (not value.startswith("https://") or any(char.isspace() for char in value)):
+            raise HTTPException(status_code=422, detail="registration_url_invalid")
+        experience.registration_url = value or None
+        if value:
+            experience.registration_required = False
     if "organizer" in payload.model_fields_set:
         experience.organizer = payload.organizer.strip() if payload.organizer else None
     if "participant_value" in payload.model_fields_set:
@@ -512,6 +594,29 @@ async def save_event_draft_step(
         except Exception:
             logger.exception("Event %s saved; change notification failed", event.id)
     return result
+
+
+@router.get("/{event_id}/poster/preview")
+async def read_admin_event_poster_preview(
+    event_id: int,
+    _admin: User = Depends(require_event_manager),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Authenticated editor preview; never expose unpublished bytes via public URLs."""
+    event = await session.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="event_poster_not_found")
+    experience = await session.get(EventExperience, event_id)
+    if experience is None or not experience.poster_bytes:
+        raise HTTPException(status_code=404, detail="event_poster_not_found")
+    poster_mime = normalized_event_poster_mime(experience.poster_content_type)
+    if poster_mime is None:
+        raise HTTPException(status_code=404, detail="event_poster_not_found")
+    return Response(
+        content=experience.poster_bytes,
+        media_type=poster_mime,
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.post("/{event_id}/poster", response_model=EventDraftOut)
@@ -621,6 +726,7 @@ async def publish_event(
     settings: Settings = Depends(get_settings),
     bot: Bot | None = Depends(get_bot),
     background_tasks: BackgroundTasks = None,
+    project_topic: bool = False,
 ) -> EventDraftOut:
     event = await _managed_event(session, event_id)
     experience = await _experience(session, event)
@@ -639,6 +745,10 @@ async def publish_event(
     event.approved_by = admin.id
     experience.wizard_step = 10
     experience.is_complete = True
+    if project_topic:
+        if experience.issue_certificate is None:
+            experience.issue_certificate = False
+        experience.broadcast_targets = list(dict.fromkeys([*(experience.broadcast_targets or []), "project_topic"]))
     experience.announcement_status = "pending"
     await session.flush()
     await audit(

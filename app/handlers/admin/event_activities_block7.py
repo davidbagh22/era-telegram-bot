@@ -12,7 +12,7 @@ from app.database.models import Event, EventActivity, EventActivitySubmission, E
 from app.services.event_activity_scoring_service import score_event_activity_completion
 from app.services.notification_service import safe_answer_media, safe_send
 from app.utils import texts
-from app.utils.constants import RegistrationStatus, Role
+from app.utils.constants import ACTIVITY_SUBMISSION_TYPE_LABELS, RegistrationStatus, Role
 from app.utils.validators import clean_text
 
 router = Router(name="admin_event_activities_block7")
@@ -25,6 +25,9 @@ class ActivityAdminStates(StatesGroup):
 
 
 def is_admin(user: User | None, settings: Settings, tg_id: int) -> bool:
+    # A configured ADMIN_IDS entry never overrides a revoked account.
+    if user is not None and (user.is_blocked or user.is_archived):
+        return False
     return bool(
         tg_id in settings.admin_ids
         or (user and user.role == Role.ADMIN and not user.is_blocked)
@@ -250,7 +253,9 @@ async def send_to_registered_confirm(
             await safe_send(
                 bot,
                 target.telegram_id,
-                f"✨ Активность после мероприятия\n\n{event.title}\n\n{activity.title}\n{activity.description}\n\nФормат: {activity.submission_type}\nБаллы: {activity.points}",
+                f"✨ Активность после мероприятия\n\n{event.title}\n\n{activity.title}\n{activity.description}\n\n"
+                f"Формат: {ACTIVITY_SUBMISSION_TYPE_LABELS.get(activity.submission_type, 'формат уточняется')}\n"
+                f"Баллы: {activity.points}",
                 reply_markup=submit_button(activity.id),
             )
         sent += 1
@@ -266,7 +271,9 @@ async def send_submission_card(message: Message, session: AsyncSession, sub: Eve
     status_label = {
         "pending": "на проверке",
         "leader_approved": "подтверждено лидером, ждёт финальной проверки",
-    }.get(sub.status, sub.status)
+        "approved": "принято",
+        "rejected": "отклонено",
+    }.get(sub.status, "статус уточняется")
     await message.answer(
         f"📥 Активность #{sub.id}\n\n{activity.title}\n"
         f"Участник: {target.first_name} {target.last_name or ''}\n"

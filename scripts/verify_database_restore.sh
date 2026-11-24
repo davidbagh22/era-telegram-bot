@@ -20,8 +20,19 @@ if [[ ! -s "${BACKUP_FILE}" ]]; then
   exit 1
 fi
 
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    echo 'sha256sum is required to verify the restore payload' >&2
+    exit 127
+  fi
+}
+
 if [[ -n "${BACKUP_SHA256:-}" ]]; then
-  ACTUAL_SHA256="$(sha256sum "${BACKUP_FILE}" | awk '{print $1}')"
+  ACTUAL_SHA256="$(sha256_file "${BACKUP_FILE}")"
   if [[ "${ACTUAL_SHA256}" != "${BACKUP_SHA256}" ]]; then
     echo "Backup checksum mismatch" >&2
     exit 1

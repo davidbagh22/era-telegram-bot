@@ -82,7 +82,7 @@ function MissionTemplatesPanel() {
     setError(null);
     try {
       const launched = await launchAllMissions();
-      setStatus(launched.length ? `Запущено заданий: ${launched.length}.` : "Все миссии уже запущены.");
+      setStatus(launched.length ? `Запущено заданий: ${launched.length}.` : "Все задания уже запущены.");
       refresh();
     } catch (cause) {
       setError(describeActionError(cause));
@@ -92,7 +92,7 @@ function MissionTemplatesPanel() {
   };
 
   if (state.status === "loading") return <EmptyState text="Загружаем шаблоны…" />;
-  if (state.status === "error") return <EmptyState text="Не удалось загрузить шаблоны миссий." />;
+  if (state.status === "error") return <EmptyState text="Не удалось загрузить шаблоны заданий." />;
 
   const pending = state.data.filter((template) => !template.is_launched).length;
 
@@ -100,7 +100,7 @@ function MissionTemplatesPanel() {
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       <Card>
         <strong>{pending} из {state.data.length} ещё не запущены</strong>
-        <p style={{ margin: "0.4rem 0 0", color: "var(--era-text-muted)", fontSize: "0.85rem" }}>Повторный запуск не создаёт дубликаты — уже запущенные миссии пропускаются.</p>
+        <p style={{ margin: "0.4rem 0 0", color: "var(--era-text-muted)", fontSize: "0.85rem" }}>Повторный запуск не создаёт дубликаты — уже запущенные задания пропускаются.</p>
         <button type="button" disabled={busyId === "all" || pending === 0} onClick={() => void launchAll()} style={{ marginTop: "0.6rem" }}>
           {busyId === "all" ? "Запускаем…" : "Запустить все не запущенные"}
         </button>

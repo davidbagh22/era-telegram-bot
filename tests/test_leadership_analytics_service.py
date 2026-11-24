@@ -9,7 +9,6 @@ from app.database.base import Base
 from app.database.models import (
     LeadershipAttentionItem,
     LeadershipGoal,
-    LeadershipReport,
     Office,
     PositionApplication,
     Task,
