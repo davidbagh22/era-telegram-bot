@@ -24,7 +24,7 @@ def rehearse(connection: sa.Connection) -> None:
         Path(__file__).resolve().parents[1]
         / "alembic"
         / "versions"
-        / "0068_event_public_listing.py"
+        / "0069_event_public_listing.py"
     )
     spec = importlib.util.spec_from_file_location(
         "era_visibility_pg18_migration_probe", migration_path

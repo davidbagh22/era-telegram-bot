@@ -21,7 +21,7 @@ class EventPublicListingMigrationTests(unittest.TestCase):
             Path(__file__).resolve().parents[1]
             / "alembic"
             / "versions"
-            / "0068_event_public_listing.py"
+            / "0069_event_public_listing.py"
         )
         spec = importlib.util.spec_from_file_location(
             "event_public_listing_migration_under_test", migration_path,
