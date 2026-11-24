@@ -306,8 +306,8 @@ export function HomeScreen({
       </section>
 
       {!nextStepRepeatsNearest && (
-        <section aria-label="Следующий шаг" style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
-          <MonoLabel>Следующий шаг</MonoLabel>
+        <section aria-label="У меня сейчас" style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
+          <MonoLabel>У меня сейчас</MonoLabel>
           {data.next_step ? (
             <Card gradient onClick={nextStepClick} style={{ padding: "1.15rem" }}>
               <strong style={{ display: "block", fontSize: "1.1rem" }}>{data.next_step.title}</strong>
