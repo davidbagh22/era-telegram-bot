@@ -7,7 +7,7 @@ const PARTICIPANT_TELEGRAM_ID = 900001;
 function profileTab(page: import("@playwright/test").Page) {
   return page
     .getByRole("navigation", { name: "Основная навигация" })
-    .getByRole("button", { name: "Профиль", exact: true });
+    .getByRole("button", { name: "Я", exact: true });
 }
 
 async function openProfile(page: import("@playwright/test").Page) {
@@ -48,22 +48,22 @@ test("leader starts personal, enters Leader Mode, leaves it, and returns", async
   await page.goto(`/app/?devTelegramId=${LEADER_TELEGRAM_ID}`);
 
   await expect(profileTab(page)).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Пространство лидера" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Режим лидера" })).toHaveCount(0);
 
   await openProfile(page);
   const workspaceButton = page.getByRole("button", {
-    name: /Пространство лидера.*Рабочие инструменты и управление.*Открыть/,
+    name: /Режим лидера.*Рабочие инструменты и управление.*Открыть/,
   });
   await expect(workspaceButton).toBeVisible();
   await workspaceButton.click();
-  await expect(page.getByRole("heading", { name: "Пространство лидера" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Режим лидера" })).toBeVisible();
 
   await page.getByRole("button", { name: "← Личное" }).click();
   await expect(profileTab(page)).toBeVisible();
 
   await openProfile(page);
-  await page.getByRole("button", { name: /Пространство лидера.*Рабочие инструменты и управление.*Открыть/ }).click();
-  await expect(page.getByRole("heading", { name: "Пространство лидера" })).toBeVisible();
+  await page.getByRole("button", { name: /Режим лидера.*Рабочие инструменты и управление.*Открыть/ }).click();
+  await expect(page.getByRole("heading", { name: "Режим лидера" })).toBeVisible();
 });
 
 test("a plain participant's profile has no workspace switcher action", async ({ page }) => {
@@ -71,5 +71,5 @@ test("a plain participant's profile has no workspace switcher action", async ({ 
   await openProfile(page);
 
   await expect(page.getByRole("button", { name: /Управление ЭРА/ })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Пространство лидера/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Режим лидера/ })).toHaveCount(0);
 });

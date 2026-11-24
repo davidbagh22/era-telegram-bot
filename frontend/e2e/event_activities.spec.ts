@@ -7,8 +7,8 @@ const SUBMITTER_NAME = "E2E Activity Submitter";
 
 async function enterWorkspace(page: import("@playwright/test").Page, telegramId: number) {
   await page.goto(`/app/?devTelegramId=${telegramId}`);
-  await page.getByRole("button", { name: "Профиль", exact: true }).click();
-  await page.getByRole("button", { name: /Пространство лидера|Управление ЭРА/ }).click();
+  await page.getByRole("button", { name: "Я", exact: true }).click();
+  await page.getByRole("button", { name: /Режим лидера|Управление ЭРА/ }).click();
 }
 
 test("leader pre-approves an activity submission, then the admin does the final review", async ({ browser }) => {
@@ -20,7 +20,7 @@ test("leader pre-approves an activity submission, then the admin does the final 
 
   try {
     await enterWorkspace(leaderPage, LEADER_TELEGRAM_ID);
-    await expect(leaderPage.getByRole("heading", { name: "Пространство лидера" })).toBeVisible();
+    await expect(leaderPage.getByRole("heading", { name: "Режим лидера" })).toBeVisible();
     await leaderPage.getByRole("button", { name: /Активности/ }).click();
     await expect(leaderPage.getByRole("heading", { name: "Активности" })).toBeVisible();
 

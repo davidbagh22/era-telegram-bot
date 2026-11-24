@@ -6,7 +6,7 @@ test.use({ timezoneId: "Asia/Yerevan" });
 test("wizard task deadline persists an absolute instant and reopens in editor local time", async ({ page }) => {
   await page.goto("/app/?devTelegramId=900003");
   await page.getByRole("navigation", { name: "Основная навигация" })
-    .getByRole("button", { name: "Профиль", exact: true }).click();
+    .getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
   await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
   await page.getByRole("button", { name: /Создать мероприятие.*Черновик/ }).click();
@@ -50,7 +50,7 @@ test("wizard task deadline persists an absolute instant and reopens in editor lo
 test("wizard program time and presenter remain usable at 320px", async ({ page }) => {
   await page.goto("/app/?devTelegramId=900003");
   await page.getByRole("navigation", { name: "Основная навигация" })
-    .getByRole("button", { name: "Профиль", exact: true }).click();
+    .getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
   await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
   await page.getByRole("button", { name: /Создать мероприятие.*Черновик/ }).click();
@@ -82,7 +82,7 @@ test("wizard navigation preserves newer edits while a save response is pending",
   // Isolated CI draft only: no event publication, participant changes or Telegram send.
   await page.goto("/app/?devTelegramId=900003");
   await page.getByRole("navigation", { name: "Основная навигация" })
-    .getByRole("button", { name: "Профиль", exact: true }).click();
+    .getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
   await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
   await page.getByRole("button", { name: /Создать мероприятие.*Черновик/ }).click();
@@ -125,7 +125,7 @@ test("wizard stays open when newer edits arrive during save-and-exit", async ({ 
   // Isolated CI draft only; never publishes or touches production participants.
   await page.goto("/app/?devTelegramId=900003");
   await page.getByRole("navigation", { name: "Основная навигация" })
-    .getByRole("button", { name: "Профиль", exact: true }).click();
+    .getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
   await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
   await page.getByRole("button", { name: /Создать мероприятие.*Черновик/ }).click();
@@ -167,7 +167,7 @@ test("wizard keeps edits typed while the exit draft-list refresh is pending", as
   // Isolated CI draft only; never calls event publish or Telegram delivery.
   await page.goto("/app/?devTelegramId=900003");
   await page.getByRole("navigation", { name: "Основная навигация" })
-    .getByRole("button", { name: "Профиль", exact: true }).click();
+    .getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
   await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
   await page.getByRole("button", { name: /Создать мероприятие.*Черновик/ }).click();

@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 
 async function eventCreator(page: Page) {
   await page.goto("/app/?devTelegramId=900003");
-  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
   await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
   await page.getByRole("button", { name: /Создать мероприятие.*Черновик/ }).click();
@@ -51,7 +51,7 @@ test("lost publish response retries the same event instead of creating a duplica
   await dialog.getByLabel("Место или ссылка").fill("Дом Москвы");
   await dialog.getByRole("button", { name: "Проверить публикацию" }).click();
   const publications: string[] = [];
-  await page.route("**/api/v1/admin/events/*/publish", async (route) => {
+  await page.route("**/api/v1/admin/events/*/publish?project_topic=true", async (route) => {
     publications.push(route.request().url());
     const response = await route.fetch();
     if (publications.length === 1) await route.abort();

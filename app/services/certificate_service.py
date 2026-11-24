@@ -11,7 +11,8 @@ from app.services.audit_service import audit
 from app.services.staff_access_service import can_operate_queue
 from app.utils.constants import ApplicationStatus, RegistrationStatus
 
-TEMPLATE_VERSION = "era-event-v1"
+TEMPLATE_VERSION = "era-event-v2"
+DEFAULT_PARTICIPATION_SIGNATORY = "Багдасарян Д.С."
 
 
 async def require_issuer(session, actor, settings):
@@ -37,7 +38,7 @@ async def certificate_snapshot(session, user_id, event_id, signatory):
             or target.application_status != ApplicationStatus.APPROVED
             or not event or not reg or reg.status != RegistrationStatus.ATTENDED):
         raise ValueError("Выдача доступна только одобренному участнику с подтверждённым посещением.")
-    return dict(full_name=f"{target.first_name} {target.last_name or ''}".strip(),
+    return dict(full_name=(reg.signup or {}).get("full_name") or f"{target.first_name} {target.last_name or ''}".strip(),
                 event_title=event.title, event_date=event.event_date.isoformat(),
                 signatory=signatory, template_version=TEMPLATE_VERSION)
 
@@ -84,7 +85,79 @@ async def issue_certificate(session, actor, settings, *, user_id, event_id, sign
     return issue
 
 
+async def auto_issue_participation_certificate(session, actor, *, user_id: int, event_id: int):
+    """Issue participation certificate right after attendance proof approval.
+
+    Idempotent per event+user. Uses the baked seal/signature PDF template.
+    Actor must already be a privileged admin (caller is proof reviewer).
+    """
+    basis = f"event:{event_id}:user:{user_id}"
+    await _lock(session, basis)
+    issued = await session.scalar(
+        select(CertificateIssue)
+        .where(CertificateIssue.basis_key == basis, CertificateIssue.status == "issued")
+        .order_by(CertificateIssue.revision.desc())
+        .limit(1)
+    )
+    if issued:
+        return issued
+    latest = await session.scalar(
+        select(CertificateIssue)
+        .where(CertificateIssue.basis_key == basis)
+        .order_by(CertificateIssue.revision.desc())
+        .limit(1)
+    )
+    snapshot = await certificate_snapshot(
+        session, user_id, event_id, DEFAULT_PARTICIPATION_SIGNATORY
+    )
+    now = datetime.now(timezone.utc)
+    request_key = f"auto-proof:{event_id}:{user_id}:{ (latest.revision + 1) if latest else 1 }"[:64]
+    existing_request = await session.scalar(
+        select(CertificateIssue).where(CertificateIssue.request_key == request_key)
+    )
+    if existing_request:
+        return existing_request
+    item = PortfolioItem(
+        user_id=user_id,
+        title=f"Сертификат участника: {snapshot['event_title']}",
+        item_type="certificate",
+        description="Автоматически выдан после подтверждения участия",
+        related_event_id=event_id,
+        issued_by=actor.id,
+        verified_by=actor.id,
+        status="verified",
+        issued_at=now.date(),
+    )
+    session.add(item)
+    await session.flush()
+    issue = CertificateIssue(
+        user_id=user_id,
+        event_id=event_id,
+        portfolio_item_id=item.id,
+        basis_key=basis,
+        revision=latest.revision + 1 if latest else 1,
+        request_key=request_key,
+        snapshot=snapshot,
+        issued_by=actor.id,
+        issued_at=now,
+        status="issued",
+    )
+    session.add(issue)
+    await session.flush()
+    item.description = f"{issue.document_number}. Сертификат участника ЭРА."
+    await audit(
+        session,
+        actor_id=actor.id,
+        action="certificate.auto_issued",
+        entity_type="certificate",
+        entity_id=issue.id,
+        new_value={"number": issue.document_number, "template": TEMPLATE_VERSION},
+    )
+    return issue
+
+
 async def revoke_certificate(session, actor, settings, issue_id, reason):
+
     await require_issuer(session, actor, settings)
     if not reason or not 3 <= len(reason.strip()) <= 1000:
         raise ValueError("Укажите причину отзыва от 3 до 1000 символов.")
@@ -103,3 +176,27 @@ async def revoke_certificate(session, actor, settings, issue_id, reason):
     await audit(session, actor_id=actor.id, action="certificate.revoked", entity_type="certificate", entity_id=issue.id,
                 new_value={"reason": reason.strip()})
     return issue
+
+
+async def deliver_requested_certificates(bot, settings, session_factory):
+    from aiogram.types import BufferedInputFile
+    from app.database.models import AppSetting
+    from app.services.certificate_pdf_service import build_certificate_pdf
+    from app.services.notification_service import safe_send_once
+
+    async with session_factory() as session:
+        rows = list(await session.scalars(select(AppSetting).where(
+            AppSetting.key.like("event-certificate:pending:%"),
+        ).order_by(AppSetting.id).limit(25).with_for_update(skip_locked=True)))
+        for row in rows:
+            issue = await session.get(CertificateIssue, row.value["issue_id"])
+            user = await session.get(User, issue.user_id) if issue else None
+            status = "skipped"
+            if issue and issue.status == "issued" and user and not user.is_archived and not user.is_blocked:
+                pdf = build_certificate_pdf(issue.snapshot, number=issue.document_number, issued_at=issue.issued_at)
+                result = await safe_send_once(bot, settings, user.telegram_id, "Ваш сертификат участника ЭРА",
+                    delivery_key=f"event-certificate:{issue.id}", notification_type="event_certificate",
+                    document=BufferedInputFile(pdf, filename=f"{issue.document_number}.pdf"), max_attempts=1)
+                status = "sent" if result.sent else "needs_attention"
+            row.key = row.key.replace(":pending:", f":{status}:")
+        await session.commit()

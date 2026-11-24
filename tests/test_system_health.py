@@ -128,6 +128,7 @@ class SystemSchedulerTests(unittest.TestCase):
         self.assertEqual(
             ids,
             [
+                "anniversary-2026",
                 "telegram-analytics-sources",
                 "review-sla-reminders",
                 "support-answer-delivery",
@@ -138,8 +139,11 @@ class SystemSchedulerTests(unittest.TestCase):
                 "application-notices",
                 "office-vacancy-reconciliation",
                 "configured-event-reminders",
+                "event-topic-auto-close",
                 "event-lifecycle-notifications",
+                "event-certificates",
                 "event-announcement-recovery",
+                "event-registration-notice-recovery",
                 "event-wizard-task-sync",
                 "project-scoring-reconciliation",
                 "task-squad-notifications",
@@ -149,6 +153,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "media-task-cards",
                 "media-chat-automation",
                 "participation-reactivation",
+                "participation-mode-notifications",
                 "community-verification-expiry",
                 "my-vector-monthly-reminders",
                 "book-club-daily",

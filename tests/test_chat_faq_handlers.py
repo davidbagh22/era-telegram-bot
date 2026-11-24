@@ -34,6 +34,20 @@ def _group_state(bot_id: int = 1, group_chat_id: int = -100, user_id: int = 777)
 
 
 class ChatFaqHandlerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_faq_projects_opens_miniapp_in_dm(self) -> None:
+        call = SimpleNamespace(data="faq:projects", answer=AsyncMock())
+        user = _approved_user()
+        settings = SimpleNamespace(effective_miniapp_url="https://era.example/app")
+        with patch.object(chat_faq, "safe_send", AsyncMock(return_value=True)) as safe_send:
+            await chat_faq.faq_miniapp_route(call, user, bot=SimpleNamespace(id=1), settings=settings)
+        safe_send.assert_awaited_once()
+        args, kwargs = safe_send.call_args
+        self.assertEqual(args[1], user.telegram_id)
+        self.assertEqual(args[2], FAQ_ANSWERS["faq:projects"])
+        self.assertEqual(kwargs["parse_mode"], "HTML")
+        self.assertIsNotNone(kwargs.get("reply_markup"))
+        call.answer.assert_awaited_once()
+
     async def test_faq_answer_sends_canned_html_text_to_dm(self) -> None:
         call = SimpleNamespace(data="faq:what_is_era", answer=AsyncMock())
         user = _approved_user()

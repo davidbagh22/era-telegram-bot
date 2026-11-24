@@ -203,10 +203,9 @@ async def _pin_navigation_once(bot, session_factory, chat_id, message_id):
         # Telegram may report an already-pinned message as BadRequest.
         # That is an explicit confirmation, not a rejected pin operation.
         # Only this narrow, idempotent error may reach the success receipt.
-        error_code = str(exc).upper().replace(" ", "_").replace("-", "_")
-        already_pinned = isinstance(exc, TelegramBadRequest) and any(
-            code in error_code for code in ("MESSAGE_IS_ALREADY_PINNED", "MESSAGE_ALREADY_PINNED")
-        )
+        from app.utils.telegram_pin import telegram_already_pinned
+
+        already_pinned = isinstance(exc, TelegramBadRequest) and telegram_already_pinned(exc)
         if not already_pinned:
             # An explicit rejection or RetryAfter can be retried after recovery.
             async with session_factory() as session:

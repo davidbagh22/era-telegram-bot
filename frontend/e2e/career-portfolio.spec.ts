@@ -4,16 +4,44 @@ const PARTICIPANT_TELEGRAM_ID = 900001;
 
 test("participant can open professional portfolio and CV tools", async ({ page }) => {
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
-  await page.getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Моё портфолио/ }).click();
 
   await expect(page.getByRole("heading", { name: "Моё портфолио" })).toBeVisible();
   await expect(page.getByText("Всё, что ты сделал. Всё, что можешь показать.")).toBeVisible();
   await expect(page.getByRole("button", { name: "＋ Добавить результат" })).toBeVisible();
   await expect(page.getByText("Рекомендация ЭРА", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Отправить резюме в чат с ботом" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Скачать резюме PDF" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Отправить портфолио в чат с ботом" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Скачать портфолио PDF" })).toBeVisible();
   await expect(page.getByText(/Моего вектора/)).toBeVisible();
+  await page.getByRole("button", { name: "Скачать портфолио PDF" }).click();
+  await expect(page.getByText("Перед выгрузкой портфолио")).toBeVisible();
+  await expect(page.getByPlaceholder("Ключевые навыки через запятую")).toBeVisible();
+});
+
+test("portfolio export interview completes a local PDF download smoke", async ({ page }) => {
+  // «Отправить портфолио в чат с ботом» needs a live Telegram delivery and is
+  // quarantined here: fake BOT_TOKEN returns 502 resume_delivery_unavailable.
+  await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
+  await page.getByRole("button", { name: "Я", exact: true }).click();
+  await page.getByRole("button", { name: /Моё портфолио/ }).click();
+  await page.getByRole("button", { name: "Скачать портфолио PDF" }).click();
+  await expect(page.getByText("Перед выгрузкой портфолио")).toBeVisible();
+
+  await page.getByPlaceholder("Как вас представить? (позиция / роль)").fill("E2E участник");
+  await page.getByPlaceholder("О себе — 3–5 сильных предложений").fill("Изолированная проверка выгрузки портфолио.");
+  await page.getByPlaceholder("Ключевые навыки через запятую").fill("организация, коммуникация");
+
+  const downloadPromise = page.waitForEvent("download");
+  const pdfResponse = page.waitForResponse(
+    (response) => response.url().includes("/api/v1/career/resume.pdf") && response.ok(),
+  );
+  await page.getByRole("button", { name: "Сохранить и скачать PDF" }).click();
+  const response = await pdfResponse;
+  expect(response.headers()["content-type"] ?? "").toContain("application/pdf");
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/\.pdf$/i);
+  await expect(page.getByText("Портфолио готово")).toBeVisible();
 });
 
 
@@ -39,7 +67,7 @@ test("portfolio hides unsafe evidence links and wraps long mobile cards", async 
   });
 
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
-  await page.getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Моё портфолио/ }).click();
   await expect(page.getByText(longTitle)).toBeVisible();
   const unsafeCard = page.getByText(longTitle).locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' era-card ')][1]");

@@ -37,7 +37,7 @@ export function PeopleList({ onSelect }: PeopleListProps) {
       <div style={{ display: "flex", gap: "0.5rem" }}>
         <input
           type="text"
-          placeholder="Имя, имя пользователя или ID Telegram"
+          placeholder="Имя, имя пользователя или номер Telegram"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           style={{ ...inputStyle, flex: 1 }}
@@ -81,7 +81,7 @@ export function PeopleList({ onSelect }: PeopleListProps) {
                   </strong>
                   <br />
                   <span style={{ color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
-                    {ROLE_LABELS[item.role] ?? item.role}
+                    {ROLE_LABELS[item.role] ?? "Роль обновлена"}
                     {item.username ? ` · @${item.username}` : ""}
                   </span>
                 </span>

@@ -95,7 +95,7 @@ def test_admin_overview_replaces_separate_maintenance_and_analytics_hubs() -> No
     assert "<AdminDashboardScreen onAction=" in overview
     assert "<SystemPanel />" not in overview
     assert "Пульт руководителя" in overview
-    assert "Нужно решить" in overview
+    assert "Решить сегодня" in overview
     assert "Регистрация и состав" in overview
     for destination in [
         "participants",

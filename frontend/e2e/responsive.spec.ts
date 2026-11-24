@@ -36,11 +36,11 @@ for (const width of WIDTHS) {
     await page.setViewportSize({ width, height: 844 });
     await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
 
-    await expect(page.getByText("Вот что сейчас важнее всего.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Твоя орбита" })).toBeVisible();
     await expectNoHorizontalOverflow(page, width);
 
     const nav = page.getByRole("navigation", { name: "Основная навигация" });
-    for (const tabName of ["Проекты", "Участие", "Возможности", "Профиль", "Главная"]) {
+    for (const tabName of ["Проекты", "Афиша", "Открытия", "Я", "Орбита"]) {
       await nav.getByRole("button", { name: tabName, exact: true }).click();
       await expectNoHorizontalOverflow(page, width);
     }

@@ -21,7 +21,7 @@ const CLAIM_MODE_LABELS: Record<string, string> = {
 // single-selector BottomSheet pattern rather than 6 horizontal tabs.
 const SCOPES: { value: TaskScope; label: string; description: string }[] = [
   { value: "for_you", label: "Для тебя", description: "Подобрано по направлению и дедлайну" },
-  { value: "available", label: "Все", description: "Все задачи, к которым можно присоединиться" },
+  { value: "available", label: "Доступные", description: "Задачи, к которым можно присоединиться" },
   { value: "mine", label: "Мои", description: "То, что уже взято в работу" },
   { value: "team", label: "Командные", description: "Задачи с несколькими участниками" },
   { value: "review", label: "На проверке", description: "Отправленные результаты" },
@@ -38,6 +38,44 @@ const STATUS_LABELS: Record<string, string> = {
   overdue: "Просрочена",
   cancelled: "Отменена",
 };
+
+/**
+ * Strip pack meta preamble; keep a short human description for list cards.
+ * Pack lines look like: "Тип: Media Команда: 1–4 Чат: media <instruction>"
+ * — meta and instruction share one line, so never wipe a whole line as meta.
+ */
+export function taskListDescription(raw: string, limit = 140): string {
+  const original = (raw || "").trim();
+  if (!original) return "";
+  let text = original;
+  const taskMark = /(?:^|\n)Задача:\s*/i.exec(text);
+  if (taskMark) {
+    text = text.slice(taskMark.index + taskMark[0].length).trim();
+  }
+  // Fixed field order from community missions pack. Deadline values are short
+  // ("14 дней"); stop before the first real instruction sentence.
+  const packMeta = text.match(
+    /^Тип:\s*.+?\s+Команда:\s*.+?\s+Чат:\s*\S+(?:\s+Дедлайн:\s*\d+\s*(?:дн(?:я|ей|ень)|недел[ьяи]|час(?:а|ов)?)?)?\s*/iu,
+  );
+  if (packMeta) {
+    text = text.slice(packMeta[0].length).trim();
+  } else {
+    // Drop leading meta tokens only when the next known key follows.
+    text = text
+      .replace(/^Тип:\s*.+?(?=\s+Команда:)/iu, "")
+      .replace(/^\s*Команда:\s*.+?(?=\s+Чат:)/iu, "")
+      .replace(/^\s*Чат:\s*\S+(?=\s+(?:Дедлайн:|[«"A-ZА-ЯЁ]))/iu, "")
+      .replace(/^\s*Дедлайн:\s*\d+\s*(?:дн(?:я|ей|ень)|недел[ьяи]|час(?:а|ов)?)?/iu, "")
+      .trim();
+  }
+  text = text.replace(/\s+/g, " ").trim();
+  if (!text) {
+    // Boundary unclear — keep a truncated original rather than an empty card.
+    text = original.replace(/\s+/g, " ").trim();
+  }
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit - 1).trimEnd()}…`;
+}
 
 interface TasksTabProps {
   initialItemId?: number | null;
@@ -143,19 +181,43 @@ export function TasksTab({ initialItemId }: TasksTabProps = {}) {
       {state.status === "loading" && <SkeletonList count={3} />}
       {state.status === "error" && <EmptyState text="Не удалось загрузить задачи." />}
       {state.status === "ready" && state.data.length === 0 && <EmptyState text="Пока нет задач в этом разделе. Как только появится новое действие, оно будет здесь." />}
-      {state.status === "ready" && state.data.map((task) => (
-        <Card key={task.id}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: ".55rem", alignItems: "flex-start" }}>
-            <strong>{task.title}</strong>
-            <strong style={{ whiteSpace: "nowrap" }}>+{task.points}</strong>
-          </div>
-          <p style={{ margin: "0.3rem 0", color: "var(--era-text-muted)" }}>
-            До {new Date(task.deadline).toLocaleDateString("ru-RU")} · {STATUS_LABELS[task.status] ?? "Статус обновлён"}
-            {task.claim_mode && task.claim_mode !== "SOLO" ? ` · ${CLAIM_MODE_LABELS[task.claim_mode] ?? task.claim_mode} ${task.squad_size}/${task.max_people ?? "?"}` : ""}
-          </p>
-          <button type="button" onClick={() => { window.location.hash = `#/tasks/${task.id}`; }} style={{ width: "100%", marginTop: ".4rem" }}>Открыть задание</button>
-        </Card>
-      ))}
+      {state.status === "ready" && state.data.map((task) => {
+        const canTake = !task.is_joined_or_assigned && ["new", "published"].includes(task.status);
+        const description = taskListDescription(task.description || task.deliverable || "");
+        return (
+          <Card key={task.id} style={{ padding: "0.85rem 0.9rem" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: ".55rem", alignItems: "flex-start" }}>
+              <strong style={{ fontSize: "1.02rem", lineHeight: 1.25, overflowWrap: "break-word" }}>{task.title}</strong>
+              <span style={{ whiteSpace: "nowrap", color: "var(--era-gold-ink)", fontWeight: 800, fontSize: "0.86rem" }}>+{task.points}</span>
+            </div>
+            {description ? (
+              <p style={{ margin: "0.45rem 0 0", color: "var(--era-text-muted)", fontSize: "0.86rem", lineHeight: 1.45 }}>
+                {description}
+              </p>
+            ) : null}
+            <div style={{ display: "flex", gap: "0.45rem", marginTop: "0.7rem", flexWrap: "wrap" }}>
+              {canTake ? (
+                <button
+                  type="button"
+                  className="era-btn-primary"
+                  disabled={pendingId !== null}
+                  onClick={() => void handleClaim(task.id)}
+                  style={{ flex: "1 1 8rem" }}
+                >
+                  {pendingId === task.id ? "Сохраняем…" : "Взять"}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => { window.location.hash = `#/tasks/${task.id}`; }}
+                style={{ flex: "1 1 8rem" }}
+              >
+                {task.is_joined_or_assigned ? "К заданию" : "Подробнее"}
+              </button>
+            </div>
+          </Card>
+        );
+      })}
 
       <BottomSheet open={filterOpen} onClose={() => setFilterOpen(false)} title="Какие задания показать?">
         <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>

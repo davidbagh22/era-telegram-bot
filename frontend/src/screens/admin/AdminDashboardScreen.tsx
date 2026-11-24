@@ -126,7 +126,7 @@ function DetailView({ section, onBack }: { section: AnalyticsDetailSection; onBa
                       <strong style={{ display: "block", overflowWrap: "anywhere" }}>{item.title}</strong>
                       {item.subtitle && <span style={{ display: "block", marginTop: "0.25rem", color: "var(--era-text-muted)", fontSize: "0.78rem", overflowWrap: "anywhere" }}>{item.subtitle}</span>}
                     </div>
-                    {item.status && <StatusBadge label={STATUS_LABELS[item.status] ?? item.status} tone="neutral" />}
+                    {item.status && <StatusBadge label={STATUS_LABELS[item.status] ?? "Статус обновлён"} tone="neutral" />}
                   </div>
                 </Card>
               ))}
@@ -160,7 +160,7 @@ function DailyChart({ title, days }: { title: string; days: TelegramAnalyticsSou
       <line x1="25" y1="90" x2="357" y2="90" stroke="currentColor" opacity=".25" />
       {days.map((day, i) => { const value = day.value ?? day.observed; const width = 330 / Math.max(days.length, 1); return <rect key={day.date}
         x={26 + i * width} y={90 - value / max * 70} width={Math.max(.4, width - 1)} height={value / max * 70}
-        fill="var(--era-violet, #632cff)" opacity={day.value === null ? .35 : .9}>
+        fill="var(--era-primary, #bc2184)" opacity={day.value === null ? .35 : .9}>
         <title>{day.date}: {value}{day.value === null ? " учтено, покрытие неполное" : ""}</title></rect>; })}
     </svg>
     <div className="analytics-chart-dates"><span>{days[0]?.date}</span><span>{days[days.length - 1]?.date}</span></div>
@@ -219,8 +219,9 @@ export function AdminDashboardScreen({ onAction }: { onAction?: (action: Analyti
   const requestKey = `${period}/${start}/${end}`;
   const previousSnapshot = useRef<{ key: string; data: AnalyticsV2Snapshot | null } | null>(null);
   useEffect(() => {
-    if (snapshot.status === 'ready') previousSnapshot.current = { key: requestKey, data: snapshot.data };
-    // Do not re-label a previous period's ready snapshot when only the filter changes.
+    // useAsync memoizes result identity; do not list requestKey here or a period
+    // click would re-label the previous ready payload under the new key.
+    if (snapshot.status === "ready") previousSnapshot.current = { key: requestKey, data: snapshot.data };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot]);
   const data = snapshot.status === "ready" ? snapshot.data : snapshot.status === 'loading' && previousSnapshot.current?.key === requestKey ? previousSnapshot.current.data : null;

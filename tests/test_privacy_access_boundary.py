@@ -19,7 +19,7 @@ class CommunityPrivacyTests(unittest.TestCase):
         target = SimpleNamespace(
             id=9, first_name="Member", last_name="Example", role="participant",
             application_status="approved", participation_status="new_member",
-            is_archived=False, is_blocked=False, departments=[],
+            is_archived=False, is_blocked=False, departments=[], directions=[],
             phone="private-phone", email="private-email",
         )
         session = SimpleNamespace(get=AsyncMock(return_value=target))
@@ -45,6 +45,41 @@ class CommunityPrivacyTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("phone", response.json())
         self.assertNotIn("email", response.json())
+        self.assertIn("directions", response.json())
+
+    def test_unapproved_viewer_cannot_list_directory(self):
+        client, _ = self.client_for("pending")
+        response = client.get("/api/v1/users")
+        self.assertEqual(response.status_code, 403)
+
+    def test_directory_list_returns_public_fields_only(self):
+        from unittest.mock import MagicMock
+
+        app = FastAPI()
+        app.include_router(router, prefix="/api/v1")
+        member = SimpleNamespace(
+            id=9, first_name="Member", last_name="Example", role="participant",
+            application_status="approved", participation_status="new_member",
+            is_archived=False, is_blocked=False, departments=[], directions=[],
+            phone="private-phone", email="private-email",
+        )
+        result = MagicMock()
+        result.scalars.return_value.unique.return_value.all.return_value = [member]
+        session = SimpleNamespace(execute=AsyncMock(return_value=result))
+
+        async def session_override():
+            yield session
+
+        app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(application_status="approved")
+        app.dependency_overrides[get_session] = session_override
+        client = TestClient(app)
+        response = client.get("/api/v1/users?limit=10")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["total"], 1)
+        self.assertEqual(body["items"][0]["name"], "Member Example")
+        self.assertNotIn("phone", body["items"][0])
+        self.assertNotIn("email", body["items"][0])
 
 
 class ApiCachePrivacyTests(unittest.TestCase):

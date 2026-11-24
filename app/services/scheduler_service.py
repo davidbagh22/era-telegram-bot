@@ -681,6 +681,19 @@ def create_scheduler(bot: Bot, settings: Settings, session_factory) -> AsyncIOSc
         max_instances=1,
         coalesce=True,
     )
+    from app.services.event_archive_service import run_event_archive_jobs
+
+    scheduler.add_job(
+        run_event_archive_jobs,
+        "interval",
+        minutes=15,
+        args=(session_factory,),
+        kwargs={"timezone": settings.timezone},
+        id="event-auto-archive",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
     scheduler.add_job(
         send_birthday_greetings,
         "cron",

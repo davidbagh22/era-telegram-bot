@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import (
+    AttendanceProof,
     DepartmentApplication,
     Event,
     EventActivitySubmission,
@@ -44,6 +45,7 @@ ATTENTION_KEYS = (
     "projects_review",
     "events_pending",
     "event_waitlist",
+    "attendance_proofs",
     "tasks_attention",
     "questions",
     "activity_results",
@@ -163,6 +165,11 @@ async def dashboard_metrics(session: AsyncSession) -> DashboardMetrics:
             session,
             EventRegistration,
             EventRegistration.status == RegistrationStatus.WAITLIST,
+        ),
+        "attendance_proofs": await _count(
+            session,
+            AttendanceProof,
+            AttendanceProof.status == "pending",
         ),
         "tasks_open": await _count(
             session,

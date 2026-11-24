@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from hashlib import sha256
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -22,9 +23,74 @@ from app.services import (
     leadership_weekly_service,
 )
 from app.services.leadership_permission_service import active_office_assignments
-from app.utils.constants import TaskStatus
+from app.utils.constants import ApplicationStatus, TaskStatus
+from app.services.notification_service import notify_admins_once
+from app.utils.deep_links import miniapp_path_url
+from app.services.bot_notification_service import PrimaryAction, action_markup
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/leadership", tags=["leadership"])
+
+
+class NominationIn(BaseModel):
+    nominee_user_id: int
+    reason: str = Field(min_length=8, max_length=1000)
+
+
+class NominationOut(BaseModel):
+    ok: bool
+
+
+@router.post("/nominations", response_model=NominationOut)
+async def nominate_leader(
+    payload: NominationIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+    settings: Settings = Depends(get_settings),
+) -> NominationOut:
+    """Any approved participant can suggest someone for leadership appointment."""
+    if user.application_status != ApplicationStatus.APPROVED:
+        raise HTTPException(status_code=403, detail="not_approved")
+    nominee = await session.get(User, payload.nominee_user_id)
+    if nominee is None or nominee.application_status != ApplicationStatus.APPROVED:
+        raise HTTPException(status_code=404, detail="nominee_not_found")
+    reason = payload.reason.strip()
+    if len(reason) < 8:
+        raise HTTPException(status_code=422, detail="reason_required")
+
+    nominator = f"{user.first_name} {user.last_name or ''}".strip()
+    target = f"{nominee.first_name} {nominee.last_name or ''}".strip()
+    admin_url = miniapp_path_url(
+        settings.effective_miniapp_url,
+        "admin",
+        {"adminSection": "appoint-leader"},
+    )
+    text = (
+        "Предложение в руководство\n\n"
+        f"Кого: {target} (id {nominee.id})\n"
+        f"Кто предложил: {nominator} (id {user.id})\n"
+        f"Почему: {reason}"
+    )
+    if bot is not None:
+        try:
+            markup = action_markup(PrimaryAction(label="Назначить", web_app_url=admin_url)) if admin_url else None
+            await notify_admins_once(
+                bot,
+                settings,
+                text,
+                delivery_key=(
+                    f"admin:leader_nomination:{user.id}:{nominee.id}:"
+                    f"{sha256(reason.encode('utf-8')).hexdigest()[:32]}"
+                ),
+                notification_type="leader_nomination",
+                reply_markup=markup,
+            )
+        except Exception:
+            logger.exception("Leader nomination notify failed")
+    return NominationOut(ok=True)
 
 
 async def _require_pulse_cycle_access(

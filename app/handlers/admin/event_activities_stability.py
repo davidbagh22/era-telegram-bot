@@ -14,7 +14,7 @@ from app.handlers.admin.event_activities_block15 import ActivitySetupStates
 from app.services.notification_service import safe_answer_media, safe_send
 from app.services.points_service import add_points
 from app.utils import texts
-from app.utils.constants import EventStatus, Role
+from app.utils.constants import ACTIVITY_SUBMISSION_TYPE_LABELS, EventStatus, Role
 from app.utils.validators import clean_text
 
 router = Router(name="admin_event_activities_stability")
@@ -202,7 +202,9 @@ async def _submission_card(message: Message, session: AsyncSession, submission: 
     status_label = {
         "pending": "на проверке у админа",
         "leader_approved": "проверено лидером, ждёт финального начисления",
-    }.get(submission.status, submission.status)
+        "approved": "принято",
+        "rejected": "отклонено",
+    }.get(submission.status, "статус уточняется")
     telegram = f"@{participant.username}" if participant.username else str(participant.telegram_id)
     await message.answer(
         "📥 Активность на проверку\n\n"
@@ -212,7 +214,7 @@ async def _submission_card(message: Message, session: AsyncSession, submission: 
         f"Активность: {activity.title}\n"
         f"Статус: {status_label}\n"
         f"Баллы: {activity.points}\n"
-        f"Тип: {submission.file_type or activity.submission_type}\n\n"
+        f"Тип: {ACTIVITY_SUBMISSION_TYPE_LABELS.get(submission.file_type or activity.submission_type, 'формат уточняется')}\n\n"
         f"Подтверждение:\n{submission.text or 'прикреплён файл'}",
         reply_markup=_review_keyboard(submission.id),
     )

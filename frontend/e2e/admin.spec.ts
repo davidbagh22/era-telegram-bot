@@ -6,7 +6,7 @@ const ADMIN_TELEGRAM_ID = 900003;
 function profileTab(page: import("@playwright/test").Page) {
   return page
     .getByRole("navigation", { name: "Основная навигация" })
-    .getByRole("button", { name: "Профиль", exact: true });
+    .getByRole("button", { name: "Я", exact: true });
 }
 
 async function enterAdminWorkspace(page: import("@playwright/test").Page) {
@@ -50,9 +50,9 @@ test("admin enters management workspace and approves a pending applicant", async
   await expect(application.getByText("Согласие и подача", { exact: true })).toBeVisible();
 
   await expect(application.getByText("Дата рождения", { exact: true })).toHaveCount(0);
-  await expect(application.getByText("Telegram ID", { exact: true })).not.toBeVisible();
+  await expect(application.getByText("номер Telegram", { exact: true })).not.toBeVisible();
   await application.locator("summary").filter({ hasText: "Служебные сведения" }).click();
-  await expect(application.getByText("Telegram ID", { exact: true })).toBeVisible();
+  await expect(application.getByText("номер Telegram", { exact: true })).toBeVisible();
   for (const width of [320, 430, 768]) {
     await page.setViewportSize({ width, height: 844 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -66,7 +66,7 @@ test("admin overview is a simple leader control surface", async ({ page }) => {
 
   await expect(page.getByText("Пульт руководителя", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Что происходит в ЭРА" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Нужно решить" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Решить сегодня" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Быстро сделать" })).toBeVisible();
   await expect(page.getByText("Регистрация и состав", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Аналитика/ })).toBeVisible();
@@ -96,6 +96,89 @@ test("overview shows task and support queues and opens their native resolver", a
     await expect(page.locator("body")).toHaveAttribute("data-native-queue-url", `https://t.me/ERA_1bot?start=${payload}`);
     await expect(page.locator("body")).toHaveAttribute("data-native-queue-closed", "true");
   }
+});
+
+test("Решить сегодня opens event and project resolvers, not section menus", async ({ page }) => {
+  await page.route("**/api/v1/admin/dashboard", (route) => route.fulfill({
+    json: {
+      metrics: {
+        current_roster: 10,
+        events_pending: 2,
+        activity_results: 3,
+        projects_review: 1,
+        event_waitlist: 4,
+      },
+      attention_total: 10,
+    },
+  }));
+  await page.route("**/api/v1/admin/events", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/v1/admin/projects", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/v1/admin/activities/submissions**", (route) => route.fulfill({ json: [] }));
+  await enterAdminWorkspace(page);
+
+  await page.getByRole("button", { name: /2 · События на согласовании/ }).click();
+  await expect(page.getByRole("heading", { name: "На согласовании" })).toBeVisible();
+  await expect(page.getByText("Создать мероприятие", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Обзор", exact: true }).click();
+  await page.getByRole("button", { name: /4 · лист ожидания/ }).click();
+  await expect(page.getByRole("heading", { name: "Участники и посещаемость" })).toBeVisible();
+  await expect(page.getByText("Создать мероприятие", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("На согласовании", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Обзор", exact: true }).click();
+  await page.getByRole("button", { name: /3 · Результаты активностей/ }).click();
+  await expect(page.getByRole("heading", { name: "Активности после события" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Проверить результаты/ })).toHaveCount(0);
+  await expect(page.getByText("Активностей на проверке нет.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Обзор", exact: true }).click();
+  await page.getByRole("button", { name: /1 · Проекты на проверке/ }).click();
+  await expect(page.getByRole("heading", { name: "Проекты на рассмотрении" })).toBeVisible();
+  await expect(page.getByText("Создать проект", { exact: true })).toHaveCount(0);
+});
+
+test("appoint-leader deep link opens the packages screen", async ({ page }) => {
+  await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}&eraPath=admin&adminSection=appoint-leader`);
+  await expect(page.getByRole("heading", { level: 2, name: "Назначить руководителя" })).toBeVisible();
+  await expect(page.getByText("Пакеты функций", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Назначить и открыть функции" })).toBeDisabled();
+});
+
+test("appoint leader keeps selected person after search clears", async ({ page }) => {
+  await page.route("**/api/v1/admin/offices**", async (route) => {
+    const url = route.request().url();
+    if (url.includes("assignable-users")) {
+      await route.fulfill({
+        json: [{
+          id: 42,
+          telegram_id: 4242,
+          first_name: "Activist",
+          last_name: "Candidate",
+          username: "act_cand",
+          role: "activist",
+          application_status: "approved",
+          is_blocked: false,
+          is_archived: false,
+        }],
+      });
+      return;
+    }
+    if (route.request().method() === "GET") {
+      await route.fulfill({ json: [] });
+      return;
+    }
+    await route.continue();
+  });
+  await enterAdminWorkspace(page);
+  await page.getByRole("button", { name: "Люди", exact: true }).click();
+  await page.getByRole("button", { name: /Назначить руководителя/ }).click();
+  await page.getByPlaceholder("Имя или @username").fill("Activist");
+  await page.getByRole("button", { name: /Activist Candidate/ }).click();
+  await page.getByPlaceholder("Имя или @username").fill("");
+  await expect(page.getByText(/Выбран:.*Activist Candidate/)).toBeVisible();
+  await expect(page.getByText(/activist/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Назначить и открыть функции" })).toBeEnabled();
 });
 
 test("analytics expands from overview instead of a separate control hub", async ({ page }) => {

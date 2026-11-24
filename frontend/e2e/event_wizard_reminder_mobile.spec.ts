@@ -5,7 +5,7 @@ test("custom reminder input and action fit a 320px Telegram viewport", async ({ 
   await page.setViewportSize({ width: 320, height: 800 });
   await page.goto("/app/?devTelegramId=900003");
   await page.getByRole("navigation", { name: "Основная навигация" })
-    .getByRole("button", { name: "Профиль", exact: true }).click();
+    .getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
   await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
   await page.getByRole("button", { name: /Создать мероприятие.*Черновик/ }).click();

@@ -116,5 +116,35 @@ class SnapshotCollectorTests(unittest.TestCase):
         self.assertEqual(assess(snapshot, now=datetime.now(timezone.utc))["status"], "CI_PENDING")
 
 
+
+class MalformedSnapshotTests(unittest.TestCase):
+    def test_malformed_workflows_and_jobs_are_rejected(self):
+        for fragment, payload in (
+            ("/actions/runs?", None), ("/actions/runs?", {"workflow_runs": None}),
+            ("/actions/runs?", {"workflow_runs": [None]}),
+            ("/actions/runs/123/jobs?", None),
+            ("/actions/runs/123/jobs?", {"jobs": [None]}),
+        ):
+            api = FakeAPI()
+            def fetch(url, token=None):
+                return payload if fragment in url else api(url, token)
+            with self.subTest(fragment=fragment, payload=payload):
+                with self.assertRaises(ValueError):
+                    module.collect(fetch, render_token="fake")
+
+    def test_direct_script_without_credentials_reports_unverified(self):
+        import json
+        import os
+        import subprocess
+        env = dict(os.environ)
+        env.pop("RENDER_API_KEY", None)
+        env.pop("PYTHONPATH", None)
+        script = Path(__file__).resolve().parents[1] / "scripts" / "render_release_snapshot.py"
+        result = subprocess.run([sys.executable, str(script)], env=env,
+                                capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(json.loads(result.stdout)["status"], "UNVERIFIED")
+
+
 if __name__ == "__main__":
     unittest.main()

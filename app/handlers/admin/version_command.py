@@ -44,13 +44,14 @@ async def version_command(
     # part of this URL).
     try:
         me = await bot.get_me()
-        bot_identity = f"@{me.username} (id {me.id})"
+        bot_identity = f"@{me.username} (номер {me.id})"
     except Exception:
         bot_identity = "ошибка запроса к Telegram"
 
     try:
         menu_button = await bot.get_chat_menu_button()
-        menu_button_line = menu_button.type
+        menu_types = {"web_app": "мини-приложение", "commands": "команды", "default": "по умолчанию"}
+        menu_button_line = menu_types.get(menu_button.type, menu_button.type)
         if menu_button.type == "web_app":
             menu_button_line += f" → {menu_button.web_app.url}"
     except Exception:
@@ -60,8 +61,8 @@ async def version_command(
         webhook_info = await bot.get_webhook_info()
         webhook_line = (
             f"{webhook_info.url or 'не настроен'} "
-            f"(pending: {webhook_info.pending_update_count}"
-            + (f", last_error: {webhook_info.last_error_message}" if webhook_info.last_error_message else "")
+            f"(в очереди: {webhook_info.pending_update_count}"
+            + (f", последняя ошибка: {webhook_info.last_error_message}" if webhook_info.last_error_message else "")
             + ")"
         )
     except Exception:
@@ -73,16 +74,24 @@ async def version_command(
     except Exception:
         db_line = "НЕДОСТУПНА"
 
+    environment_label = "Render" if environment == "render" else "локальная / другая"
+    if commit == "unknown":
+        commit = "нет данных"
+    if service == "unknown":
+        service = "не указан"
+    if hostname == "unknown":
+        hostname = "не указан"
+
     await message.answer(
-        "🧩 Версия и диагностика ЭРА Бота\n\n"
-        f"Commit: {commit[:12]}\n"
-        f"Среда: {environment}\n"
-        f"Service: {service}\n"
-        f"Host: {hostname}\n"
+        "🧩 Версия и диагностика ЭРА\n\n"
+        f"Сборка: {commit[:12]}\n"
+        f"Среда: {environment_label}\n"
+        f"Сервис: {service}\n"
+        f"Хост: {hostname}\n"
         f"Процесс запущен: {PROCESS_STARTED_AT:%Y-%m-%d %H:%M:%S} UTC\n\n"
-        f"Bot: {bot_identity}\n"
-        f"Menu button: {menu_button_line}\n"
-        f"Mini App: {settings.effective_miniapp_url or 'не настроен'}\n"
-        f"Webhook: {webhook_line}\n"
-        f"БД: {db_line}"
+        f"Бот: {bot_identity}\n"
+        f"Кнопка меню: {menu_button_line}\n"
+        f"Мини-приложение: {settings.effective_miniapp_url or 'не настроено'}\n"
+        f"Приём обновлений: {webhook_line}\n"
+        f"База данных: {db_line}"
     )

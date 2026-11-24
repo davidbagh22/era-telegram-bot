@@ -2,8 +2,8 @@
 
 Pins the real, behavioral fix — not just a string match on source code — for
 the "leader_approved submissions look unsubmitted" bug found at three call
-sites: cabinet.py::my_events, event_plans_changed.py::my_events, and the
-*live* event_activities_block15.py::proof_start (event_activities_block7.py's
+sites: cabinet.py::my_events and the *live*
+event_activities_block15.py::proof_start (event_activities_block7.py's
 near-identical handler never actually runs — see the audit doc for why).
 
 Each test drives the real handler against a real SQLite DB (no mocked SQL),
@@ -28,7 +28,7 @@ from app.database.models import (
     EventRegistration,
     User,
 )
-from app.handlers.participant import cabinet, event_activities_block15, event_plans_changed
+from app.handlers.participant import cabinet, event_activities_block15
 from app.utils.constants import ApplicationStatus, EventStatus, RegistrationStatus
 
 
@@ -105,11 +105,13 @@ class LeaderApprovedNotTreatedAsUnsubmittedTests(unittest.IsolatedAsyncioTestCas
                 "leader_approved submission was offered again for a duplicate submit",
             )
 
-    async def test_event_plans_changed_my_events_hides_leader_approved_activity(self) -> None:
+    async def test_cabinet_my_events_hides_leader_approved_activity(self) -> None:
+        # Live «Мои мероприятия» is cabinet.my_events; event_plans_changed no longer
+        # duplicates that list (cancel/leave-waitlist callbacks only).
         async with self.session_factory() as session:
             user, event, activity = await self._seed(session)
             call = _CallStub(data="cabinet:events")
-            await event_plans_changed.my_events(call, user, session)
+            await cabinet.my_events(call, user, session)
             text, kwargs = call.message.answer.call_args
             keyboard = kwargs["reply_markup"].inline_keyboard
             offered_callbacks = {btn.callback_data for row in keyboard for btn in row}

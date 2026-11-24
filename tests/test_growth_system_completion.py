@@ -28,7 +28,8 @@ def test_era_pro_is_reachable_from_opportunities_and_has_context_help() -> None:
 
     assert 'route === "era-pro"' in app
     assert "<EraProScreen" in app
-    assert 'community: "#/opportunities"' in app
+    assert 'community: "#/discover"' in app
+    assert '"era-pro"' in read("frontend/src/screens/DiscoverScreen.tsx")
     assert "<EraProOpportunityCard />" in points_sheet
     assert "era_pro:" in registry
     assert "8 000 — не цена" in registry

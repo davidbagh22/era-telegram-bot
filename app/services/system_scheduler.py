@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from datetime import datetime
+import os
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import Settings
-from app.services.media_recruitment_service import publish_media_recruitment
+from app.services.anniversary_campaign_service import run_campaign
+from app.services.media_recruitment_service import publish_media_recruitment, publish_media_join_direct_invitation
 from app.services.telegram_analytics_service import refresh_sources_job, mark_coverage_gap, source_targets
 from app.services.application_review_service import deliver_application_notices
 from app.services.project_review_notice_service import deliver_project_review_notices
@@ -17,7 +19,10 @@ from app.services.community_verification_jobs import complete_verification_campa
 from app.services.daily_public_content_service import run_daily_public_content
 from app.services.development_notification_service import send_monthly_development_reminders
 from app.services.event_custom_reminder_service import send_configured_event_reminders
+from app.services.event_topic_lifecycle import close_due_event_topics
+from app.services.certificate_service import deliver_requested_certificates
 from app.services.event_publication_service import deliver_pending_event_announcements
+from app.services.event_registration_notice_service import recover_event_registration_notices
 from app.services.event_wizard_sync_service import sync_event_wizard_tasks_job
 from app.services.leadership_weekly_service import check_weekly_pulses_job, open_weekly_pulses_job
 from app.services.leaders_workcenter_service import sync_leaders_task_cards
@@ -29,6 +34,9 @@ from app.services.media_attachment_service import post_missing_media_task_cards
 from app.services.media_pipeline_service import reconcile_media_pipeline_job
 from app.services.media_service import process_media_chat_automation, publish_due_channel_content
 from app.services.participation_lifecycle_service import run_reactivation_cycle
+from app.services.participation_mode_notification_service import (
+    process_participation_mode_notifications,
+)
 from app.services.project_scoring_reconciliation_service import reconcile_project_scoring_job
 from app.services.system_health_service import run_system_diagnostics, send_daily_system_summary
 from app.services.vacancy_reconciliation_service import reconcile_vacancies_job
@@ -54,6 +62,19 @@ def add_system_jobs(
 ) -> None:
     """Attach production-health jobs and durable infrastructure maintenance."""
     now = datetime.now(ZoneInfo(settings.timezone))
+    # Campaign sends stay dormant until ANNIVERSARY_2026_CAMPAIGN / activation gate opens.
+    scheduler.add_job(run_campaign, "interval", minutes=1, args=(bot, settings, session_factory), id="anniversary-2026", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    if os.getenv("RENDER_SERVICE_ID") == "srv-d91r1j7avr4c73fs8h00" and date(2026, 11, 19) <= now.date() < date(2026, 11, 23):
+        from app.services.moscow_house_november import publish_november_program
+        scheduler.add_job(publish_november_program, "interval", minutes=15, args=(bot, settings, session_factory), id="moscow-house-november", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now, misfire_grace_time=300)
+    if os.getenv("RENDER_SERVICE_ID") == "srv-d91r1j7avr4c73fs8h00" and date(2026, 11, 20) <= now.date() <= date(2026, 11, 22):
+        from app.services.geo_dictation_launch import publish_geo_dictation
+        scheduler.add_job(
+            publish_geo_dictation, "interval", minutes=5,
+            args=(bot, settings, session_factory), id="geographic-dictation-nov22",
+            replace_existing=True, max_instances=1, coalesce=True,
+            next_run_time=now, misfire_grace_time=120,
+        )
     # A restart interrupts verifiable continuous coverage, even when permissions persist.
     for chat_id in source_targets(settings).values():
         mark_coverage_gap(chat_id)
@@ -81,17 +102,41 @@ def add_system_jobs(
     scheduler.add_job(deliver_application_notices, "interval", minutes=1, args=(bot, settings, session_factory), id="application-notices", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(reconcile_vacancies_job, "interval", minutes=30, args=(session_factory,), id="office-vacancy-reconciliation", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(send_configured_event_reminders, "interval", minutes=1, args=(bot, settings, session_factory), id="configured-event-reminders", replace_existing=True, max_instances=1, coalesce=True)
+    scheduler.add_job(close_due_event_topics, "interval", minutes=1, args=(bot, settings, session_factory), id="event-topic-auto-close", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(deliver_attendance_notifications, "interval", minutes=1, args=(bot, settings, session_factory), id="event-lifecycle-notifications", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    scheduler.add_job(deliver_requested_certificates, "interval", minutes=1, args=(bot, settings, session_factory), id="event-certificates", max_instances=1, coalesce=True, replace_existing=True)
     scheduler.add_job(deliver_pending_event_announcements, "interval", minutes=1, args=(bot, settings, session_factory), id="event-announcement-recovery", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    scheduler.add_job(
+        recover_event_registration_notices, "interval", minutes=1, args=(bot, settings, session_factory),
+        id="event-registration-notice-recovery", replace_existing=True, max_instances=1, coalesce=True,
+        next_run_time=now,
+    )
     scheduler.add_job(sync_event_wizard_tasks_job, "interval", minutes=1, args=(session_factory, tuple(getattr(settings, 'event_wizard_sync_event_ids', ()))), id="event-wizard-task-sync", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(reconcile_project_scoring_job, "interval", minutes=1, args=(session_factory,), id="project-scoring-reconciliation", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(process_task_squad_notifications, "interval", minutes=1, args=(bot, settings, session_factory), id="task-squad-notifications", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(publish_media_recruitment, "interval", minutes=5, args=(bot, settings, session_factory), id="media-recruitment-opening", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    # Explicit opt-in campaign: fixed recipients and delivery ledger prevent duplicate DMs.
+    if getattr(settings, "media_join_dm_campaign_enabled", False):
+        scheduler.add_job(publish_media_join_direct_invitation, "interval", minutes=5,
+                          args=(bot, settings, session_factory), id="media-recruitment-private-invite",
+                          replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(reconcile_media_pipeline_job, "interval", minutes=1, args=(session_factory,), id="media-content-pipeline-reconciliation", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(publish_due_channel_content, "interval", minutes=1, args=(bot, settings, session_factory), id="media-channel-publication", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(post_missing_media_task_cards, "interval", minutes=1, args=(bot, settings, session_factory), id="media-task-cards", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(process_media_chat_automation, "interval", minutes=1, args=(bot, settings, session_factory), id="media-chat-automation", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(run_reactivation_cycle, "interval", hours=1, args=(bot, settings, session_factory), id="participation-reactivation", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    # Pause-end and observer check-ins: service existed but was never wired.
+    scheduler.add_job(
+        process_participation_mode_notifications,
+        "interval",
+        minutes=15,
+        args=(bot, settings, session_factory),
+        id="participation-mode-notifications",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=now,
+    )
     scheduler.add_job(complete_verification_campaigns_job, "interval", minutes=5, args=(session_factory,), id="community-verification-expiry", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(send_monthly_development_reminders, "cron", hour=18, minute=0, args=(bot, settings, session_factory), id="my-vector-monthly-reminders", replace_existing=True, max_instances=1, coalesce=True)
     scheduler.add_job(book_club_daily_job, "cron", hour=19, minute=0, timezone="Asia/Yerevan", args=(bot, settings, session_factory), id="book-club-daily", replace_existing=True, max_instances=1, coalesce=True)

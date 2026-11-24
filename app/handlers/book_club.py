@@ -12,11 +12,15 @@ from app.content.literature_issues import ISSUES, get_issue, render_issue
 from app.services.book_club_service import (
     eligible,
     format_literature_stats,
+    last_readable_issue_number,
     literature_stats,
     mark_progress,
     progress,
+    publication_number,
     reflection_summary,
     save_reflection,
+    series_status,
+    yerevan_today,
 )
 from app.services.authorization_service import is_full_admin
 
@@ -33,12 +37,22 @@ def button(text, callback):
     return InlineKeyboardButton(text=text, callback_data=callback)
 
 
-def _keyboard(subscribed: bool = False, discussion_url: str = '') -> InlineKeyboardMarkup:
-    rows = [[button('📖 Читать · 48 законов власти', 'bookclub:list:0')],
-            [button('📊 Мой прогресс', 'bookclub:progress')],
-            [button('📝 Мои ответы и итоги', 'bookclub:reflections')],
-            [button('🔕 Отписаться' if subscribed else '🔔 Подписаться',
-                    'bookclub:unsubscribe' if subscribed else 'bookclub:subscribe')]]
+def _keyboard(
+    subscribed: bool = False,
+    discussion_url: str = '',
+    *,
+    latest_number: int | None = None,
+) -> InlineKeyboardMarkup:
+    rows = []
+    if latest_number:
+        rows.append([button(f'📗 Последний выпуск · №{latest_number}', f'bookclub:issue:{latest_number}')])
+    rows.extend([
+        [button('📖 Архив · 48 законов власти', 'bookclub:list:0')],
+        [button('📊 Мой прогресс', 'bookclub:progress')],
+        [button('📝 Мои ответы и итоги', 'bookclub:reflections')],
+        [button('🔕 Отписаться' if subscribed else '🔔 Подписаться',
+                'bookclub:unsubscribe' if subscribed else 'bookclub:subscribe')],
+    ])
     if discussion_url:
         rows.append([InlineKeyboardButton(text='💬 Обсуждение в сообществе', url=discussion_url)])
     rows.append([InlineKeyboardButton(text='📖 Найти книгу в РГБ', url=READ_BOOK_URL)])
@@ -67,29 +81,59 @@ def issue_keyboard(number: int) -> InlineKeyboardMarkup:
     ])
 
 
-async def show_home(message: Message, user: User | None, settings: Settings):
+async def show_home(
+    message: Message,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession | None = None,
+):
+    today = yerevan_today()
+    today_number = publication_number(today)
+    latest = last_readable_issue_number(today)
+    status_line = ''
+    if session is not None:
+        status = await series_status(session, settings, on_date=today)
+        if today_number is None:
+            status_line = f'Сегодня: {status["label"]}. Открыт архив до выпуска №{latest}.\n\n'
+        elif status['published']:
+            status_line = f'Сегодня вышел выпуск №{today_number}. Статус рассылки: {status["label"]}.\n\n'
+        elif status['approved']:
+            status_line = f'Сегодняшний выпуск №{today_number} запланирован на 19:00. Пока читайте архив.\n\n'
+        else:
+            status_line = (
+                f'Сегодняшнего пуша ещё нет (№{today_number} ждёт согласования редакции). '
+                f'Доступен предыдущий/текущий текст в архиве · №{latest}.\n\n'
+            )
+    else:
+        if today_number is None:
+            status_line = f'Серия по календарю завершена или ещё не началась. Архив до №{latest}.\n\n'
+        else:
+            status_line = f'Актуальный выпуск для чтения: №{latest}/48.\n\n'
     await message.answer(
-        '📚 ЭРА | Литература\n\nНачинаем с книги Роберта Грина «48 законов власти». '
-        'Все 48 авторских критических разборов доступны для чтения. '
-        'Это не текст книги и не безусловные советы по манипуляции.\n\n'
-        'Рассылка по подписке: один закон ежедневно '
-        'в 19:00 по Еревану, начиная с 10 октября 2026 года. '
-        'Пропущенные выпуски можно открыть в каталоге. '
-        'Отписаться можно в любой момент; отметки прогресса сохранятся.\n\n'
-        'Если формат будет интересен участникам, продолжим программу с другими книгами.',
-        reply_markup=_keyboard(bool(user and user.book_club_subscribed), settings.general_chat_url),
+        '📚 ЭРА | Литература\n\n'
+        + status_line
+        + 'Книга Роберта Грина «48 законов власти» — авторские критические разборы, '
+        'не текст книги и не советы по манипуляции.\n\n'
+        'Подписка: один закон в день в 19:00 по Еревану (с 10.10.2026), только после '
+        'согласования редакции. Пропуски открываются в архиве. Отписка в любой момент; '
+        'прогресс сохраняется.',
+        reply_markup=_keyboard(
+            bool(user and user.book_club_subscribed),
+            settings.general_chat_url,
+            latest_number=latest,
+        ),
     )
 
 
 @router.message(F.text.in_({'📖 Книжный клуб', '📚 Литература'}))
-async def book_club(message: Message, user: User | None, settings: Settings) -> None:
-    await show_home(message, user, settings)
+async def book_club(message: Message, user: User | None, settings: Settings, session: AsyncSession) -> None:
+    await show_home(message, user, settings, session)
 
 
 @router.callback_query(F.data == 'bookclub:home')
-async def home(call: CallbackQuery, user: User | None, settings: Settings):
+async def home(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession):
     await call.answer()
-    await show_home(call.message, user, settings)
+    await show_home(call.message, user, settings, session)
 
 
 @router.callback_query(F.data.in_({'bookclub:subscribe', 'bookclub:unsubscribe'}))

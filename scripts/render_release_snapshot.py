@@ -58,8 +58,12 @@ def collect(fetch, *, render_token: str, service_id: str = SERVICE) -> dict:
         raise ValueError("invalid Render service ID")
     main_sha = _branch_sha(fetch)
     runs = fetch(GITHUB + f"/actions/runs?head_sha={main_sha}&event=push&per_page=20")
+    if not isinstance(runs, dict) or not isinstance(runs.get("workflow_runs"), list):
+        raise ValueError("GitHub workflow runs are malformed")
+    if any(not isinstance(run, dict) for run in runs["workflow_runs"]):
+        raise ValueError("GitHub workflow run is malformed")
     matches = [
-        run for run in runs.get("workflow_runs", [])
+        run for run in runs["workflow_runs"]
         if run.get("head_sha") == main_sha
         and run.get("event") == "push"
         and run.get("name") == "Bot checks"
@@ -71,8 +75,10 @@ def collect(fetch, *, render_token: str, service_id: str = SERVICE) -> dict:
         ci["workflow_status"] = run.get("status")
         ci["workflow_conclusion"] = run.get("conclusion")
         jobs_payload = fetch(GITHUB + f"/actions/runs/{int(run['id'])}/jobs?per_page=100")
-        jobs = jobs_payload.get("jobs", [])
-        if not isinstance(jobs, list):
+        if not isinstance(jobs_payload, dict):
+            raise ValueError("GitHub CI jobs response is malformed")
+        jobs = jobs_payload.get("jobs")
+        if not isinstance(jobs, list) or any(not isinstance(job, dict) for job in jobs):
             raise ValueError("GitHub CI jobs are malformed")
         ci["jobs"] = [
             {"name": job.get("name"), "status": job.get("status"),

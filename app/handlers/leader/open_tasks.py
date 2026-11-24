@@ -40,6 +40,8 @@ TASK_POINT_PROMPT = (
 def _day_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            # Activity / open tasks default: no hard deadline — participants take at their pace.
+            [InlineKeyboardButton(text="♾ Без срока", callback_data="opentask:deadline:none")],
             [
                 InlineKeyboardButton(text="⚡ Сегодня", callback_data="opentask:deadline:day:0"),
                 InlineKeyboardButton(text="🌅 Завтра", callback_data="opentask:deadline:day:1"),
@@ -134,7 +136,26 @@ async def open_task_description(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(open_task_description=description)
     await state.set_state(OpenTaskStates.deadline)
-    await message.answer("Выберите дедлайн открытой задачи:", reply_markup=_day_keyboard())
+    await message.answer(
+        "Срок открытой задачи?\n\n"
+        "Для задач на активность обычно выбирают «Без срока».",
+        reply_markup=_day_keyboard(),
+    )
+
+
+@router.callback_query(OpenTaskStates.deadline, F.data == "opentask:deadline:none")
+async def open_task_deadline_none(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    await state.update_data(
+        open_task_deadline=None,
+        open_task_deadline_candidate=None,
+        open_task_deadline_date=None,
+        open_task_deadline_manual_mode=None,
+    )
+    await state.set_state(OpenTaskStates.points)
+    await call.message.answer(
+        "Срок не задан — участники возьмут задачу в своём темпе.\n\n" + TASK_POINT_PROMPT
+    )
 
 
 @router.callback_query(OpenTaskStates.deadline, F.data.startswith("opentask:deadline:day:"))
@@ -197,7 +218,11 @@ async def open_task_deadline_restart(call: CallbackQuery, state: FSMContext) -> 
         open_task_deadline_candidate=None,
         open_task_deadline_manual_mode=None,
     )
-    await call.message.answer("Выберите дедлайн открытой задачи:", reply_markup=_day_keyboard())
+    await call.message.answer(
+        "Срок открытой задачи?\n\n"
+        "Для задач на активность обычно выбирают «Без срока».",
+        reply_markup=_day_keyboard(),
+    )
 
 
 @router.callback_query(OpenTaskStates.deadline, F.data == "opentask:deadline:confirm")
@@ -206,7 +231,10 @@ async def open_task_deadline_confirm(call: CallbackQuery, state: FSMContext) -> 
     data = await state.get_data()
     raw_deadline = data.get("open_task_deadline_candidate")
     if not raw_deadline:
-        await call.message.answer("Сначала выберите дату и время дедлайна.", reply_markup=_day_keyboard())
+        await call.message.answer(
+            "Сначала выберите срок или «Без срока».",
+            reply_markup=_day_keyboard(),
+        )
         return
     await state.update_data(open_task_deadline=datetime.fromisoformat(raw_deadline))
     await state.set_state(OpenTaskStates.points)
@@ -326,7 +354,7 @@ async def open_task_applications(call: CallbackQuery, user: User | None, session
                 "accepted": "принят",
                 "joined": "в команде",
                 "rejected": "отклонён",
-            }.get(participant.status, participant.status)
+            }.get(participant.status, "статус уточняется")
             lines.append(f"• {person.first_name} {person.last_name or ''} — {username} — {status}")
             if participant.status == "pending":
                 await call.message.answer(
