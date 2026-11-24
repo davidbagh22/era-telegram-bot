@@ -112,3 +112,19 @@ svg {
 .era-reader-archive button span { color:var(--era-cyan); min-width:20px; }
 @supports not (backdrop-filter:blur(1px)) { .era-bottom-nav,.era-orbit-node__shell { background:var(--era-surface) !important; } }
 @media(max-width:360px) { .era-discover-page { padding-left:16px; padding-right:16px; } }
+
+
+/* Android Telegram: compact listing and a reliable native vertical gesture.
+   Avoid oversized cards concealing that more events exist below the fold. */
+.era-events-feed { touch-action: pan-y; overscroll-behavior-y: auto; }
+.era-events-feed .era-typography-feed-card {
+  min-height: 110px;
+  padding: .95rem 1rem;
+  gap: .45rem;
+  touch-action: pan-y;
+}
+.era-events-feed .era-typography-feed-card__title {
+  font-size: clamp(1.25rem, 5.2vw, 1.65rem);
+  line-height: 1.12;
+  overflow-wrap: break-word;
+}
