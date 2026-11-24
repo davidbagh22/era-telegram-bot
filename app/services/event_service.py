@@ -5,7 +5,8 @@ from datetime import date, datetime, timezone
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.event_experience import EventExperience
@@ -48,9 +49,11 @@ async def published_events(session: AsyncSession) -> list[Event]:
         (
             await session.scalars(
                 select(Event)
+                .outerjoin(EventExperience, EventExperience.event_id == Event.id)
                 .where(
                     Event.status.in_(PUBLIC_EVENT_STATUSES),
                     Event.event_date >= date.today(),
+                    or_(EventExperience.event_id.is_(None), EventExperience.show_in_public_listing.is_(True)),
                 )
                 .order_by(Event.event_date, Event.event_time)
             )
