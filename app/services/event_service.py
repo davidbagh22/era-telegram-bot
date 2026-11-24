@@ -169,10 +169,10 @@ async def register_for_event(
         entity_id=event.id,
     )
     # Digital-engagement bonus (ToR section 5): once per unique event ever,
-    # regardless of how many times the person registers/cancels/re-registers
-    # -- award_event_registration's idempotency key is keyed on event+user,
-    # not on this call.
-    await award_event_registration(session, user_id=user_id, event_id=event.id)
+    # only after a confirmed seat — waitlist must not award (#513).
+    # award_event_registration's idempotency key is keyed on event+user.
+    if target_status == RegistrationStatus.REGISTERED:
+        await award_event_registration(session, user_id=user_id, event_id=event.id)
     return registration, None
 
 
@@ -207,6 +207,10 @@ async def promote_waitlist(session: AsyncSession, event: Event) -> EventRegistra
         action="event.waitlist_promoted",
         entity_type="event",
         entity_id=event.id,
+    )
+    # Seat confirmed: same digital bonus as a direct registration (#513).
+    await award_event_registration(
+        session, user_id=waiting.user_id, event_id=event.id
     )
     return waiting
 
