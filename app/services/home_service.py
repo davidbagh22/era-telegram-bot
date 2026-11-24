@@ -7,7 +7,15 @@ from zoneinfo import ZoneInfo
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Event, EventRegistration, PointTransaction, Project, Task, User
+from app.database.models import (
+    Event,
+    EventRegistration,
+    PointTransaction,
+    Project,
+    Task,
+    TaskSubmission,
+    User,
+)
 from app.database.partners import Partner, PartnerInitiative, PartnerOfferApplication
 from app.repositories.users import user_stats
 from app.services.activity_service import list_tasks
@@ -199,11 +207,39 @@ async def _earned_points_periods(
     return today, month
 
 
+async def _returned_task(session: AsyncSession, user_id: int) -> Task | None:
+    """Task whose *latest* submission for this user is still needs_revision.
+
+    Resubmit creates a new pending row and leaves the old needs_revision row in
+    place — only the newest submission decides Home priority.
+    """
+    latest_by_task = (
+        select(
+            TaskSubmission.task_id.label("task_id"),
+            func.max(TaskSubmission.id).label("latest_id"),
+        )
+        .where(TaskSubmission.user_id == user_id)
+        .group_by(TaskSubmission.task_id)
+    ).subquery()
+    return await session.scalar(
+        select(Task)
+        .join(latest_by_task, latest_by_task.c.task_id == Task.id)
+        .join(TaskSubmission, TaskSubmission.id == latest_by_task.c.latest_id)
+        .where(
+            TaskSubmission.status == "needs_revision",
+            Task.status.notin_((TaskStatus.COMPLETED, TaskStatus.CANCELLED)),
+        )
+        .order_by(TaskSubmission.id.desc())
+        .limit(1)
+    )
+
+
 async def _active_task(session: AsyncSession, user_id: int) -> Task | None:
+    # Prefer dated deadlines; undated activity tasks still surface after.
     return await session.scalar(
         select(Task)
         .where(Task.assignee_id == user_id, Task.status.in_(ACTIVE_TASK_STATUSES))
-        .order_by(Task.deadline.asc())
+        .order_by(Task.deadline.asc().nullslast())
         .limit(1)
     )
 
@@ -407,12 +443,27 @@ def _build_next_step(
     opportunities: list[PartnerInitiative],
 ) -> NextStep | None:
     if active_task is not None:
+        needs_revision = bool(getattr(active_task, "_home_needs_revision", False))
+        if needs_revision:
+            title = f"Доработать: {active_task.title}"
+            description = "Есть замечания — доработайте результат и отправьте снова."
+        elif active_task.deadline:
+            title = f"Задача: {active_task.title}"
+            description = (
+                f"Срок: {active_task.deadline.astimezone(ERA_TIMEZONE):%d.%m %H:%M}."
+            )
+        else:
+            title = f"Задача: {active_task.title}"
+            description = (
+                "Без жёсткого срока — откройте и отправьте результат, когда готовы."
+            )
         return NextStep(
             kind="task",
-            title=f"Задача: {active_task.title}",
-            description="Проверьте требования и отправьте результат до дедлайна.",
+            title=title,
+            description=description,
             entity_id=active_task.id,
             route=f"/tasks/{active_task.id}",
+            action_label="Открыть",
         )
     if nearest_event_row is not None:
         event, _ = nearest_event_row
@@ -456,7 +507,11 @@ def _build_next_step(
 
 
 async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot:
-    active_task = await _active_task(session, user.id)
+    returned_task = await _returned_task(session, user.id)
+    active_task = returned_task or await _active_task(session, user.id)
+    if returned_task is not None and active_task is not None:
+        # Ephemeral UI flag — not persisted.
+        setattr(active_task, "_home_needs_revision", True)
     nearest_event_row = await _nearest_event(session, user.id)
     active_project = await _active_project(session, user.id)
     growth = growth_progress_for(user)

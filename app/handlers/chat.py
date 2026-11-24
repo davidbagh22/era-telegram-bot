@@ -199,6 +199,3 @@ async def moderation_gate(message: Message, session: AsyncSession) -> None:
     if await _moderation_enabled(session, message.chat.id):
         await _soft_moderation(message)
 
-
-async def soft_moderation(message: Message) -> None:
-    await _soft_moderation(message)
