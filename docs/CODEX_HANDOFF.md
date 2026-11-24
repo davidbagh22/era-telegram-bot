@@ -1,7 +1,6 @@
 # ERA bot and Mini App handoff
 
-- 24 November / #723 + #670 on main. #712: AURA Home label «У меня сейчас»; no-deadline open tasks + revision priority. Campaign stays OFF until LIVE SHA + activation token.
-- Event management: published cards open a role-gated details editor. The home orbit opens assessments. Release and Telegram device acceptance pending.
-- Release scope includes project topics, scoped recipient preview, notice routing, attendance certificates and the four November events. Reconcile any uncertain Telegram creation before retrying.
-- 19 November / **AURA×ORBIT redesign** (#713): Stage A–D on main. Device VERIFIED still open.
-- 14 November: existing 12 December anniversary featured on home + bot menu; Mini App one-click RSVP via guest store.
+- 24 November / ship wave merged to main: #723 (Android/afisha/topic auto-close), #670 (anniversary campaign dormant), #712 («У меня сейчас»), #589 (public listing hide), #578 (topic claim), #660 (native media panel). LIVE tracked via Render `checksPass`; campaign and media DM stay OFF until activation.
+- Next open: #467 durable legacy broadcast, #665 Google Calendar payload (CI), #580 docs checkpoint, #364 Armenia data policy (needs human legal). Device VERIFIED / E14 still owner-only.
+- Event management: published cards open a role-gated details editor. The home orbit opens assessments.
+- Release scope includes project topics, scoped recipient preview, notice routing, attendance certificates and the four November events.
