@@ -166,6 +166,8 @@ class MediaAnalyticsOut(BaseModel):
 
 class MediaRequestIn(BaseModel):
     package_type: Literal["announcement", "photo", "video", "reels", "full"] = "full"
+    # Optional desired delivery instant; drives content.scheduled_at → task deadlines.
+    due_at: datetime | None = None
 
 
 class MediaRequestOut(BaseModel):
@@ -636,6 +638,7 @@ async def _request_media(
     user: User,
     session: AsyncSession,
     settings: Settings,
+    bot: Bot,
 ) -> MediaRequestOut:
     try:
         item = await media_service.request_media_package(
@@ -645,6 +648,8 @@ async def _request_media(
             package_type=payload.package_type,
             requester=user,
             settings=settings,
+            due_at=payload.due_at,
+            bot=bot,
         )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail="forbidden") from exc
@@ -664,8 +669,9 @@ async def request_event_media(
     user: User = Depends(require_media_hub),
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
+    bot: Bot = Depends(get_bot),
 ) -> MediaRequestOut:
-    return await _request_media("event", event_id, payload, user, session, settings)
+    return await _request_media("event", event_id, payload, user, session, settings, bot)
 
 
 @router.post("/requests/project/{project_id}", response_model=MediaRequestOut)
@@ -675,5 +681,6 @@ async def request_project_media(
     user: User = Depends(require_media_hub),
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
+    bot: Bot = Depends(get_bot),
 ) -> MediaRequestOut:
-    return await _request_media("project", project_id, payload, user, session, settings)
+    return await _request_media("project", project_id, payload, user, session, settings, bot)

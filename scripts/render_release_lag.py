@@ -97,6 +97,13 @@ def assess(snapshot: dict, *, now: datetime, max_lag_minutes: int = 45) -> dict:
         result.update(status="UNVERIFIED", reason="CI completion is later than snapshot observation")
         return result
     if live_sha == main and _SHA.fullmatch(live_sha):
+        if latest_main is not live:
+            failed = latest_main.get("status") in {"build_failed", "update_failed", "failed", "canceled"}
+            result.update(
+                status="DEPLOY_FAILED" if failed else "UNVERIFIED",
+                reason="newer deployment attempt for main is not LIVE",
+            )
+            return result
         result.update(status="LIVE", reason="exact main SHA is Render LIVE with green CI")
         return result
     age_minutes = max(0, int((now.astimezone(timezone.utc) - completed).total_seconds() // 60))

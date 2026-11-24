@@ -52,7 +52,7 @@ export function ActivitySubmissionsPanel() {
           <Card key={submission.id}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
               <strong>{submission.activity_title}</strong>
-              <StatusBadge label={STATUS_LABELS[submission.status] ?? submission.status} tone="violet" />
+              <StatusBadge label={STATUS_LABELS[submission.status] ?? "Статус обновлён"} tone="violet" />
             </div>
             <p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>
               {submission.event_title} · {submission.user_name}

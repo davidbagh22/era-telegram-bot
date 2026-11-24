@@ -60,13 +60,17 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
         await registration.registration_desired_path(self.call, self.state)
         await registration.registration_motivation(self.message('Хочу создавать события'), self.state)
         await registration.registration_social_skip(self.call, self.state)
-        assert await self.state.get_state() == RegistrationStates.profile_photo.state
-        message = self.message(None)
-        message.photo = [SimpleNamespace(file_id='small'), SimpleNamespace(file_id=photo or 'fixture-photo')]
-        message.answer_photo = AsyncMock()
-        await registration.registration_photo(message, self.state)
-        message.answer_photo.assert_awaited_once_with(photo or 'fixture-photo', caption='Фото для анкеты', reply_markup=None)
+        assert await self.state.get_state() == RegistrationStates.review.state
+        if photo is not False:
+            await registration.registration_photo_start(self.call, self.state)
+            assert await self.state.get_state() == RegistrationStates.profile_photo.state
+            message = self.message(None)
+            message.photo = [SimpleNamespace(file_id='small'), SimpleNamespace(file_id=photo or 'fixture-photo')]
+            message.answer_photo = AsyncMock()
+            await registration.registration_photo(message, self.state)
+            message.answer_photo.assert_awaited_once_with(photo or 'fixture-photo', caption='Фото для анкеты', reply_markup=None)
         await registration.registration_review_ok(self.call, self.state)
+        assert await self.state.get_state() == RegistrationStates.consent.state
 
     async def test_uploaded_photo_survives_submit_and_is_available_to_admin_card(self):
         await self.complete_quick_form(photo='registration-photo')
@@ -184,15 +188,38 @@ class RegistrationCompletionTests(IsolatedAsyncioTestCase):
         assert (await self.state.get_data())['referral_code'] == '123456'
         assert (await self.state.get_data())['email'] == 'fixture@example.test'
 
-    async def test_photo_is_required_before_consent_even_from_an_old_review_button(self):
-        await self.complete_quick_form()
-        data=await self.state.get_data()
-        data.pop('profile_photo_file_id')
-        await self.state.set_data(data)
-        await self.state.set_state(RegistrationStates.review)
-        await registration.registration_review_ok(self.call,self.state)
-        assert await self.state.get_state() == RegistrationStates.profile_photo.state
+    async def test_photo_is_optional_even_from_a_legacy_review_button(self):
+        await self.complete_quick_form(photo=False)
+        assert not (await self.state.get_data()).get('profile_photo_file_id')
+        assert await self.state.get_state() == RegistrationStates.consent.state
         assert (await self.state.get_data())['first_name'] == 'Анна'
+
+    async def test_no_photo_registration_creates_pending_user_and_empty_social_photo(self):
+        await self.complete_quick_form(photo=False)
+        with patch.object(registration, '_notify_admins_registration', AsyncMock()):
+            async with self.sessions() as session:
+                await registration.finish_registration(self.call, self.state, session, self.bot, self.settings)
+        async with self.sessions() as session:
+            user = await session.scalar(select(User))
+            profile = await session.scalar(select(SocialProfile).where(SocialProfile.user_id == user.id))
+            assert user.application_status == ApplicationStatus.PENDING
+            assert profile is not None and profile.photo_file_id is None
+            assert user.personal_data_consent
+            assert await session.scalar(select(func.count()).select_from(ConsentLog)) == 1
+
+    async def test_photo_skip_from_legacy_step_returns_to_review_and_resumes_without_photo(self):
+        await self.complete_quick_form(photo=False)
+        await self.state.set_state(RegistrationStates.profile_photo)
+        self.call.message.answer.reset_mock()
+        await registration.registration_resume(self.call, self.state, self.settings)
+        assert await self.state.get_state() == RegistrationStates.review.state
+        assert 'не добавлено (необязательно)' in self.call.message.answer.await_args.args[0]
+        await registration.registration_photo_start(self.call, self.state)
+        self.call.data = 'reg:photo:skip'
+        await registration.registration_photo_back(self.call, self.state)
+        assert await self.state.get_state() == RegistrationStates.review.state
+        await registration.registration_review_ok(self.call, self.state)
+        assert await self.state.get_state() == RegistrationStates.consent.state
 
     async def test_social_skip_preserves_existing_optional_contacts(self):
         await self.state.update_data(social_url='https://example.test/portfolio',phone='+37400000000',profile_photo_file_id='photo')

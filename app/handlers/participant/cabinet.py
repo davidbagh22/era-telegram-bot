@@ -33,8 +33,9 @@ from app.keyboards.participant import (
 from app.repositories.users import rating, user_stats
 from app.services.event_activity_service import REVIEWABLE_STATUSES
 from app.services.notification_service import safe_answer_document, safe_answer_photo
+from app.services import career_service
+from app.services.career_pdf_service import build_career_resume
 from app.services.portfolio_service import build_portfolio_data, portfolio_summary_text
-from app.services.resume_service import build_era_resume
 from app.utils import texts
 from app.utils.constants import (
     ApplicationStatus,
@@ -90,33 +91,32 @@ def _directions_text(user: User) -> str:
 
 
 def _cabinet_text(user: User, stats: dict[str, int], place: int | str) -> str:
-    status = STATUS_LABELS.get(user.participation_status, user.participation_status)
-    return f"""👤 Личный кабинет
+    from app.utils.ux_texts import cabinet_home_text
 
-{user.first_name}, здесь собраны самые нужные разделы Вашего участия в ЭРА
-
-Статус: {status}
-Баланс: {stats['points']} баллов
-Место в рейтинге: {place}
-
-Выберите, что открыть"""
+    return cabinet_home_text(
+        user.first_name,
+        STATUS_LABELS.get(user.participation_status, user.participation_status),
+        stats["points"],
+        place,
+    )
 
 
 def _my_data_text(user: User, stats: dict[str, int]) -> str:
     birth_date, age = _birth_date_and_age(user)
     status = STATUS_LABELS.get(user.participation_status, user.participation_status)
-    return f"""⚙️ Мои данные
-
-Имя: {user.first_name}
-Фамилия: {user.last_name or 'не указана'}
-Дата рождения: {birth_date}
-Возраст: {age}
-Город: {user.city or 'не указан'}
-Телефон: {user.phone or 'не указан'}
-Эл. почта: {user.email or 'не указана'}
-Статус: {status}
-Баланс: {stats['points']} баллов
-Направления: {_directions_text(user)}"""
+    return (
+        "⚙️ Мои данные\n\n"
+        f"Имя: {user.first_name}\n"
+        f"Фамилия: {user.last_name or 'не указана'}\n"
+        f"Дата рождения: {birth_date}\n"
+        f"Возраст: {age}\n"
+        f"Город: {user.city or 'не указан'}\n"
+        f"Телефон: {user.phone or 'не указан'}\n"
+        f"Эл. почта: {user.email or 'не указана'}\n"
+        f"Статус: {status}\n"
+        f"Баланс: {stats['points']} баллов\n"
+        f"Направления: {_directions_text(user)}"
+    )
 
 
 async def _send_journey(
@@ -229,7 +229,15 @@ async def points(call: CallbackQuery, user: User | None, session: AsyncSession) 
     )
     await call.message.answer(
         texts.points_text(total, ((item.points, item.reason) for item in rows)),
-        reply_markup=back_keyboard("cabinet:open"),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="🏅 Знаки", callback_data="cabinet:achievements"),
+                    InlineKeyboardButton(text="🏆 Рейтинг", callback_data="cabinet:rating"),
+                ],
+                [InlineKeyboardButton(text="← Личный кабинет", callback_data="cabinet:open")],
+            ]
+        ),
     )
 
 
@@ -296,8 +304,17 @@ async def resume(call: CallbackQuery, user: User | None, session: AsyncSession) 
         return
     await call.message.answer("Собираю Ваше портфолио в PDF. Это займёт несколько секунд")
     try:
-        data = await build_portfolio_data(session, user)
-        content = build_era_resume(data)
+        data = await build_portfolio_data(session, user, preview_limit=None)
+        career_profile = await career_service.get_or_create_profile(session, user.id)
+        career_items = await career_service.list_items(session, user.id)
+        content = build_career_resume(
+            user,
+            career_profile,
+            data,
+            career_items,
+            purpose="universal",
+            mode="portfolio",
+        )
     except Exception:
         logger.exception("Could not build ERA resume for user %s", user.id)
         await call.message.answer(

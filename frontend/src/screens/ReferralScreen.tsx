@@ -120,8 +120,13 @@ export function ReferralScreen({ onBack }: ReferralScreenProps) {
   if (state.status === "error") {
     return (
       <div className="era-page" style={{ padding: "1.25rem 1rem var(--era-page-bottom-safe)" }}>
-        <button type="button" onClick={onBack} style={{ marginBottom: "1rem" }}>← Назад</button>
-        <StatusBanner title="Не удалось открыть приглашения" description="Попробуйте открыть раздел ещё раз." />
+        <button type="button" onClick={onBack} aria-label="Назад" style={{ marginBottom: "1rem" }}>← Назад</button>
+        <StatusBanner
+          title="Не удалось открыть приглашения"
+          description="Проверьте соединение и обновите экран."
+          actionLabel="Обновить"
+          onAction={state.reload}
+        />
       </div>
     );
   }

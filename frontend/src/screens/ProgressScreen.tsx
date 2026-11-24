@@ -1,7 +1,7 @@
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { ProgressRing } from "../components/ProgressRing";
-import { Skeleton, SkeletonCard } from "../components/Skeleton";
+import { LoadingRegion, Skeleton, SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
 import { useHome } from "../hooks/useHome";
 
@@ -16,9 +16,29 @@ export function ProgressScreen({ onBack, onOpenProjects, onOpenTasks, onOpenEven
   const home = useHome();
 
   if (home.status === "loading") {
-    return <div className="era-page" style={{ padding: "1.15rem", display: "flex", flexDirection: "column", gap: "1rem" }}><Skeleton height="3rem" width="48%" /><Skeleton height="12rem" radius="var(--era-radius-card)" /><SkeletonCard /></div>;
+    return (
+      <div className="era-page">
+        <LoadingRegion
+          label="Загрузка прогресса"
+          style={{ padding: "1.15rem", display: "flex", flexDirection: "column", gap: "1rem" }}
+        >
+          <Skeleton height="3rem" width="48%" />
+          <Skeleton height="12rem" radius="var(--era-radius-card)" />
+          <SkeletonCard />
+        </LoadingRegion>
+      </div>
+    );
   }
-  if (home.status === "error") return <StatusBanner title="Не получилось загрузить прогресс" description="Ваши данные не изменены. Вернитесь назад и попробуйте ещё раз." />;
+  if (home.status === "error") {
+    return (
+      <StatusBanner
+        title="Не получилось загрузить прогресс"
+        description="Ваши данные не изменены. Попробуйте обновить экран."
+        actionLabel="Обновить"
+        onAction={home.reload}
+      />
+    );
+  }
 
   const { data } = home;
   const percent = data.growth.level_count <= 1 ? 1 : data.growth.level_index / (data.growth.level_count - 1);

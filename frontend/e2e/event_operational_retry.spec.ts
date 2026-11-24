@@ -28,7 +28,7 @@ test("admin can retry a failed operational event list and refresh its actual con
 
   await page.goto("/app/?devTelegramId=900003");
   await page.getByRole("navigation", { name: "Основная навигация" })
-    .getByRole("button", { name: "Профиль", exact: true }).click();
+    .getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
   await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
   await page.getByRole("button", { name: /Участники и посещаемость/ }).click();

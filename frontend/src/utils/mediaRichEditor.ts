@@ -91,8 +91,8 @@ export function openMediaRichEditor(initialValue: string): Promise<string | null
       maxHeight: "92vh",
       overflow: "auto",
       borderRadius: "22px",
-      background: "var(--era-surface, #fff)",
-      color: "var(--era-text, #111)",
+      background: "var(--era-surface, #321731)",
+      color: "var(--era-text, #fff6fc)",
       padding: "18px",
       boxShadow: "0 24px 70px rgba(0,0,0,.28)",
       display: "grid",
@@ -113,10 +113,10 @@ export function openMediaRichEditor(initialValue: string): Promise<string | null
       minHeight: "190px",
       resize: "vertical",
       boxSizing: "border-box",
-      border: "1px solid var(--era-border, #ddd)",
+      border: "1px solid var(--era-border, rgba(231, 167, 213,0.2))",
       borderRadius: "14px",
       padding: "13px",
-      background: "var(--era-surface-2, #f7f7f8)",
+      background: "var(--era-surface-2, #432040)",
       color: "inherit",
       font: "inherit",
       lineHeight: "1.5",
@@ -131,8 +131,8 @@ export function openMediaRichEditor(initialValue: string): Promise<string | null
       lineHeight: "1.55",
       borderRadius: "16px",
       padding: "14px",
-      background: "var(--era-surface-2, #f7f7f8)",
-      border: "1px solid var(--era-border, #e7e7e9)",
+      background: "var(--era-surface-2, #432040)",
+      border: "1px solid var(--era-border, rgba(231, 167, 213,0.2))",
       minHeight: "70px",
     });
 
@@ -148,8 +148,8 @@ export function openMediaRichEditor(initialValue: string): Promise<string | null
       button.textContent = label;
       button.title = title;
       Object.assign(button.style, {
-        border: "1px solid var(--era-border, #ddd)",
-        background: "var(--era-surface-2, #f7f7f8)",
+        border: "1px solid var(--era-border, rgba(231, 167, 213,0.2))",
+        background: "var(--era-surface-2, #432040)",
         color: "inherit",
         borderRadius: "10px",
         minWidth: "42px",
@@ -192,8 +192,8 @@ export function openMediaRichEditor(initialValue: string): Promise<string | null
       fontWeight: "850",
       cursor: "pointer",
     }));
-    Object.assign(cancel.style, { background: "var(--era-surface-2, #eee)", color: "inherit" });
-    Object.assign(publish.style, { background: "var(--era-violet, #6d4aff)", color: "#fff" });
+    Object.assign(cancel.style, { background: "var(--era-surface-2, #432040)", color: "inherit" });
+    Object.assign(publish.style, { background: "var(--era-primary, #bc2184)", color: "#fff" });
     actions.append(cancel, publish);
 
     const finish = (value: string | null) => {

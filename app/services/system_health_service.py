@@ -152,7 +152,7 @@ async def _configuration_check(settings: Settings) -> HealthCheck:
         "Production config",
         "ok",
         "info",
-        "Критичная production-конфигурация присутствует; backup workflow использует GitHub OIDC",
+        "Критичная production-конфигурация присутствует; резервное копирование использует GitHub OIDC",
     )
 
 
@@ -257,6 +257,25 @@ async def _points_integrity_check(session) -> HealthCheck:
     )
 
 
+def _status_label(value) -> str:
+    labels = {
+        "ok": "в норме",
+        "healthy": "в норме",
+        "success": "успешно",
+        "warn": "внимание",
+        "warning": "внимание",
+        "degraded": "ограничена",
+        "fail": "сбой",
+        "failed": "сбой",
+        "error": "сбой",
+        "down": "недоступна",
+        "open": "открыт",
+    }
+    if value is None:
+        return "нет данных"
+    return labels.get(str(value), "статус уточняется")
+
+
 async def _backup_check(session) -> HealthCheck:
     try:
         latest = await session.scalar(
@@ -276,7 +295,7 @@ async def _backup_check(session) -> HealthCheck:
             "Резервное копирование",
             "warning",
             "medium",
-            "В Backup History пока нет ни одной подтверждённой записи",
+            "В истории резервных копий пока нет ни одной подтверждённой записи",
         )
     if latest.status != "success" or latest.restore_verified_at is None:
         return HealthCheck(
@@ -284,7 +303,7 @@ async def _backup_check(session) -> HealthCheck:
             "Резервное копирование",
             "error",
             "high",
-            f"Последний backup имеет статус {latest.status}; restore verification отсутствует или завершился ошибкой",
+            f"Последняя резервная копия: {_status_label(latest.status)}; проверка восстановления отсутствует или завершилась ошибкой",
         )
 
     reference_time = _as_utc(latest.completed_at or latest.created_at)
@@ -295,7 +314,7 @@ async def _backup_check(session) -> HealthCheck:
             "Резервное копирование",
             "error",
             "critical",
-            f"Последний проверенный backup старше 72 часов ({int(age.total_seconds() // 3600)} ч)",
+            f"Последняя проверенная резервная копия старше 72 часов ({int(age.total_seconds() // 3600)} ч)",
         )
     if age > timedelta(hours=36):
         return HealthCheck(
@@ -303,7 +322,7 @@ async def _backup_check(session) -> HealthCheck:
             "Резервное копирование",
             "warning",
             "high",
-            f"Последний проверенный backup старше 36 часов ({int(age.total_seconds() // 3600)} ч)",
+            f"Последняя проверенная резервная копия старше 36 часов ({int(age.total_seconds() // 3600)} ч)",
         )
     if latest.storage_provider not in {
         "github-actions-encrypted",
@@ -314,14 +333,14 @@ async def _backup_check(session) -> HealthCheck:
             "Резервное копирование",
             "warning",
             "medium",
-            f"Verified backup использует неподтверждённый storage provider: {latest.storage_provider}",
+            f"Проверенная резервная копия использует неподтверждённое хранилище: {latest.storage_provider}",
         )
     return HealthCheck(
         "backup",
         "Резервное копирование",
         "ok",
         "info",
-        f"Последний encrypted off-Render backup прошёл restore verification {int(age.total_seconds() // 3600)} ч назад",
+        f"Последняя зашифрованная внешняя резервная копия прошла проверку восстановления {int(age.total_seconds() // 3600)} ч назад",
     )
 
 
@@ -704,6 +723,7 @@ def _backup_payload(item: BackupHistory) -> dict[str, Any]:
     }
 
 
+
 async def send_daily_system_summary(
     bot: Bot,
     settings: Settings,
@@ -725,10 +745,10 @@ async def send_daily_system_summary(
         bot,
         settings,
         "🩺 ЭРА: ежедневное состояние системы\n\n"
-        f"Health: {latest['status'] if latest else 'нет данных'}"
+        f"Состояние: {_status_label(latest['status'] if latest else None)}"
         f" · {latest['score'] if latest else '—'}/100\n"
         f"Открытых инцидентов: {len(open_incidents)}\n"
-        f"Последний backup: {latest_backup['status'] if latest_backup else 'нет данных'}",
+        f"Последняя резервная копия: {_status_label(latest_backup['status'] if latest_backup else None)}",
         delivery_key=f"system-daily-summary:{local_day}",
         notification_type="system_daily_summary",
     )

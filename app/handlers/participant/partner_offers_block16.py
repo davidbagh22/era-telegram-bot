@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import User
 from app.database.partners import Partner, PartnerInitiative
-from app.keyboards.participant import open_app_button
+from app.keyboards.participant import open_app_button, opportunities_hub_keyboard
 from app.services import opportunity_service
 from app.services.notification_service import notify_admins
 from app.services.points_service import total_points
@@ -22,12 +22,7 @@ def approved(user: User | None) -> bool:
 
 
 def opportunities_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🤝 Партнёрские предложения", callback_data="offers:list")],
-        [InlineKeyboardButton(text="📜 Мои заявки", callback_data="offers:mine")],
-        [InlineKeyboardButton(text="🎁 Каталог возможностей", callback_data="rewards:menu")],
-        [InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")],
-    ])
+    return opportunities_hub_keyboard()
 
 
 def offer_list_keyboard(rows: list[tuple[PartnerInitiative, Partner]]) -> InlineKeyboardMarkup:
@@ -48,8 +43,8 @@ async def offers_menu(call: CallbackQuery, user: User | None, session: AsyncSess
         return
     balance = await total_points(session, user.id)
     await call.message.answer(
-        "⭐ Возможности\n\nЗдесь собраны предложения, доступы и бонусы, которые открываются через активность в ЭРА.\n\n"
-        f"Ваш баланс: {balance} баллов",
+        f"⭐ Возможности\n\nБаланс: {balance} баллов.\n"
+        "Предложения, аукцион и каталог за баллы — ниже.",
         reply_markup=opportunities_keyboard(),
     )
 

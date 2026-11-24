@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { describeActionError, fetchRewards, redeemReward } from "../../api/client";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
+import { SkeletonList } from "../../components/Skeleton";
 import { StatusBadge } from "../../components/StatusBadge";
 import { useAsync } from "../../hooks/useAsync";
 
@@ -41,13 +42,20 @@ export function RewardsPanel() {
   );
 
   if (state.status === "loading") {
-    return <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>;
+    return <SkeletonList count={2} />;
   }
   if (state.status === "error") {
-    return <EmptyState text="Не удалось загрузить каталог." />;
+    return (
+      <EmptyState
+        title="Не удалось загрузить каталог"
+        text="Проверьте соединение и обновите список."
+        actionLabel="Обновить"
+        onAction={state.reload}
+      />
+    );
   }
   if (state.data.length === 0) {
-    return <EmptyState text="Каталог возможностей пока пуст." />;
+    return <EmptyState text="Партнёрские предложения за баллы появятся здесь. Это не магазин подарков." />;
   }
 
   return (

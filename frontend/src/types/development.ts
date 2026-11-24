@@ -34,7 +34,18 @@ export interface DevelopmentGoal { id: number; month: string; title: string; exp
 export interface DevelopmentHome { title: string; subtitle: string; consent_required: boolean; consent_version: string; profile: VectorProfile | null; current_checkin: VectorCheckin | null; current_goal: DevelopmentGoal | null; questions: VectorQuestion[]; answer_options: VectorOption[]; context_options: string[]; development_wants: string[]; state_labels: Record<VectorDimension, string>; }
 
 export interface AssessmentScore { raw: number; normalized: number; }
-export interface AssessmentResult { session_id: number; assessment_code: string; title: string; version: string; completed_at: string | null; scores: Record<string, AssessmentScore>; interpretation: { title: string; summary: string; note: string } | null; notice?: string | null; }
+export interface AssessmentResult {
+  session_id: number;
+  assessment_code: string;
+  title: string;
+  version: string;
+  completed_at: string | null;
+  scores: Record<string, AssessmentScore>;
+  interpretation: { title: string; summary: string; note: string } | null;
+  notice?: string | null;
+  points_awarded?: number;
+  next_unlock?: { code: string; title: string; hint: string } | null;
+}
 export interface AssessmentCard { code: string; title: string; description: string | null; source: string; methodology: string; license: string | null; license_status: string; estimated_minutes: number; min_age: number | null; recommended_retake_after_days: number | null; construct_type: string; available: boolean; version?: string | null; language?: string; translation_source?: string | null; notice?: string | null; validation_note?: string | null; question_count?: number; what_it_shows?: string | null; important?: string; last_result?: AssessmentResult | null; strengths?: string[]; interest_code?: string[]; }
 export interface AssessmentQuestionOption { value: number; label: string; }
 export interface AssessmentQuestion { code: string; text: string; position: number; scale_code: string | null; options: AssessmentQuestionOption[]; }

@@ -98,6 +98,27 @@ def telegram_event_miniapp_url(bot_username: str, event_id: int) -> str:
     return telegram_miniapp_start_url(bot_username, f"event_{event_id}")
 
 
+EVENT_REGISTRATION_PREFIX = "event_"
+
+
+def telegram_event_registration_url(bot_username: str, event_id: int) -> str:
+    """Public share link to the published event's native Telegram registration card."""
+    username = bot_username.lstrip("@").strip()
+    if not username or not 0 < event_id <= 2_147_483_647:
+        return ""
+    return f"https://t.me/{username}?start={EVENT_REGISTRATION_PREFIX}{event_id}"
+
+
+def parse_event_registration_payload(payload: str | None) -> int | None:
+    if not isinstance(payload, str) or not payload.startswith(EVENT_REGISTRATION_PREFIX):
+        return None
+    raw = payload[len(EVENT_REGISTRATION_PREFIX):]
+    if not raw or len(raw) > 10 or not raw.isascii() or not raw.isdecimal():
+        return None
+    event_id = int(raw)
+    return event_id if 0 < event_id <= 2_147_483_647 else None
+
+
 def telegram_profile_miniapp_url(bot_username: str) -> str:
     return telegram_miniapp_start_url(bot_username, "profile")
 

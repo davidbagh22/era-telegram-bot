@@ -39,7 +39,7 @@ function ApplicationCard({ application, busy, comment, onComment, onDecision }: 
     <Card style={{ borderLeft: "4px solid var(--era-violet)", display: "flex", flexDirection: "column", gap: "0.9rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start" }}>
         <div>
-          <MonoLabel tone="violet">ЭРА PRO · заявка #{application.id}</MonoLabel>
+          <MonoLabel tone="violet">Лидеры ЭРА · заявка #{application.id}</MonoLabel>
           <strong style={{ display: "block", marginTop: "0.28rem", fontSize: "1.05rem" }}>{application.full_name}</strong>
           <p style={{ margin: "0.2rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8rem" }}>{application.username ? `@${application.username}` : `ID ${application.user_id}`} · {formatPoints(application.points)} баллов</p>
         </div>
@@ -49,7 +49,7 @@ function ApplicationCard({ application, busy, comment, onComment, onDecision }: 
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>{application.directions.map((key) => <span key={key} style={{ padding: "0.4rem 0.55rem", borderRadius: 999, background: "var(--era-surface-2)", border: "1px solid var(--era-border)", fontSize: "0.76rem" }}>{DIRECTION_LABELS[key] ?? key}</span>)}</div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
-        <Answer label="Почему хочет попасть в ЭРА PRO" text={application.motivation} />
+        <Answer label="Почему хочет стать Лидером ЭРА" text={application.motivation} />
         <Answer label="Результат на 3–6 месяцев" text={application.target_result} />
         <Answer label="Чем полезен сообществу" text={application.community_value} />
         {application.portfolio_url && <div><strong style={{ display: "block", marginBottom: "0.3rem", fontSize: "0.78rem", color: "var(--era-text-muted)" }}>Проект / портфолио</strong><a href={application.portfolio_url} target="_blank" rel="noreferrer" style={{ overflowWrap: "anywhere" }}>{application.portfolio_url}</a></div>}
@@ -91,14 +91,14 @@ export function AdminEraProScreen() {
     }
   }, [comments]);
 
-  if (state.status === "loading") return <p style={{ color: "var(--era-text-muted)" }}>Загрузка заявок ЭРА PRO…</p>;
-  if (state.status === "error") return <EmptyState text="Не удалось загрузить заявки ЭРА PRO." />;
+  if (state.status === "loading") return <p style={{ color: "var(--era-text-muted)" }}>Загрузка заявок «Лидеры ЭРА»…</p>;
+  if (state.status === "error") return <EmptyState text="Не удалось загрузить заявки «Лидеры ЭРА»." />;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
-      <div><MonoLabel tone="violet">Закрытый уровень</MonoLabel><h2 style={{ margin: "0.3rem 0 0" }}>Заявки ЭРА PRO</h2><p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", fontSize: "0.82rem" }}>Здесь только участники, которые достигли порога 8 000 баллов и сами подали заявку.</p></div>
+      <div><MonoLabel tone="violet">Закрытый уровень</MonoLabel><h2 style={{ margin: "0.3rem 0 0" }}>Заявки · Лидеры ЭРА</h2><p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", fontSize: "0.82rem" }}>Лидерский статус не равен административным правам. Здесь только участники с порогом 8 000 баллов, которые сами подали заявку.</p></div>
       {error && <p style={{ margin: 0, color: "var(--era-error)" }}>{error}</p>}
-      {state.data.length === 0 ? <EmptyState text="Заявок ЭРА PRO на рассмотрении сейчас нет." /> : state.data.map((application) => <ApplicationCard key={application.id} application={application} busy={busyId === application.id} comment={comments[application.id] ?? ""} onComment={(value) => setComments((current) => ({ ...current, [application.id]: value }))} onDecision={(decision) => void decide(application.id, decision)} />)}
+      {state.data.length === 0 ? <EmptyState text="Заявок «Лидеры ЭРА» на рассмотрении сейчас нет." /> : state.data.map((application) => <ApplicationCard key={application.id} application={application} busy={busyId === application.id} comment={comments[application.id] ?? ""} onComment={(value) => setComments((current) => ({ ...current, [application.id]: value }))} onDecision={(decision) => void decide(application.id, decision)} />)}
     </div>
   );
 }

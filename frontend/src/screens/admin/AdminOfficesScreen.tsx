@@ -87,7 +87,7 @@ function ApplicationCard({
         <div>
           <strong style={{ fontSize: "1.05rem" }}>{application.user_name}</strong>
           <span style={{ display: "block", marginTop: ".2rem", color: "var(--era-text-muted)", fontSize: ".8rem" }}>
-            {application.facts.participation_label} · {STATUS_LABELS[application.status] ?? application.status}
+            {application.facts.participation_label} · {STATUS_LABELS[application.status] ?? "Статус обновлён"}
           </span>
         </div>
         <MonoLabel tone="violet">#{application.id}</MonoLabel>
@@ -347,7 +347,7 @@ export function AdminOfficesScreen() {
                   {assigningOfficeId === office.id ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: ".45rem" }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: ".45rem" }}>
-                        <input placeholder="Имя, имя пользователя или ID Telegram" value={query} onChange={(event) => setQuery(event.target.value)} style={inputStyle} />
+                        <input placeholder="Имя, имя пользователя или номер Telegram" value={query} onChange={(event) => setQuery(event.target.value)} style={inputStyle} />
                         <button type="button" disabled={searching || !query.trim()} onClick={() => void handleSearch()}>Найти</button>
                       </div>
                       {candidates.map((candidate) => <button key={candidate.id} type="button" onClick={() => void runAction(office.id, async () => { await assignOffice(office.id, candidate.id); setAssigningOfficeId(null); })} style={{ textAlign: "left" }}>{candidate.first_name} {candidate.last_name ?? ""}</button>)}

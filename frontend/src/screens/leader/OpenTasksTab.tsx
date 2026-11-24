@@ -284,7 +284,7 @@ export function OpenTasksTab() {
             {task.deliveries.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem", marginBottom: "0.5rem" }}>
                 {task.deliveries.map((delivery) => {
-                  const label = DESTINATION_OPTIONS.find((o) => o.value === delivery.chat_key)?.label ?? delivery.chat_key;
+                  const label = DESTINATION_OPTIONS.find((o) => o.value === delivery.chat_key)?.label ?? "Чат";
                   const retryKey = `retry:${task.id}:${delivery.id}`;
                   return (
                     <div key={delivery.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -324,7 +324,7 @@ export function OpenTasksTab() {
                     >
                       <span>
                         {application.first_name} {application.last_name ?? ""} —{" "}
-                        {APPLICATION_STATUS_LABELS[application.status] ?? application.status}
+                        {APPLICATION_STATUS_LABELS[application.status] ?? "Статус обновлён"}
                       </span>
                       {application.status === "pending" && (
                         <div style={{ display: "flex", gap: "0.375rem" }}>

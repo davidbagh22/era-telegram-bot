@@ -93,6 +93,11 @@ stack (not just a page render):
   step, including backing out without cancelling — independent of
   `participant.spec.ts` so it doesn't leave the seeded participant's
   registration state as a side effect for other specs.
+- **ECC critical journeys** (`ecc_journeys.spec.ts`): isolated users
+  900021–900024 cover Home → register → cancel copy, full-event waitlist
+  CTA → queue copy → cancel, and tasks detail → SOLO claim. Portfolio PDF
+  export interview + download smoke lives in `career-portfolio.spec.ts`
+  (send-to-bot chat delivery stays quarantined — needs live Telegram).
 - **Responsive layout** (`responsive.spec.ts`): every other spec here runs
   at the single 390×844 viewport `playwright.config.ts` sets — this one
   re-visits Home/Activity/Projects/Opportunities/Profile at 320, 360, 390,

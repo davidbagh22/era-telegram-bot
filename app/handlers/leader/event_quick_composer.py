@@ -34,6 +34,7 @@ from app.services.event_publication_service import (
 )
 from app.services.notification_service import safe_answer_photo
 from app.utils.constants import EventStatus
+from app.utils.deep_links import telegram_event_registration_url
 from app.utils.validators import parse_date, parse_time
 
 router = Router(name='native_event_quick_composer')
@@ -63,6 +64,12 @@ def enabled_for_user(settings, user):
                           or is_full_admin(user, settings, user.telegram_id)))
 
 
+def can_use_quick_composer(settings, user, telegram_id):
+    return can_manage_events(user, settings, telegram_id) and (
+        enabled(settings, telegram_id) or is_full_admin(user, settings, telegram_id)
+    )
+
+
 def parse_integer_field(field, raw):
     try:
         value = int(raw)
@@ -74,7 +81,7 @@ def parse_integer_field(field, raw):
 
 
 async def guard(call, user, settings):
-    if not user or user.is_blocked or user.is_archived or user.telegram_id != call.from_user.id or not enabled_for_user(settings, user) or not can_manage_events(user, settings, call.from_user.id):
+    if not user or user.is_blocked or user.is_archived or user.telegram_id != call.from_user.id or not can_use_quick_composer(settings, user, call.from_user.id):
         target = call.message if isinstance(call, CallbackQuery) else call
         if isinstance(call, CallbackQuery):
             await call.answer('Нет доступа к этой форме.', show_alert=True)
@@ -173,6 +180,7 @@ async def show_card(message, state):
     fields = list(FIELDS)
     for index in range(0, len(fields), 2):
         rows.append([InlineKeyboardButton(text=FIELDS[field], callback_data=f'leader:eventq:edit_{field}:{ref}') for field in fields[index:index+2]])
+    rows.append([InlineKeyboardButton(text='🖼️ Прикрепить или заменить фото', callback_data=f'leader:eventq:photo:{ref}')])
     if not missing(form):
         rows.append([InlineKeyboardButton(text='👁 Полный предпросмотр с фото', callback_data=f'leader:eventq:preview:{ref}')])
         if data.get('quick_previewed') == signature(form):
@@ -329,6 +337,9 @@ async def quick_action(call: CallbackQuery, user: User | None, settings: Setting
         return
     action = parts[2]
     await call.answer()
+    if action == 'photo':
+        await call.message.answer('Отправьте фотографию одним сообщением (до 5 МБ). Она будет прикреплена к этому черновику.')
+        return
     if action.startswith('edit_') and action[5:] in FIELDS:
         await state.update_data(quick_edit=action[5:])
         await call.message.answer('Введите значение: '+FIELDS[action[5:]]+'. Можно отменить ввод через /cancel.')
@@ -394,6 +405,20 @@ async def quick_action(call: CallbackQuery, user: User | None, settings: Setting
             await session.delete(row)
             await session.commit()
             await state.clear()
-            await call.message.answer(f'✅ Мероприятие #{event.id} опубликовано. Регистрация открыта.')
+            username = (settings.bot_username or '').strip()
+            if not username:
+                try:
+                    username = (await call.bot.get_me()).username or ''
+                except TelegramAPIError:
+                    username = ''
+            link = telegram_event_registration_url(username, event.id)
+            await call.message.answer(
+                f'✅ Мероприятие #{event.id} опубликовано. Регистрация открыта.'
+                + (f'\n\nСсылка на регистрацию:\n{link}' if link else '\n\nНе удалось определить адрес бота для ссылки.'),
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text='Открыть регистрацию', url=link),
+                ]]) if link else None,
+                parse_mode=None,
+            )
         else:
             await call.message.answer(f'Мероприятие #{event.id} сохранено. Доставка анонса пока не подтверждена. Повторная проверка использует это же событие.')

@@ -12,7 +12,7 @@ from app.api.deps import get_current_user, get_session, get_settings
 from app.api.v1.router import api_router
 from app.config import Settings
 from app.database.event_experience import EventExperience
-from app.database.models import Event, User
+from app.database.models import Event, EventRegistration, User
 
 
 def _user(**overrides) -> SimpleNamespace:
@@ -57,15 +57,41 @@ def _task(**overrides) -> SimpleNamespace:
     return SimpleNamespace(**defaults)
 
 
-def _event_session(event: SimpleNamespace | None) -> SimpleNamespace:
-    async def _get(model, _entity_id):
+def _select_entity(statement):
+    try:
+        return statement.column_descriptions[0].get("entity")
+    except Exception:
+        return None
+
+
+def _event_session(
+    event: SimpleNamespace | None,
+    *,
+    registration: SimpleNamespace | None = None,
+) -> SimpleNamespace:
+    """Stub session with get/scalar so cancel can exercise leave_event_registration's lock."""
+
+    async def _get(model, _entity_id, **_kwargs):
         if model is Event:
             return event
         if model in {EventExperience, User}:
             return None
         return None
 
-    return SimpleNamespace(get=AsyncMock(side_effect=_get))
+    async def _scalar(statement):
+        entity = _select_entity(statement)
+        if entity is Event:
+            return event
+        if entity is EventRegistration:
+            return registration
+        return None
+
+    return SimpleNamespace(
+        get=AsyncMock(side_effect=_get),
+        # `_require_participant_event` → `_get_registration` uses session.scalar.
+        scalar=AsyncMock(side_effect=_scalar),
+        commit=AsyncMock(),
+    )
 
 
 def _build_app(session: SimpleNamespace) -> FastAPI:
@@ -142,29 +168,26 @@ class EventsApiTests(unittest.TestCase):
 
     def test_cancel_registration_not_found(self) -> None:
         event = _event()
-        session = _event_session(event)
+        # Real leave_event_registration locks the event via session.scalar, then 404s
+        # when no registration row exists for the user.
+        session = _event_session(event, registration=None)
         app = _build_app(session)
         client = TestClient(app)
-        with patch(
-            "app.api.v1.events._get_registration", new=AsyncMock(return_value=None)
-        ):
-            response = client.post("/api/v1/events/10/cancel")
+        response = client.post("/api/v1/events/10/cancel")
         self.assertEqual(response.status_code, 404)
+        self.assertTrue(session.scalar.await_count >= 1)
 
     def test_cancel_registration_blocked_by_rules(self) -> None:
         event = _event()
-        session = _event_session(event)
+        registration = SimpleNamespace(status="attended")
+        # Leave path locks capacity, refreshes registration, then mark_not_coming
+        # rejects attended → API maps cannot_change to 409.
+        session = _event_session(event, registration=registration)
         app = _build_app(session)
         client = TestClient(app)
-        registration = SimpleNamespace(status="attended")
-        with (
-            patch(
-                "app.api.v1.events._get_registration", new=AsyncMock(return_value=registration)
-            ),
-            patch("app.api.v1.events.mark_not_coming", return_value=False),
-        ):
-            response = client.post("/api/v1/events/10/cancel")
+        response = client.post("/api/v1/events/10/cancel")
         self.assertEqual(response.status_code, 409)
+        self.assertTrue(session.scalar.await_count >= 1)
 
 
 class TasksApiTests(unittest.TestCase):

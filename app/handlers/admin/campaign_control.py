@@ -21,7 +21,7 @@ async def show_campaigns(message, session):
     items = list((await session.scalars(select(Broadcast).where(
         Broadcast.audience_filter_json['campaign_key'].as_string().is_not(None))
         .order_by(Broadcast.id.desc()).limit(15))).all())
-    rows = [[InlineKeyboardButton(text=f'#{item.id} · {LABELS.get(item.status, item.status)}',
+    rows = [[InlineKeyboardButton(text=f'#{item.id} · {LABELS.get(item.status, "Статус уточняется")}',
         callback_data=f'admin:campaign:{item.id}:view')] for item in items]
     rows.insert(0, [InlineKeyboardButton(text='➕ Создать рассылку', callback_data='admin:campaign:new')])
     rows.append([InlineKeyboardButton(text='← Админ-панель', callback_data='admin:panel')])
@@ -76,7 +76,7 @@ async def campaign_action(call: CallbackQuery, user: User | None, settings: Sett
         rows.append([InlineKeyboardButton(text='⛔ Отменить оставшиеся отправки', callback_data=f'admin:campaign:{item.id}:cancel')])
     rows.append([InlineKeyboardButton(text='🔄 Обновить', callback_data=f'admin:campaign:{item.id}:view'),
                  InlineKeyboardButton(text='← Рассылки', callback_data='admin:campaigns')])
-    await call.message.answer(f'📨 Кампания #{item.id}\n{LABELS.get(item.status, item.status)}\n\n'
+    await call.message.answer(f'📨 Кампания #{item.id}\n{LABELS.get(item.status, "Статус уточняется")}\n\n'
         f'Аудитория: {len((item.audience_filter_json or {}).get("recipient_ids", []))}\n'
         f'Подтверждено: {counts.get("sent", 0)}\nНеопределённый исход: {counts.get("uncertain", 0)}\n'
         f'Недоступны: {counts.get("blocked", 0)+counts.get("unreachable", 0)}\n\n'

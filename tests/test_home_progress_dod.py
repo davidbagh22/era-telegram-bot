@@ -87,7 +87,40 @@ class HomeProgressDefinitionOfDoneTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(today, 5)
             self.assertEqual(month, 25)
 
-    async def test_single_missing_requirement_is_almost_with_truthful_points_gap(self) -> None:
+    async def test_eligible_recognition_still_surfaces_as_available(self) -> None:
+        async with self.session_factory() as session:
+            user = await self._user(
+                session,
+                310004,
+                status=ParticipationStatus.ACTIVE_MEMBER,
+            )
+            session.add(PointTransaction(user_id=user.id, points=500, reason="earned"))
+            session.add(ActivityMetric(user_id=user.id, metric_key="volunteer_hours", value=20))
+            partner = Partner(name="ЭРА", description="d")
+            session.add(partner)
+            await session.flush()
+            session.add(
+                PartnerInitiative(
+                    partner_id=partner.id,
+                    title="Ready certificate",
+                    description="d",
+                    point_cost=300,
+                    opportunity_type="certificate",
+                    min_rank=ParticipationStatus.ACTIVE_MEMBER,
+                    eligibility_json={"required_metrics": {"volunteer_hours": 10}},
+                )
+            )
+            await session.flush()
+
+            available, almost, locked = await _recognition_progress(session, user)
+
+            self.assertIsNotNone(available)
+            self.assertEqual(available.display_state, "available")
+            self.assertEqual(available.title, "Ready certificate")
+            self.assertIsNone(almost)
+            self.assertIsNone(locked)
+
+    async def test_single_missing_requirement_hidden_from_home(self) -> None:
         async with self.session_factory() as session:
             user = await self._user(
                 session,
@@ -116,14 +149,12 @@ class HomeProgressDefinitionOfDoneTests(unittest.IsolatedAsyncioTestCase):
 
             available, almost, locked = await _recognition_progress(session, user)
 
+            # Unfinished recognition is hidden from Home (ERA 2.0).
             self.assertIsNone(available)
-            self.assertIsNotNone(almost)
+            self.assertIsNone(almost)
             self.assertIsNone(locked)
-            self.assertEqual(almost.display_state, "almost")
-            self.assertEqual(almost.points_needed, 100)
-            self.assertEqual(almost.progress_text, "осталось 100 баллов")
 
-    async def test_multiple_missing_requirements_never_collapse_to_zero_points(self) -> None:
+    async def test_multiple_missing_requirements_hidden_from_home(self) -> None:
         async with self.session_factory() as session:
             user = await self._user(
                 session,
@@ -152,10 +183,7 @@ class HomeProgressDefinitionOfDoneTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertIsNone(available)
             self.assertIsNone(almost)
-            self.assertIsNotNone(locked)
-            self.assertEqual(locked.display_state, "locked")
-            self.assertIn("нужен ранг: Член команды", locked.progress_text)
-            self.assertIn("ещё 18 часов волонтёрства", locked.progress_text)
+            self.assertIsNone(locked)
 
 
 if __name__ == "__main__":

@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 
-from datetime import datetime, timezone
 from typing import Any
 
 from aiogram import Bot
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,25 +15,45 @@ from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.config import Settings
 from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration, User
-from app.services import event_activity_service
+from app.services import anniversary_registration_service as anniversary, event_activity_service
 from app.services.activity_service import EventScope, list_events
-from app.services.event_registration_service import mark_not_coming
+from app.services.event_registration_policy import registration_is_closed
+from app.services.event_registration_notice_service import (
+    RegistrationNoticeKind,
+    deliver_registration_notice,
+    enqueue_registration_notice,
+)
+from app.services.event_poster_security import normalized_event_poster_mime
 from app.services.event_service import (
     available_places,
-    promote_waitlist,
+    leave_event_registration,
     register_for_event,
     registered_count,
 )
-from app.services.notification_service import safe_send, safe_send_once
+from app.services.notification_service import safe_send_once
 from app.services.event_calendar_service import build_event_calendar
 from app.services.event_service import PUBLIC_EVENT_STATUSES
 from app.utils.constants import EventStatus, RegistrationStatus
-from app.utils.deep_links import activity_submit_deep_link, miniapp_event_url
+from app.utils.deep_links import activity_submit_deep_link
 
 router = APIRouter(prefix="/events", tags=["events"])
+logger = logging.getLogger(__name__)
+
+
+class AnniversaryRegistrationIn(BaseModel):
+    first_name: str | None = Field(default=None, max_length=80)
+    last_name: str | None = Field(default=None, max_length=80)
+    organization: str | None = Field(default=None, max_length=160)
+
+
+class EventSignup(BaseModel):
+    full_name: str = Field(min_length=3, max_length=255, pattern=r"^\S+(?:\s+\S+){2,}$")
+    phone: str = Field(min_length=7, max_length=32, pattern=r"^\+?[0-9 ()-]+$")
+    organization: str = Field(min_length=2, max_length=255)
 
 
 class EventOut(BaseModel):
+    signup_defaults: dict[str, str] | None = None
     id: int
     title: str
     description: str
@@ -52,6 +71,7 @@ class EventOut(BaseModel):
     participant_value: str | None = None
     contact: str | None = None
     chat_url: str | None = None
+    registration_url: str | None = None
     points_for_visit: int
     project_id: int | None
     status: str
@@ -68,21 +88,18 @@ class EventOut(BaseModel):
     program: list[dict[str, Any]]
     participant_tasks: list[dict[str, Any]]
     poster_url: str | None = None
-
-
-def _registration_is_closed(experience: EventExperience | None) -> bool:
-    if experience is None or experience.registration_close_at is None:
-        return False
-    deadline = experience.registration_close_at
-    if deadline.tzinfo is None:
-        deadline = deadline.replace(tzinfo=timezone.utc)
-    return deadline <= datetime.now(timezone.utc)
+    anniversary_registered: bool | None = None
+    anniversary_registration_open: bool = False
+    anniversary_defaults: AnniversaryRegistrationIn | None = None
 
 
 def _display_status(
     event: Event,
     registration: EventRegistration | None,
     remaining: int | None,
+    *,
+    registration_required: bool = True,
+    registration_closed: bool = False,
 ) -> str:
     if registration is not None:
         if registration.status == RegistrationStatus.WAITLIST:
@@ -97,32 +114,49 @@ def _display_status(
         return "Завершено"
     if event.status == EventStatus.CANCELLED:
         return "Отменено"
-    if event.status == EventStatus.REGISTRATION_CLOSED:
+    if event.status == EventStatus.ACTIVE:
+        return "Идёт сейчас"
+    if event.status == EventStatus.REGISTRATION_CLOSED or (
+        registration_closed and registration_required
+    ):
         return "Регистрация закрыта"
     if remaining is not None and remaining <= 3:
         return "Мест почти нет" if remaining > 0 else "Мест нет"
     if event.status in {EventStatus.APPROVED, EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN}:
-        return "Регистрация открыта"
+        return "Регистрация открыта" if registration_required else "Без регистрации"
+    if event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
+        return "Готовится"
     return "Скоро"
 
 
 async def _to_event_out(
-    session: AsyncSession, event: Event, registration: EventRegistration | None
+    session: AsyncSession, event: Event, registration: EventRegistration | None, user: User
 ) -> EventOut:
     experience = await session.get(EventExperience, event.id)
+    guest_event = (
+        anniversary.is_public_anniversary(event) and event.status in anniversary.DISPLAY_STATUSES
+    )
+    count = await anniversary.attendee_count(session, event) if guest_event else await registered_count(session, event.id)
     places = await available_places(session, event)
-    count = await registered_count(session, event.id)
+    if guest_event and event.participant_limit is not None:
+        places = str(max(0, event.participant_limit - count))
     remaining = None if event.participant_limit is None else max(0, event.participant_limit - count)
 
     organizer = experience.organizer if experience else None
-    if not organizer:
+    external_signup = bool(
+        experience and not experience.registration_required
+        and (getattr(experience, "registration_url", None) or str(experience.contact or "").startswith("https://t.me/"))
+    )
+    # For events hosted by other organizers, the ERA admin who shared the
+    # listing is not necessarily its organizer.
+    if not organizer and not external_signup:
         creator = await session.get(User, event.created_by)
         if creator is not None:
             organizer = f"{creator.first_name} {creator.last_name or ''}".strip()
 
     registration_required = experience.registration_required if experience else True
     waitlist_enabled = experience.waitlist_enabled if experience else False
-    registration_closed = _registration_is_closed(experience)
+    registration_closed = registration_is_closed(experience)
     active_registration = bool(
         registration
         and registration.status
@@ -140,9 +174,41 @@ async def _to_event_out(
         and event.status in {EventStatus.APPROVED, EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN}
         and (remaining is None or remaining > 0 or waitlist_enabled)
     )
+    anniversary_registered = None
+    anniversary_open = False
+    anniversary_defaults = None
+    display_status = _display_status(
+        event,
+        registration,
+        remaining,
+        registration_required=registration_required,
+        registration_closed=registration_closed,
+    )
+    if display_status == "Без регистрации" and external_signup:
+        display_status = "Запись по ссылке организаторов"
+    if guest_event:
+        waitlisted = registration is not None and registration.status == RegistrationStatus.WAITLIST
+        anniversary_registered = (
+            (registration is not None and registration.status in anniversary.ACTIVE_REGISTRATION_STATUSES)
+            or bool(await anniversary.get_registration(session, user.telegram_id))
+        )
+        anniversary_open = (
+            not waitlisted and anniversary.event_registration_open(event, experience) and (remaining is None or remaining > 0)
+        )
+        if anniversary_open and not anniversary_registered:
+            anniversary_defaults = AnniversaryRegistrationIn(**anniversary.profile_defaults(user))
+        can_register = False
+        if anniversary_registered:
+            display_status = "Вы зарегистрированы"
+        elif not waitlisted and not anniversary_open and event.status in anniversary.FEATURED_STATUSES:
+            display_status = "Мест нет" if remaining == 0 else "Регистрация закрыта"
 
     return EventOut(
         id=event.id,
+        signup_defaults={
+            "full_name": f"{user.last_name or ''} {user.first_name or ''}".strip(),
+            "phone": user.phone or "", "organization": user.education_work or "",
+        } if experience and "project_topic" in (getattr(experience, "broadcast_targets", None) or []) else None,
         title=event.title,
         description=event.description,
         short_description=(experience.short_description if experience else None) or event.description,
@@ -159,10 +225,11 @@ async def _to_event_out(
         participant_value=experience.participant_value if experience else None,
         contact=experience.contact if experience else None,
         chat_url=experience.chat_url if experience else None,
+        registration_url=getattr(experience, "registration_url", None) if experience else None,
         points_for_visit=event.points_for_visit,
         project_id=event.project_id,
         status=event.status,
-        display_status=_display_status(event, registration, remaining),
+        display_status=display_status,
         participant_limit=event.participant_limit,
         registered_count=count,
         available_places=places,
@@ -176,6 +243,9 @@ async def _to_event_out(
             else None
         ),
         can_register=can_register,
+        anniversary_registered=anniversary_registered,
+        anniversary_registration_open=anniversary_open,
+        anniversary_defaults=anniversary_defaults,
         program=list(experience.program or []) if experience else [],
         participant_tasks=list(experience.participant_tasks or []) if experience else [],
         poster_url=(f"/api/v1/events/{event.id}/poster" if experience and experience.poster_bytes else None),
@@ -192,53 +262,18 @@ async def _get_registration(
     )
 
 
-def _event_keyboard(settings: Settings, event: Event, experience: EventExperience | None) -> InlineKeyboardMarkup | None:
-    url = miniapp_event_url(settings.effective_miniapp_url, event.id)
-    rows: list[list[InlineKeyboardButton]] = []
-    if url:
-        rows.append([InlineKeyboardButton(text="Открыть мероприятие", web_app=WebAppInfo(url=url))])
-    if experience and experience.chat_url:
-        rows.append([InlineKeyboardButton(text="Открыть чат", url=experience.chat_url)])
-    if url:
-        rows.append([InlineKeyboardButton(text="Отказаться от участия", web_app=WebAppInfo(url=url))])
-    return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
-
-
-async def _send_registration_confirmation(
-    bot: Bot | None,
-    settings: Settings,
-    user: User,
-    event: Event,
-    experience: EventExperience | None,
-    registration: EventRegistration,
-) -> None:
-    if bot is None:
-        return
-    if registration.status == RegistrationStatus.WAITLIST:
-        text = (
-            "🔥 Вы в листе ожидания\n\n"
-            f"{event.title}\n\n"
-            f"📅 {event.event_date.strftime('%d.%m.%Y')}\n"
-            f"🕐 {event.event_time.strftime('%H:%M')}\n"
-            f"📍 {event.location}\n\n"
-            "Сейчас свободных мест нет. Если место освободится, мы автоматически переведём вас в список участников и сообщим об этом."
-        )
-    else:
-        text = (
-            "🔥 Вы зарегистрированы\n\n"
-            f"{event.title}\n\n"
-            f"📅 {event.event_date.strftime('%d.%m.%Y')}\n"
-            f"🕐 {event.event_time.strftime('%H:%M')}\n"
-            f"📍 {event.location}\n\n"
-            "Мы напомним вам о встрече заранее.\n\n"
-            "Если планы изменятся — пожалуйста, отмените участие. Так ваше место сможет занять другой участник."
-        )
-    await safe_send(
-        bot,
-        user.telegram_id,
-        text,
-        reply_markup=_event_keyboard(settings, event, experience),
-    )
+async def _require_participant_event(
+    session: AsyncSession, event_id: int, user: User
+) -> tuple[Event, EventRegistration | None]:
+    """Same visibility gate as GET /events/{id}: hide drafts and unregistered
+    cancelled events so status-code oracles cannot enumerate them."""
+    event = await session.get(Event, event_id)
+    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    registration = await _get_registration(session, event_id, user.id)
+    if event.status == EventStatus.CANCELLED and registration is None:
+        raise HTTPException(status_code=404, detail="event_not_found")
+    return event, registration
 
 
 @router.get("", response_model=list[EventOut])
@@ -248,7 +283,17 @@ async def read_events(
     session: AsyncSession = Depends(get_session),
 ) -> list[EventOut]:
     rows = await list_events(session, user, scope)
-    return [await _to_event_out(session, event, registration) for event, registration in rows]
+    if scope in {"mine", "past"}:
+        event = await anniversary.find_event(session)
+        if (
+            event is not None and event.status in anniversary.DISPLAY_STATUSES and event.access_type == "all"
+            and all(item.id != event.id for item, _ in rows)
+            and (scope == "mine" or anniversary.event_has_started())
+            and await anniversary.get_registration(session, user.telegram_id)
+        ):
+            rows.append((event, None))
+            rows.sort(key=lambda row: (row[0].event_date, row[0].event_time), reverse=scope == "past")
+    return [await _to_event_out(session, event, registration, user) for event, registration in rows]
 
 
 @router.get("/{event_id}/poster")
@@ -262,14 +307,20 @@ async def read_event_poster(
     event = await session.get(Event, event_id)
     if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
         raise HTTPException(status_code=404, detail="event_poster_not_found")
+    # Cancellation alone is not proof of prior publication. Keep posters for
+    # registered history only — same policy as calendar.ics delivery.
+    if event.status == EventStatus.CANCELLED and await _get_registration(
+        session, event_id, _user.id
+    ) is None:
+        raise HTTPException(status_code=404, detail="event_poster_not_found")
     experience = await session.get(EventExperience, event_id)
     if experience is None or not experience.poster_bytes:
         raise HTTPException(status_code=404, detail="event_poster_not_found")
     # Poster metadata may come from legacy imports or moderator uploads.
     # Never serve HTML/SVG (including scripts) under the Mini App origin.
     # Refuse unsupported MIME types rather than reflecting untrusted values.
-    poster_mime = (experience.poster_content_type or "image/jpeg").split(";", 1)[0].strip().lower()
-    if poster_mime not in {"image/jpeg", "image/png", "image/webp", "image/gif", "image/avif", "image/heic", "image/heif"}:
+    poster_mime = normalized_event_poster_mime(experience.poster_content_type)
+    if poster_mime is None:
         raise HTTPException(status_code=404, detail="event_poster_not_found")
     return Response(
         content=experience.poster_bytes,
@@ -354,11 +405,41 @@ async def read_event(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> EventOut:
+    # A cancelled draft has no reliable publication marker. Do not expose its
+    # title/location to an unrelated participant by numeric event ID.
+    event, registration = await _require_participant_event(session, event_id, user)
+    return await _to_event_out(session, event, registration, user)
+
+
+@router.post("/{event_id}/anniversary-rsvp", response_model=EventOut)
+async def register_anniversary(
+    event_id: int,
+    payload: AnniversaryRegistrationIn,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> EventOut:
     event = await session.get(Event, event_id)
-    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
+    if event is None or not anniversary.is_public_anniversary(event) or event.status not in anniversary.FEATURED_STATUSES:
         raise HTTPException(status_code=404, detail="event_not_found")
-    registration = await _get_registration(session, event_id, user.id)
-    return await _to_event_out(session, event, registration)
+    try:
+        already_registered = await anniversary.check_event_registration(session, event, user.telegram_id, user)
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if str(exc) == "event_not_found" else 409, detail=str(exc)) from exc
+    if not already_registered:
+        fields = anniversary.profile_defaults(user) | payload.model_dump(exclude_none=True)
+        if len(fields) < 3:
+            raise HTTPException(status_code=409, detail="anniversary_profile_incomplete")
+        try:
+            for key, value in fields.items():
+                fields[key] = anniversary.clean_field(value, name=key != "organization")
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="anniversary_invalid_fields") from exc
+        try:
+            await anniversary.register(session, user.telegram_id, fields)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail="anniversary_registration_closed") from exc
+    registration = await _get_registration(session, event.id, user.id)
+    return await _to_event_out(session, event, registration, user)
 
 
 @router.post("/{event_id}/register", response_model=EventOut)
@@ -368,26 +449,50 @@ async def register_event(
     session: AsyncSession = Depends(get_session),
     bot: Bot | None = Depends(get_bot),
     settings: Settings = Depends(get_settings),
+    signup: EventSignup | None = None,
 ) -> EventOut:
-    event = await session.get(Event, event_id)
-    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
-        raise HTTPException(status_code=404, detail="event_not_found")
-    experience = await session.get(EventExperience, event_id)
-    if _registration_is_closed(experience):
-        raise HTTPException(status_code=409, detail="closed")
-    if experience is not None and not experience.registration_required:
-        raise HTTPException(status_code=409, detail="registration_not_required")
-    registration, error = await register_for_event(
-        session,
-        event,
-        user.id,
-        waitlist_enabled=bool(experience and experience.waitlist_enabled),
-    )
+    # Match detail/poster privacy: do not confirm CANCELLED existence via 409.
+    event, _existing = await _require_participant_event(session, event_id, user)
+    policy = await session.get(EventExperience, event_id)
+    if policy is not None and not policy.registration_required and (getattr(policy, "registration_url", None) or str(policy.contact or "").startswith("https://t.me/")):
+        raise HTTPException(status_code=409, detail="external_registration_only")
+    if signup is not None:
+        policy = await session.get(EventExperience, event_id)
+        if policy is None or "project_topic" not in (policy.broadcast_targets or []):
+            raise HTTPException(422, "Анкета не требуется для этого мероприятия")
+        if not signup.organization.strip() or sum(ch.isdigit() for ch in signup.phone) < 7:
+            raise HTTPException(422, "Проверьте название организации и номер телефона")
+        registration, error = await register_for_event(session, event, user.id, signup.model_dump())
+    else:
+        registration, error = await register_for_event(session, event, user.id)
     if error:
         raise HTTPException(status_code=409, detail=error)
     assert registration is not None
-    await _send_registration_confirmation(bot, settings, user, event, experience, registration)
-    return await _to_event_out(session, event, registration)
+    notice = None
+    if bot is not None:
+        notice = await enqueue_registration_notice(session, registration, user.telegram_id, RegistrationNoticeKind.MINI_APP)
+    result = await _to_event_out(session, event, registration, user)
+    await session.commit()
+    # Registration has already been committed. A Telegram outage must not
+    # tell the participant that their registration failed or cause a retry.
+    if notice is not None and bot is not None:
+        try:
+            await deliver_registration_notice(session, notice, bot.send_message, settings)
+        except Exception:
+            logger.exception("Registration saved, notice delivery pending event_id=%s", event.id)
+    if signup is not None and bot and registration.status == RegistrationStatus.REGISTERED:
+        try:
+            manager = await session.get(User, settings.era_chair_user_id or event.created_by)
+            from app.services.authorization_service import can_manage_events
+            if manager and can_manage_events(manager, settings, manager.telegram_id):
+                await safe_send_once(bot, settings, manager.telegram_id,
+                    f"Новая регистрация · {event.title}\n{event.event_date:%d.%m.%Y} · {event.event_time:%H:%M}\n"
+                    f"{event.location}\n{result.chat_url or ''}\n\n{signup.full_name}\n{signup.phone}\n{signup.organization}",
+                    delivery_key=f"organizer:{notice or registration.id}",
+                    notification_type="event_signup", max_attempts=1)
+        except Exception:
+            logger.exception("Registration saved, organizer delivery pending event_id=%s", event.id)
+    return result
 
 
 @router.post("/{event_id}/cancel", response_model=EventOut)
@@ -398,33 +503,29 @@ async def cancel_event_registration(
     bot: Bot | None = Depends(get_bot),
     settings: Settings = Depends(get_settings),
 ) -> EventOut:
-    event = await session.get(Event, event_id)
-    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
-        raise HTTPException(status_code=404, detail="event_not_found")
-    registration = await _get_registration(session, event_id, user.id)
+    # Unregistered callers must not learn that a cancelled event id exists
+    # through a distinct registration_not_found response.
+    _event, registration = await _require_participant_event(session, event_id, user)
     if registration is None:
         raise HTTPException(status_code=404, detail="registration_not_found")
-    was_waiting = registration.status == RegistrationStatus.WAITLIST
-    if was_waiting:
-        registration.status = RegistrationStatus.CANCELLED
-    elif not mark_not_coming(registration, event):
+    leave = await leave_event_registration(session, event_id=event_id, user_id=user.id)
+    if leave is None:
+        raise HTTPException(status_code=404, detail="registration_not_found")
+    if leave.outcome == "cannot_change":
         raise HTTPException(status_code=409, detail="cannot_change_plans")
 
-    promoted = None if was_waiting else await promote_waitlist(session, event)
-    if promoted is not None and bot is not None:
-        promoted_user = await session.get(User, promoted.user_id)
-        experience = await session.get(EventExperience, event.id)
+    notice = None
+    if leave.promoted is not None and bot is not None:
+        promoted_user = await session.get(User, leave.promoted.user_id)
         if promoted_user is not None:
-            await safe_send(
-                bot,
-                promoted_user.telegram_id,
-                "🔥 Для вас освободилось место\n\n"
-                f"Вы теперь зарегистрированы на «{event.title}».\n\n"
-                f"📅 {event.event_date.strftime('%d.%m.%Y')} · {event.event_time.strftime('%H:%M')}\n"
-                f"📍 {event.location}",
-                reply_markup=_event_keyboard(settings, event, experience),
+            notice = await enqueue_registration_notice(
+                session, leave.promoted, promoted_user.telegram_id, RegistrationNoticeKind.PROMOTION
             )
-    return await _to_event_out(session, event, registration)
+    result = await _to_event_out(session, leave.event, leave.registration, user)
+    await session.commit()
+    if notice is not None and bot is not None:
+        await deliver_registration_notice(session, notice, bot.send_message, settings)
+    return result
 
 
 class EventActivityOut(BaseModel):
@@ -444,9 +545,8 @@ async def read_event_activities(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> list[EventActivityOut]:
-    event = await session.get(Event, event_id)
-    if event is None or event.status in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
-        raise HTTPException(status_code=404, detail="event_not_found")
+    # Hide cancelled events from strangers before the not_registered oracle.
+    event, _registration = await _require_participant_event(session, event_id, user)
     activities = await event_activity_service.list_activities_for_participant(session, event, user)
     if activities is None:
         raise HTTPException(status_code=409, detail="not_registered")

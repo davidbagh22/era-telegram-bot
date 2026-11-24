@@ -62,12 +62,11 @@ logger = logging.getLogger(__name__)
 
 
 def _warn_if_webhook_secret_missing(secret: str) -> None:
-    """Surface insecure webhook configuration without changing live delivery."""
+    """Report why Telegram webhook registration is disabled."""
     if not secret:
         logger.warning(
-            "SECURITY: WEBHOOK_SECRET is not configured; Telegram webhook "
-            "updates cannot be authenticated. Verify deployment configuration "
-            "before enabling fail-closed webhook validation."
+            "SECURITY: WEBHOOK_SECRET is not configured. Telegram webhook "
+            "updates cannot be authenticated. Set it to enable webhook registration."
         )
 
 DEPLOYED_COMMIT = os.environ.get("RENDER_GIT_COMMIT", "unknown")[:7]
@@ -477,14 +476,18 @@ async def lifespan(app: FastAPI):
     try:
         base_url = settings.effective_base_url
         if base_url:
-            _warn_if_webhook_secret_missing(settings.effective_webhook_secret)
-            webhook_url = f"{base_url}/telegram/webhook?v=2.1.0"
-            await bot.set_webhook(
-                webhook_url,
-                secret_token=settings.effective_webhook_secret or None,
-                allowed_updates=dispatcher.resolve_used_update_types(),
-                drop_pending_updates=False,
-            )
+            webhook_secret = settings.effective_webhook_secret
+            if webhook_secret:
+                webhook_url = f"{base_url}/telegram/webhook?v=2.1.0"
+                await bot.set_webhook(
+                    webhook_url,
+                    secret_token=webhook_secret,
+                    allowed_updates=dispatcher.resolve_used_update_types(),
+                    drop_pending_updates=False,
+                )
+                logger.info("Telegram webhook configured with secret authentication: %s", webhook_url)
+            else:
+                _warn_if_webhook_secret_missing(webhook_secret)
             expected_menu_button = _chat_menu_button(settings.effective_miniapp_url)
             actual_menu_button, menu_button_verified = await _set_and_verify_menu_button(bot, expected_menu_button)
             menu_button_target_verified = _menu_button_target_matches(expected_menu_button, actual_menu_button)
@@ -528,7 +531,6 @@ async def lifespan(app: FastAPI):
                 "webhook_host": base_url,
             }
             await _configure_command_scopes(bot, settings)
-            logger.info("Telegram webhook configured: %s", webhook_url)
         else:
             logger.warning("PUBLIC_BASE_URL is not set; Telegram webhook is disabled")
         yield
@@ -638,7 +640,9 @@ async def telegram_webhook(
     secret: str | None = Header(default=None, alias="X-Telegram-Bot-Api-Secret-Token"),
 ) -> dict[str, bool]:
     expected_secret = request.app.state.settings.effective_webhook_secret
-    if expected_secret and not hmac.compare_digest(secret or "", expected_secret):
+    if not expected_secret:
+        raise HTTPException(status_code=503, detail="Webhook authentication is not configured")
+    if not hmac.compare_digest((secret or "").encode(), expected_secret.encode()):
         raise HTTPException(status_code=403, detail="Invalid webhook secret")
     payload = await request.json()
     update = Update.model_validate(payload, context={"bot": request.app.state.bot})

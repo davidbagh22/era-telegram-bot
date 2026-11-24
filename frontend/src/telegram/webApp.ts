@@ -1,6 +1,6 @@
 // Minimal typed bridge to the Telegram WebApp JS SDK loaded via the
-// <script> tag in index.html. ERA intentionally keeps its own light,
-// signal-gradient visual system instead of inheriting Telegram's palette.
+// <script> tag in index.html. ERA AURA×ORBIT uses a dark blue glass chrome
+// aligned with Telegram Mini App header/background/bottom bar.
 interface TelegramHapticFeedback {
   impactOccurred?: (style: "light" | "medium" | "heavy" | "rigid" | "soft") => void;
   notificationOccurred?: (type: "error" | "success" | "warning") => void;
@@ -22,6 +22,10 @@ interface TelegramWebApp {
   colorScheme: "light" | "dark";
   themeParams: Record<string, string | undefined>;
   onEvent: (eventType: string, callback: () => void) => void;
+  offEvent?: (eventType: string, callback: () => void) => void;
+  isActive?: boolean;
+  safeAreaInset?: { top: number; bottom: number; left: number; right: number };
+  contentSafeAreaInset?: { top: number; bottom: number; left: number; right: number };
   setHeaderColor?: (color: string) => void;
   setBackgroundColor?: (color: string) => void;
   setBottomBarColor?: (color: string) => void;
@@ -58,22 +62,42 @@ export function initTelegramWebApp(): void {
   webApp?.expand();
   // Re-apply ERA chrome if Telegram itself changes theme while the Mini App is open.
   webApp?.onEvent("themeChanged", applyTelegramTheme);
+  syncTelegramSafeArea();
+  if (webApp && !safeAreaBound) {
+    safeAreaBound = true;
+    for (const event of ["safeAreaChanged", "contentSafeAreaChanged", "viewportChanged"]) {
+      webApp.onEvent(event, syncTelegramSafeArea);
+    }
+  }
+  bindPrimaryButtonHaptics();
+}
+
+let safeAreaBound = false;
+function syncTelegramSafeArea(): void {
+  const app = getTelegramWebApp();
+  for (const side of ["top", "bottom", "left", "right"] as const) {
+    const value = Math.max(0, app?.safeAreaInset?.[side] ?? 0, app?.contentSafeAreaInset?.[side] ?? 0);
+    document.documentElement.style.setProperty("--era-tg-" + side, Number.isFinite(value) ? value + "px" : "0px");
+  }
 }
 
 export function getColorScheme(): "light" | "dark" {
-  return "light";
+  return "dark";
 }
 
+const AURA_BG = "#19091a";
+const AURA_BAR = "#261124";
+
 export function applyTelegramTheme(): void {
-  document.documentElement.dataset.theme = "light";
-  document.documentElement.style.backgroundColor = "#F7F7FA";
-  document.body?.style.setProperty("background-color", "#F7F7FA");
+  document.documentElement.dataset.theme = "aura";
+  document.documentElement.style.backgroundColor = AURA_BG;
+  document.body?.style.setProperty("background-color", AURA_BG);
 
   const webApp = getTelegramWebApp();
-  // Keep Telegram's surrounding Mini App chrome visually continuous with ERA.
-  try { webApp?.setHeaderColor?.("#F7F7FA"); } catch { /* older clients */ }
-  try { webApp?.setBackgroundColor?.("#F7F7FA"); } catch { /* older clients */ }
-  try { webApp?.setBottomBarColor?.("#F7F7FA"); } catch { /* older clients */ }
+  // Keep Telegram's surrounding Mini App chrome visually continuous with AURA.
+  try { webApp?.setHeaderColor?.(AURA_BG); } catch { /* older clients */ }
+  try { webApp?.setBackgroundColor?.(AURA_BG); } catch { /* older clients */ }
+  try { webApp?.setBottomBarColor?.(AURA_BAR); } catch { /* older clients */ }
 }
 
 function currentHashRoute(): string {
@@ -91,8 +115,14 @@ function parentRoute(route: string): string | null {
     "admin",
     "leader",
     "community",
+    "discover",
   ]);
   if (roots.has(route)) return null;
+  if (["people", "teams", "ideas"].includes(route)) return "home";
+  if (route === "literature") return "discover/leisure";
+  if (/^literature\/\d+$/.test(route)) return "literature";
+  if (route === "games") return "discover/leisure";
+  if (route.startsWith("discover/")) return "discover";
 
   if (route === "development" || route === "progress") return "home";
   if (route.startsWith("development/")) return "development";
@@ -106,7 +136,7 @@ function parentRoute(route: string): string | null {
   if (/^tasks\/\d+$/.test(route)) return "tasks";
   if (route === "tasks" || route === "calendar" || route === "history") return "home";
 
-  if (/^users\/\d+$/.test(route)) return "opportunities";
+  if (/^users\/\d+$/.test(route)) return "people";
   if (/^(opportunities|auctions|rewards|surveys|media)\/\d+$/.test(route)) return "opportunities";
   if (["auctions", "rewards", "surveys", "media", "leaderboard"].includes(route)) return "opportunities";
   if (["media/guide", "media/era", "media/ksoors"].includes(route)) return "media";
@@ -172,6 +202,29 @@ export function selectionHaptic(): void {
   try { getTelegramWebApp()?.HapticFeedback?.selectionChanged?.(); } catch { /* unsupported client */ }
 }
 
+export function impactHaptic(style: "light" | "medium" | "heavy" = "light"): void {
+  try { getTelegramWebApp()?.HapticFeedback?.impactOccurred?.(style); } catch { /* unsupported client */ }
+}
+
 export function successHaptic(): void {
   try { getTelegramWebApp()?.HapticFeedback?.notificationOccurred?.("success"); } catch { /* unsupported client */ }
+}
+
+let primaryHapticsBound = false;
+
+/** Light tap feedback on primary/signal CTAs without wiring every screen. */
+export function bindPrimaryButtonHaptics(): void {
+  if (primaryHapticsBound || typeof document === "undefined") return;
+  primaryHapticsBound = true;
+  document.addEventListener(
+    "click",
+    (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const control = target.closest(".era-btn-primary, .era-btn-signal");
+      if (!control || (control instanceof HTMLButtonElement && control.disabled)) return;
+      impactHaptic("light");
+    },
+    true,
+  );
 }

@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     media_manager_ids: IdList = Field(default_factory=list)
     # Explicit one-time owner-authorized personal invitation; off until release verification.
     media_join_dm_campaign_enabled: bool = False
+    # Opt-in only: deployment must not add new public reminders.
+    media_deadline_3h_enabled: bool = False
     # Immutable registered account ID; never inferred from a mutable name or username.
     era_chair_user_id: int | None = Field(default=None, gt=0)
     admin_ids: IdList = Field(default_factory=list)

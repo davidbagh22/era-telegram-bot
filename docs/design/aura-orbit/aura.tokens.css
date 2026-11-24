@@ -1,0 +1,38 @@
+/*
+ * ERA / AURA × ORBIT — starter tokens (2026-11-19).
+ * Spec copy for integration; authoritative runtime theme lives in
+ * frontend/src/theme/tokens.css once Stage B lands.
+ */
+:root,
+:root[data-theme="aura"] {
+  color-scheme: dark;
+  --era-bg: #070b18;
+  --era-bg-soft: #0b1224;
+  --era-bg-subtle: var(--era-bg-soft);
+  --era-surface: #111b30;
+  --era-surface-2: #16233c;
+  --era-surface-3: #1c2c49;
+  --era-surface-dark: #070b18;
+  --era-glass: rgba(17, 27, 48, 0.84);
+  --era-nav-glass: rgba(10, 18, 35, 0.9);
+  --era-text: #f5f8ff;
+  --era-text-secondary: #b4c2dd;
+  --era-text-muted: var(--era-text-secondary);
+  --era-text-faint: #94a8ca;
+  --era-primary: #2455ff;
+  --era-primary-strong: #2449d8;
+  --era-cyan: #75ddff;
+  --era-focus: #9ae8ff;
+  --era-selected: rgba(36, 85, 255, 0.22);
+  --era-border: rgba(157, 190, 255, 0.2);
+  --era-border-strong: rgba(157, 190, 255, 0.38);
+  --era-success: #6ce8ba;
+  --era-warning: #ffd38a;
+  --era-error: #ff8da1;
+  --era-gradient: linear-gradient(135deg, #2449d8 0%, #2455ff 100%);
+  --era-font-display: "Onest", "Segoe UI", system-ui, sans-serif;
+  --era-font-body: "Onest", "Segoe UI", system-ui, sans-serif;
+  --era-feed-title: clamp(28px, 8.3vw, 38px);
+  --era-ambient-period: 36s;
+  --era-orbit-period: 56s;
+}

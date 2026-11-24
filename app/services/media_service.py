@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Literal
@@ -56,8 +57,19 @@ MEDIA_TASK_KINDS = {
     "photo": "Фото",
     "video": "Видео",
     "editing": "Монтаж",
-    "stories": "Stories",
+    "stories": "Сторис",
 }
+_MEDIA_TASK_TITLE_TEMPLATES = {
+    "text": "Написать текст для «{rubric}»",
+    "design": "Подготовить дизайн для «{rubric}»",
+    "photo": "Сделать фото для «{rubric}»",
+    "video": "Снять видео для «{rubric}»",
+    "editing": "Смонтировать ролик для «{rubric}»",
+    "stories": "Собрать сторис для «{rubric}»",
+}
+_FORMULAIC_MEDIA_TITLE = re.compile(
+    r"^Медиа · (?P<kind>Текст|Дизайн|Фото|Видео|Монтаж|Stories|Сторис) · (?P<rubric>.+)$"
+)
 MEDIA_PACKAGES: dict[str, tuple[str, ...]] = {
     "announcement": ("text", "design"),
     "photo": ("photo",),
@@ -589,18 +601,68 @@ def _is_media_task(task: Task) -> bool:
     return bool((getattr(task, "reward_json", None) or {}).get("media_task"))
 
 
+def media_task_display_title(task_kind: str, rubric: str | None) -> str:
+    template = _MEDIA_TASK_TITLE_TEMPLATES.get(task_kind)
+    if template is None:
+        raise ValueError("invalid_media_task_kind")
+    label = (rubric or "").strip() or "публикации ЭРА"
+    return template.format(rubric=label)
+
+
+def rewrite_formulaic_media_title(title: str) -> str | None:
+    """Rewrite only unambiguous auto titles. Author titles stay untouched."""
+    match = _FORMULAIC_MEDIA_TITLE.match((title or "").strip())
+    if match is None:
+        return None
+    kind_label = match.group("kind")
+    rubric = match.group("rubric").strip()
+    kind_by_label = {label: key for key, label in MEDIA_TASK_KINDS.items()}
+    kind_by_label["Stories"] = "stories"  # legacy formulaic English label
+    task_kind = kind_by_label.get(kind_label)
+    if task_kind is None:
+        return None
+    return media_task_display_title(task_kind, rubric)
+
+
+async def rewrite_formulaic_media_task_titles(session: AsyncSession) -> int:
+    """Correct stored formulaic media titles in place. No deletes."""
+    tasks = list(
+        (
+            await session.scalars(
+                select(Task).where(Task.title.like("Медиа · %"))
+            )
+        ).all()
+    )
+    changed = 0
+    for task in tasks:
+        if not _is_media_task(task):
+            continue
+        rewritten = rewrite_formulaic_media_title(task.title)
+        if rewritten and rewritten != task.title:
+            task.title = rewritten
+            changed += 1
+    if changed:
+        await session.flush()
+    return changed
+
+
 async def create_content_tasks(
     session: AsyncSession,
     item: MediaContentItem,
     *,
     creator_id: int,
     task_kinds: tuple[str, ...] | list[str],
+    task_deadline: datetime | None = None,
 ) -> list[MediaContentTask]:
     links: list[MediaContentTask] = []
-    deadline = item.scheduled_at or (datetime.now(timezone.utc) + timedelta(days=7))
-    # Give the team a buffer before publication whenever the item is still in
-    # the future, but never create a deadline in the past.
-    deadline = max(datetime.now(timezone.utc) + timedelta(hours=4), deadline - timedelta(hours=24))
+    if task_deadline is not None:
+        # Explicit requester due date is the editorial task deadline as-is.
+        deadline = task_deadline if task_deadline.tzinfo else task_deadline.replace(tzinfo=timezone.utc)
+    else:
+        deadline = item.scheduled_at or (datetime.now(timezone.utc) + timedelta(days=7))
+        # Give the team a buffer before publication whenever the item is still in
+        # the future, but never create a deadline in the past.
+        deadline = max(datetime.now(timezone.utc) + timedelta(hours=4), deadline - timedelta(hours=24))
     for task_kind in task_kinds:
         if task_kind not in MEDIA_TASK_KINDS:
             raise ValueError("invalid_media_task_kind")
@@ -614,7 +676,7 @@ async def create_content_tasks(
             links.append(existing)
             continue
         task = Task(
-            title=f"Медиа · {MEDIA_TASK_KINDS[task_kind]} · {item.rubric or 'Контент'}",
+            title=media_task_display_title(task_kind, item.rubric),
             description=(
                 "Подготовь материал для редакции ЭРА. Результат отправляется "
                 "через стандартную сдачу задачи и после проверки учитывается в Медиа."
@@ -670,6 +732,8 @@ async def request_media_package(
     package_type: str,
     requester: User,
     settings: Settings,
+    due_at: datetime | None = None,
+    bot: Bot | None = None,
 ) -> MediaRequest:
     if package_type not in MEDIA_PACKAGES:
         raise ValueError("invalid_package")
@@ -705,6 +769,11 @@ async def request_media_package(
     if not allowed:
         raise PermissionError("forbidden")
 
+    if due_at is not None:
+        if due_at.tzinfo is None:
+            due_at = due_at.replace(tzinfo=timezone.utc)
+        scheduled_at = due_at.astimezone(timezone.utc)
+
     content = await create_content(
         session,
         creator_id=requester.id,
@@ -716,6 +785,9 @@ async def request_media_package(
         source_type=source_type,
         source_id=source_id,
     )
+    meta: dict[str, Any] = {"source_title": source_title}
+    if due_at is not None:
+        meta["due_at"] = due_at.astimezone(timezone.utc).isoformat()
     request = MediaRequest(
         source_type=source_type,
         source_id=source_id,
@@ -723,7 +795,7 @@ async def request_media_package(
         requester_id=requester.id,
         content_id=content.id,
         status="open",
-        metadata_json={"source_title": source_title},
+        metadata_json=meta,
     )
     session.add(request)
     await session.flush()
@@ -732,8 +804,75 @@ async def request_media_package(
         content,
         creator_id=requester.id,
         task_kinds=MEDIA_PACKAGES[package_type],
+        task_deadline=due_at,
     )
+    if bot is not None:
+        await _notify_media_request_brief(
+            session,
+            bot=bot,
+            settings=settings,
+            requester=requester,
+            source_type=source_type,
+            source_title=source_title,
+            package_type=package_type,
+            due_at=due_at,
+            content_id=content.id,
+        )
     return request
+
+
+MEDIA_BRIEF_BY_PACKAGE = {
+    "photo": "Нужно фото: минимум 20 кадров (горизонталь + детали).",
+    "reels": "Нужно видео: минимум 16 кадров горизонтально + желательно короткий инфопродукт.",
+    "video": "Нужно видео: минимум 16 кадров горизонтально.",
+    "announcement": "Нужен пост о событии: текст + дизайн.",
+    "full": (
+        "Нужно: фото минимум 20 кадров, видео минимум 16 кадров горизонтально, "
+        "желательно инфопродукт + пост о событии."
+    ),
+}
+
+
+async def _notify_media_request_brief(
+    session: AsyncSession,
+    *,
+    bot: Bot,
+    settings: Settings,
+    requester: User,
+    source_type: str,
+    source_title: str,
+    package_type: str,
+    due_at: datetime | None,
+    content_id: int,
+) -> None:
+    """Short human brief into the media tasks topic — not a tech dump."""
+    if settings.media_chat_id is None:
+        return
+    who = f"{requester.first_name} {requester.last_name or ''}".strip() or f"id {requester.id}"
+    kind = "Проект" if source_type == "project" else "Событие"
+    due_line = ""
+    if due_at is not None:
+        local = due_at.astimezone(ZoneInfo(settings.timezone))
+        due_line = f"\nСрок: {local.strftime('%d.%m %H:%M')}"
+    brief = MEDIA_BRIEF_BY_PACKAGE.get(package_type, MEDIA_BRIEF_BY_PACKAGE["full"])
+    text = (
+        f"🎬 Медиа-запрос\n"
+        f"{kind}: {source_title}\n"
+        f"Пакет: {package_type}\n"
+        f"Кто: {who}"
+        f"{due_line}\n\n"
+        f"{brief}"
+    )
+    await _send_media_chat_notice(
+        session,
+        bot,
+        settings,
+        notice_key=f"media-request:{content_id}:{package_type}",
+        notice_kind="request_brief",
+        ref_type="media_content",
+        ref_id=content_id,
+        text=text,
+    )
 
 
 def _channel_target(settings: Settings) -> int | str:
@@ -1017,6 +1156,38 @@ async def _send_media_chat_notice(
     return True
 
 
+async def _send_media_deadline_notice(session, bot, settings, task, now: datetime) -> bool:
+    """Send only the closest due stage; never burst 24h and 3h together.
+
+    The existing MediaChatNotice/NotificationDelivery keys provide durable
+    idempotency across scheduler restarts and repeated scans. A missed 24h
+    window does not cause a stale 24h message alongside the urgent 3h one.
+    """
+    if task.deadline is None:
+        return False
+    deadline = task.deadline
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=timezone.utc)
+    remaining = deadline.astimezone(timezone.utc) - now.astimezone(timezone.utc)
+    if not timedelta(0) < remaining <= timedelta(hours=24):
+        return False
+    # Default to the existing 24h behavior until the owner authorizes
+    # an additional automated 3h reminder in the real media chat.
+    stage = "3h" if (getattr(settings, "media_deadline_3h_enabled", False)
+                     and remaining <= timedelta(hours=3)) else "24h"
+    return await _send_media_chat_notice(
+        session, bot, settings,
+        notice_key=f"task-{stage}:{task.id}:{task.deadline.isoformat()}",
+        notice_kind=f"deadline_{stage}",
+        ref_type="task", ref_id=task.id,
+        text=(
+            f"До дедлайна медиа-задачи осталось не больше {3 if stage == '3h' else 24} часов\n\n"
+            f"{task.title}\n"
+            f"Нужен результат до {deadline.astimezone(ZoneInfo(settings.timezone)).strftime('%d.%m %H:%M')}."
+        ),
+    )
+
+
 async def process_media_chat_automation(
     bot: Bot,
     settings: Settings,
@@ -1068,21 +1239,8 @@ async def process_media_chat_automation(
                 .order_by(Task.deadline)
             )
         ).all()
-        for task, link in rows:
-            await _send_media_chat_notice(
-                session,
-                bot,
-                settings,
-                notice_key=f"task-24h:{task.id}:{(task.deadline.isoformat() if task.deadline else "")}",
-                notice_kind="deadline_24h",
-                ref_type="task",
-                ref_id=task.id,
-                text=(
-                    f"До дедлайна медиа-задачи меньше 24 часов\n\n"
-                    f"{task.title}\n"
-                    f"Нужен результат до {task.deadline.astimezone(ZoneInfo(settings.timezone)).strftime('%d.%m %H:%M')}."
-                ),
-            )
+        for task, _link in rows:
+            await _send_media_deadline_notice(session, bot, settings, task, now)
 
 
 async def analytics(session: AsyncSession, settings: Settings | None = None) -> MediaAnalytics:

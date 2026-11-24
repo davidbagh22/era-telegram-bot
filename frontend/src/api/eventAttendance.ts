@@ -13,6 +13,8 @@ export interface EventAttendanceState {
   confirmed: boolean;
   points_for_visit: number;
   points_awarded: boolean;
+  proof_status?: string | null;
+  can_submit_proof?: boolean;
 }
 
 export interface EventAttendanceConfirmation extends EventAttendanceState {
@@ -64,16 +66,26 @@ async function parseError(response: Response): Promise<never> {
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const sessionToken = await token();
+  const body = init?.body;
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${sessionToken}`,
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(body && !(body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
       ...(init?.headers ?? {}),
     },
   });
   if (!response.ok) return parseError(response);
   return (await response.json()) as T;
+}
+
+export async function submitAttendanceProof(eventId: number, file: File): Promise<EventAttendanceState> {
+  const body = new FormData();
+  body.append("upload", file);
+  return requestJson<EventAttendanceState>(`/api/v1/events/${eventId}/attendance/proof`, {
+    method: "POST",
+    body,
+  });
 }
 
 export function fetchEventAttendanceState(eventId: number): Promise<EventAttendanceState> {
@@ -110,4 +122,42 @@ export function closeAdminEventConfirmation(eventId: number): Promise<AdminEvent
   return requestJson<AdminEventAttendanceState>(`/api/v1/admin/events/${eventId}/attendance/close`, {
     method: "POST",
   });
+}
+
+export interface AdminAttendanceProof {
+  id: number;
+  event_id: number;
+  event_title: string;
+  user_id: number;
+  user_name: string;
+  status: string;
+  created_at: string | null;
+  photo_url: string;
+}
+
+export function fetchPendingAttendanceProofs(): Promise<AdminAttendanceProof[]> {
+  return requestJson<AdminAttendanceProof[]>("/api/v1/admin/events/attendance-proofs/pending");
+}
+
+export function approveAttendanceProof(proofId: number): Promise<AdminAttendanceProof> {
+  return requestJson<AdminAttendanceProof>(`/api/v1/admin/events/attendance-proofs/${proofId}/approve`, {
+    method: "POST",
+  });
+}
+
+export function rejectAttendanceProof(proofId: number, comment = ""): Promise<AdminAttendanceProof> {
+  return requestJson<AdminAttendanceProof>(`/api/v1/admin/events/attendance-proofs/${proofId}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ comment }),
+  });
+}
+
+export async function attendanceProofPhotoBlobUrl(photoUrl: string): Promise<string> {
+  const sessionToken = await token();
+  const response = await fetch(`${API_BASE_URL}${photoUrl}`, {
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  if (!response.ok) return parseError(response);
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
 }

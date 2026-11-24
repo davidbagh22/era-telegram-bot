@@ -52,7 +52,7 @@ CATEGORY_ROLES: dict[str, list[tuple[str, str]]] = {
         ("photo", "Фото"),
         ("video", "Видео"),
         ("editing", "Монтаж"),
-        ("stories", "Stories"),
+        ("stories", "Сторис"),
         ("analytics", "Аналитика"),
     ],
     "social": [
@@ -229,11 +229,10 @@ async def launch_mission(
 
 
 async def launch_all_pending_missions(session: AsyncSession, *, creator_id: int) -> list[Task]:
-    """DELTA ToR §13/§76 Phase 2 item 9: makes all 26 authored missions
-    actually reachable. Launches every active template that doesn't have a
-    live instance yet; already-launched templates are skipped, so calling
-    this repeatedly (e.g. an admin clicking the button twice) never creates
-    duplicates."""
+    """Makes all authored community missions reachable (30-item catalog).
+    Launches every active template that doesn't have a live instance yet;
+    already-launched templates are skipped, so calling this repeatedly
+    never creates duplicates."""
     already_launched = await launched_template_ids(session)
     templates = await list_mission_templates(session)
     launched: list[Task] = []

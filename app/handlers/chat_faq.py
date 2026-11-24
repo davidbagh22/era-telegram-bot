@@ -20,10 +20,31 @@ from app.services.notification_service import safe_send
 from app.states.question import QuestionStates
 from app.utils import texts
 from app.utils.constants import ApplicationStatus
-from app.utils.deep_links import miniapp_events_url, miniapp_profile_url
+from app.utils.deep_links import (
+    miniapp_events_url,
+    miniapp_opportunities_url,
+    miniapp_profile_url,
+    miniapp_projects_url,
+    miniapp_tasks_url,
+)
 
 router = Router(name="chat_faq")
 router.callback_query.filter(F.message.chat.type.in_({"group", "supergroup"}))
+
+# Pinned FAQ callbacks that must open Mini App (parity with /start faq_* payloads).
+_MINIAPP_FAQ_ROUTES: dict[str, tuple[str, object]] = {
+    "faq:events": ("📅 Открыть события", miniapp_events_url),
+    "faq:projects": ("🚀 Открыть проекты", miniapp_projects_url),
+    "faq:tasks": ("✅ Открыть задания", miniapp_tasks_url),
+    "faq:points": ("⭐ Открыть прогресс", miniapp_profile_url),
+    "faq:registration": ("📅 Посмотреть события", miniapp_events_url),
+    "faq:active": ("🌍 Смотреть возможности", miniapp_opportunities_url),
+}
+_LEGACY_FAQ_ANSWERS = {
+    key: value
+    for key, value in FAQ_ANSWERS.items()
+    if key not in _MINIAPP_FAQ_ROUTES and key != "faq:contact"
+}
 
 
 def _approved(user: User | None) -> bool:
@@ -45,6 +66,7 @@ async def _send_private_route(
     label: str,
     text: str,
     url: str,
+    parse_mode: str | None = None,
 ) -> None:
     if not _approved(user):
         await call.answer(texts.APPLICATION_PENDING, show_alert=True)
@@ -57,6 +79,7 @@ async def _send_private_route(
         user.telegram_id,
         text,
         reply_markup=_miniapp_button(label, url),
+        parse_mode=parse_mode,
     )
     if ok:
         await call.answer("Открыл раздел в личных сообщениях 👍")
@@ -64,18 +87,20 @@ async def _send_private_route(
         await call.answer(texts.FAQ_ANSWER_SEND_FAILED, show_alert=True)
 
 
-@router.callback_query(F.data == "faq:events")
-async def faq_events(
+@router.callback_query(F.data.in_(set(_MINIAPP_FAQ_ROUTES)))
+async def faq_miniapp_route(
     call: CallbackQuery, user: User | None, bot: Bot, settings: Settings
 ) -> None:
+    label, url_builder = _MINIAPP_FAQ_ROUTES[call.data]
     await _send_private_route(
         call,
         user,
         bot,
         settings,
-        label="📅 Открыть события",
-        text="📅 События ЭРА\n\nАфиша, регистрация и ваши ближайшие события — в приложении.",
-        url=miniapp_events_url(settings.effective_miniapp_url),
+        label=label,
+        text=FAQ_ANSWERS[call.data],
+        url=url_builder(settings.effective_miniapp_url),
+        parse_mode="HTML",
     )
 
 
@@ -94,7 +119,7 @@ async def faq_profile(
     )
 
 
-@router.callback_query(F.data.in_(FAQ_ANSWERS))
+@router.callback_query(F.data.in_(_LEGACY_FAQ_ANSWERS))
 async def faq_answer(call: CallbackQuery, user: User | None, bot: Bot) -> None:
     if not _approved(user):
         await call.answer(texts.APPLICATION_PENDING, show_alert=True)

@@ -1,5 +1,6 @@
 """Public game cards use Telegram identities, never registration questionnaire data."""
 from html import escape
+from typing import TypedDict
 
 
 MODE_LABELS = {
@@ -8,7 +9,45 @@ MODE_LABELS = {
     "chronology": "🕰 Хронология", "word_chain": "🔤 Словесная цепочка",
     "associations": "💭 Ассоциации", "logic": "🧠 Логика",
     "culture": "🎭 Культурный блиц", "memory": "🧩 Память",
+    "spyfall": "🕵 Шпион",
 }
+
+
+class GameCardMeta(TypedDict):
+    players: str
+    minutes: str
+    rules: str
+    group: bool
+
+
+# Selection-card copy for Досуг → Игры (players · duration · one-line rules).
+GAME_CARDS: dict[str, GameCardMeta] = {
+    "solo": {"players": "1", "minutes": "3–5", "rules": "5 вопросов, отвечаете кнопками", "group": False},
+    "true_or_myth": {"players": "1", "minutes": "1–2", "rules": "Одно утверждение: правда или миф", "group": False},
+    "guess_country": {"players": "1", "minutes": "1–3", "rules": "Угадайте страну; можно взять подсказки", "group": False},
+    "chronology": {"players": "1", "minutes": "1–2", "rules": "Расставьте события по порядку", "group": False},
+    "word_chain": {"players": "1", "minutes": "1–2", "rules": "Продолжите цепочку слов", "group": False},
+    "associations": {"players": "1", "minutes": "1–3", "rules": "Найдите общее; подсказки по желанию", "group": False},
+    "logic": {"players": "1", "minutes": "1–3", "rules": "Одно логическое задание", "group": False},
+    "culture": {"players": "1", "minutes": "1–2", "rules": "Короткий вопрос про культуру", "group": False},
+    "memory": {"players": "1", "minutes": "1–2", "rules": "Запомните ряд за 5 секунд", "group": False},
+    "team": {"players": "2–8", "minutes": "5–10", "rules": "Общая тема: все отвечают сами", "group": True},
+    "duel": {"players": "2–8", "minutes": "5–10", "rules": "Две команды; бот делит состав", "group": True},
+    "spyfall": {"players": "3–8", "minutes": "8–15", "rules": "Найдите шпиона в общей теме", "group": True},
+}
+
+
+def game_card_line(mode: str) -> str:
+    meta = GAME_CARDS.get(mode)
+    label = MODE_LABELS.get(mode, "🎮 Игра ЭРА")
+    if not meta:
+        return label
+    kind = "группа" if meta["group"] else "соло"
+    return (
+        f"<b>{label}</b>\n"
+        f"{meta['players']} игроков · ~{meta['minutes']} мин · {kind}\n"
+        f"{meta['rules']}"
+    )
 
 
 def remember_player(room: dict, telegram_user) -> None:

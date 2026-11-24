@@ -268,6 +268,14 @@ async def read_opportunity_facets(
     return FacetsOut(**await opportunity_service.list_offer_facets(session))
 
 
+
+def _visible_to_participant(item: OpportunityOut) -> bool:
+    """Hide unfinished locked/almost teasers from the participant catalog."""
+    if item.application_status:
+        return True
+    return item.state in {"available", "issued", "requested", "review"}
+
+
 @router.get("", response_model=list[OpportunityOut])
 async def read_opportunities(
     scope: OpportunityScope = Query("for_me"),
@@ -318,6 +326,10 @@ async def read_opportunities(
         rows = [r for r in rows if _matches_facets(*r, issuer=issuer, otype=type, category=category)]
         out = [await _to_opportunity_out(session, offer, partner, user) for offer, partner in rows]
 
+    # Participants only see actionable or already-applied offers.
+    # Locked / «almost» teasers (incl. unfinished certificates/letters) stay
+    # stored for admins but do not clutter the catalog — ranks carry progression.
+    out = [item for item in out if _visible_to_participant(item)]
     if state:
         out = [item for item in out if item.state == state]
     return _sort_opportunities(out, sort)
