@@ -57,6 +57,13 @@ def enabled(settings, telegram_id):
         settings.native_event_composer_tester_ids)
 
 
+def enabled_for_user(settings, user):
+    # Administrators can use the bot-native composer without enabling a
+    # participant-facing rollout flag for all event editors.
+    return bool(user and (enabled(settings, user.telegram_id)
+                          or is_full_admin(user, settings, user.telegram_id)))
+
+
 def can_use_quick_composer(settings, user, telegram_id):
     return can_manage_events(user, settings, telegram_id) and (
         enabled(settings, telegram_id) or is_full_admin(user, settings, telegram_id)

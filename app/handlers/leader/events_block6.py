@@ -74,11 +74,8 @@ async def guard(event: CallbackQuery | Message, user: User | None) -> bool:
 
 
 def mode_keyboard(settings: Settings | None = None, user: User | None = None) -> InlineKeyboardMarkup:
-    from app.handlers.leader.event_quick_composer import enabled
-    from app.services.authorization_service import can_manage_events, is_full_admin
-    if settings and user and can_manage_events(user, settings, user.telegram_id) and (
-        enabled(settings, user.telegram_id) or is_full_admin(user, settings, user.telegram_id)
-    ):
+    from app.handlers.leader.event_quick_composer import can_use_quick_composer
+    if settings and user and can_use_quick_composer(settings, user, user.telegram_id):
         return InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="⚡ Быстро · текст и фото", callback_data="leader:eventq:new")],
             [InlineKeyboardButton(text="🧩 Расширенный мастер", callback_data="leader:event6:mode:constructor")],
@@ -133,11 +130,16 @@ async def event_revise(call: CallbackQuery, user: User | None, state: FSMContext
 
 @router.callback_query(F.data == "leader:event:new")
 async def event_new(call: CallbackQuery, user: User | None, state: FSMContext, settings: Settings | None = None) -> None:
-    from app.services.authorization_service import is_full_admin
-    if settings and is_full_admin(user, settings, call.from_user.id):
-        await call.answer()
-    elif not await guard(call, user):
+    from app.services.authorization_service import can_manage_events
+    # Admin IDs may have a participant role, while still having explicit event rights.
+    authorized = is_leader(user) or bool(
+        user and settings and not user.is_blocked and not user.is_archived
+        and can_manage_events(user, settings, call.from_user.id)
+    )
+    if not authorized:
+        await call.answer(texts.NO_ACCESS, show_alert=True)
         return
+    await call.answer()
     await state.clear()
     await call.message.answer("Как подготовить мероприятие?", reply_markup=mode_keyboard(settings, user))
 
