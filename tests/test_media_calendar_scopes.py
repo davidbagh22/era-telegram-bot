@@ -9,6 +9,7 @@ from app.api.deps import get_current_user, get_session, get_settings
 from app.api.v1.media_workspace import router
 from app.config import Settings
 from app.database.base import Base
+from app.database.media_models import MediaContentItem
 from app.database.models import AuditLog, Department, Direction, PermissionGrant, User, UserDirection
 from app.services import media_leadership_service as leadership
 from app.services import media_scope_service as scopes
@@ -165,3 +166,50 @@ class CalendarScopeTests(IsolatedAsyncioTestCase):
             self.assertEqual((await client.patch(f"/media/workspaces/era/calendar/{created.json()['id']}", json={"revision": 0, "status": "ready"})).status_code, 403)
             app.dependency_overrides[get_current_user] = lambda: outsider
             self.assertEqual((await client.get("/media/workspaces/era/team")).status_code, 403)
+
+    async def test_legacy_unscoped_calendar_item_is_manager_only(self):
+        async with self.factory() as session:
+            _, leader, editor, *_ = await self.users(session)
+            settings = self.settings
+            own = await workspace.create_entry(session, leader, settings, "era",
+                {"title": "Материал ЭРА", "platform": "telegram"}, "own-area")
+            legacy = MediaContentItem(source_key="legacy-no-media-area", source_kind="manual",
+                kind="text", status="planned", title="Старый материал без области",
+                created_by=leader.id, metadata_json={"platform": "telegram"})
+            unknown = MediaContentItem(source_key="legacy-unknown-area", source_kind="manual",
+                kind="text", status="planned", title="Материал неизвестной области",
+                created_by=leader.id, metadata_json={"media_area": "unknown"})
+            foreign = await workspace.create_entry(session, leader, settings, "ksoors",
+                {"title": "Материал КСООРС", "platform": "telegram"}, "foreign-area")
+            session.add_all([legacy, unknown])
+            await session.flush()
+            await scopes.set_editor(session, leader, settings, "era", editor.id, True, 0)
+            await session.commit()
+            own_id, legacy_id, unknown_id, foreign_id = own.id, legacy.id, unknown.id, foreign.id
+
+        app = FastAPI()
+        app.include_router(router)
+
+        async def session_override():
+            async with self.factory() as current:
+                yield current
+                await current.commit()
+
+        app.dependency_overrides[get_session] = session_override
+        app.dependency_overrides[get_settings] = lambda: self.settings
+        app.dependency_overrides[get_current_user] = lambda: editor
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            rows = (await client.get("/media/workspaces/era/calendar")).json()
+            self.assertEqual({row["id"] for row in rows}, {own_id})
+            self.assertNotIn(unknown_id, {row["id"] for row in rows})
+            self.assertNotIn(foreign_id, {row["id"] for row in rows})
+            self.assertEqual((await client.patch(f"/media/workspaces/era/calendar/{legacy_id}",
+                json={"revision": 0, "status": "review"})).status_code, 404)
+            self.assertEqual((await client.patch(f"/media/workspaces/era/calendar/{foreign_id}",
+                json={"revision": 0, "status": "review"})).status_code, 404)
+            self.assertEqual((await client.patch(f"/media/workspaces/era/calendar/{own_id}",
+                json={"revision": 0, "status": "review"})).status_code, 200)
+            app.dependency_overrides[get_current_user] = lambda: leader
+            manager_rows = (await client.get("/media/workspaces/era/calendar")).json()
+            self.assertEqual({row["id"] for row in manager_rows}, {own_id, legacy_id})
+            self.assertNotIn(unknown_id, {row["id"] for row in manager_rows})

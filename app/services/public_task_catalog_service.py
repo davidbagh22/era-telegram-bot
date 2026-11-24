@@ -8,6 +8,9 @@ not bound or a participant has blocked the bot.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+import hashlib
+import json
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -43,6 +46,43 @@ CATALOG: tuple[dict[str, object], ...] = (
     {"key": "quiz", "title": "Составь мини-викторину", "description": "Придумай 5 вопросов об ЭРА, культуре, лидерстве или проектной работе с вариантами ответов.", "points": 80, "counts": ["culture"]},
     {"key": "project_competition", "title": "Предложи свой проект", "description": "Опиши проблему, цель, аудиторию, план на 30 дней, команду и нужные ресурсы. Лучший проект получит поддержку и реализацию, сертификат, баллы и запись в портфолио.", "points": 200, "counts": ["project"], "project_competition": True},
 )
+
+
+# Scheduled campaign jobs are not a substitute for explicit approval of a new
+# public post. Manual admin catalog creation remains a separate explicit action.
+CATALOG_ANNOUNCEMENT_TEXT = (
+            '✨ Две новые возможности в ЭРА\n\n'
+            '🎯 Выберите своё задание\nСнять ролик, придумать событие, создать дизайн или найти партнёра. '
+            'В каталоге 20 заданий: за каждое — 80, 150 или 200 баллов после проверки. '
+            'Выполнять всё не нужно. Подтверждённые работы попадают в портфолио.\n\n'
+            '💡 Есть своя идея? Предложите проект: проблема, для кого он, план на 30 дней, команда и ресурсы. '
+            'Лучший проект получит поддержку и реализацию, сертификат, баллы и запись в портфолио. '
+            'Победителя выбирает команда ЭРА по пользе, реализуемости и готовности автора участвовать.\n\n'
+            '📚 Читаем вместе\nНачинаем с «48 законов власти» Роберта Грина: '
+            '48 авторских критических разборов, примеры и вопросы для себя. '
+            'Это не полный текст книги. По добровольной подписке — выпуск в 19:00 по Еревану. '
+            'Если формат понравится, продолжим с другими книгами.\n\n'
+            'Выбирайте кнопку. Новым участникам сначала нужно пройти регистрацию в боте.'
+)
+APPROVED_SCHEDULED_CATALOG_LAUNCHES: frozenset[tuple[str, str, str]] = frozenset()
+
+
+def _catalog_keyboard(username: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text='🎯 20 заданий и баллы', url=f'https://t.me/{username}?start=tasks_catalog')],
+        [InlineKeyboardButton(text='📚 Читать и подписаться', url=f'https://t.me/{username}?start=bookclub')],
+    ])
+
+
+def catalog_launch_approval_key(day: str, target: int | str, username: str) -> tuple[str, str, str]:
+    payload = {
+        "text": CATALOG_ANNOUNCEMENT_TEXT,
+        "keyboard": _catalog_keyboard(username).model_dump(mode="json", exclude_none=True),
+    }
+    digest = hashlib.sha256(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return (day, str(target), digest)
 
 
 async def publish_catalog(session: AsyncSession, *, creator: User, bot: Bot | None, settings: Settings) -> dict[str, int]:
@@ -82,24 +122,8 @@ async def publish_catalog(session: AsyncSession, *, creator: User, bot: Bot | No
     group_sent = False
     if bot is not None:
         username = settings.bot_username.strip('@') or (await bot.get_me()).username
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text='🎯 20 заданий и баллы', url=f'https://t.me/{username}?start=tasks_catalog')],
-            [InlineKeyboardButton(text='📚 Читать и подписаться', url=f'https://t.me/{username}?start=bookclub')],
-        ])
-        message = (
-            '✨ Две новые возможности в ЭРА\n\n'
-            '🎯 Выберите своё задание\nСнять ролик, придумать событие, создать дизайн или найти партнёра. '
-            'В каталоге 20 заданий: за каждое — 80, 150 или 200 баллов после проверки. '
-            'Выполнять всё не нужно. Подтверждённые работы попадают в портфолио.\n\n'
-            '💡 Есть своя идея? Предложите проект: проблема, для кого он, план на 30 дней, команда и ресурсы. '
-            'Лучший проект получит поддержку и реализацию, сертификат, баллы и запись в портфолио. '
-            'Победителя выбирает команда ЭРА по пользе, реализуемости и готовности автора участвовать.\n\n'
-            '📚 Читаем вместе\nНачинаем с «48 законов власти» Роберта Грина: '
-            '48 авторских критических разборов, примеры и вопросы для себя. '
-            'Это не полный текст книги. По добровольной подписке — выпуск в 19:00 по Еревану. '
-            'Если формат понравится, продолжим с другими книгами.\n\n'
-            'Выбирайте кнопку. Новым участникам сначала нужно пройти регистрацию в боте.'
-        )
+        keyboard = _catalog_keyboard(username)
+        message = CATALOG_ANNOUNCEMENT_TEXT
         group_sent = await send_general_topic(bot, settings, 'notifications', message,
             reply_markup=keyboard, delivery_key='public-catalog-v2')
     return {
@@ -123,6 +147,15 @@ async def show_catalog(message, session, user):
 
 
 async def launch_catalog_job(bot, settings, session_factory):
+    # Fail closed before opening a DB session: a recurring scheduler must not
+    # mutate existing tasks or post to Telegram without exact dated approval.
+    target = settings.general_chat_id
+    username = (settings.bot_username or "").strip("@")
+    if target is None or not username:
+        return
+    day = datetime.now(ZoneInfo("Asia/Yerevan")).date().isoformat()
+    if catalog_launch_approval_key(day, target, username) not in APPROVED_SCHEDULED_CATALOG_LAUNCHES:
+        return
     async with session_factory() as session:
         creator = await session.scalar(select(User).where(User.role == Role.ADMIN, User.is_blocked.is_(False), User.is_archived.is_(False)).order_by(User.id))
         if creator is None:

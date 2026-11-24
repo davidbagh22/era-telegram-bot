@@ -5,6 +5,7 @@ import { EmptyState } from "../../../components/EmptyState";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { useAsync } from "../../../hooks/useAsync";
 import type { EventDecisionAction } from "../../../types/admin";
+import { projectEventStatusLabel } from "../../projects/statusLabels";
 
 const DECISIONS: { action: EventDecisionAction; label: string; primary?: boolean }[] = [
   { action: "approve", label: "Одобрить", primary: true },
@@ -58,7 +59,7 @@ export function EventModerationPanel() {
         <Card key={event.id}>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <strong>{event.title}</strong>
-            <StatusBadge label={event.status} tone="violet" />
+            <StatusBadge label={projectEventStatusLabel(event.status)} tone="violet" />
           </div>
           <p style={{ margin: "0.25rem 0 0.5rem", color: "var(--era-text-muted)" }}>
             {event.event_date} · {event.event_time} · {event.location}

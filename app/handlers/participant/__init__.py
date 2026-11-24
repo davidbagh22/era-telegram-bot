@@ -17,6 +17,7 @@ from app.handlers.participant import (
     cabinet,
     cabinet_hubs,
     departments,
+    event_plans_changed,
     events_stability_block8,
     events,
     projects,
@@ -49,6 +50,8 @@ router.include_routers(
     cabinet_hubs.router,
     directions_block7.router,
     cabinet.router,
+    # Cancel/leave-waitlist only — no duplicate cabinet:events list.
+    event_plans_changed.router,
     events_stability_block8.router,
     events.router,
     projects.router,

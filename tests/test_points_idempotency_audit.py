@@ -16,7 +16,14 @@ def test_every_add_points_call_has_idempotency_key() -> None:
             if not isinstance(node, ast.Call):
                 continue
             func = node.func
-            if not isinstance(func, ast.Name) or func.id != "add_points":
+            is_add_points = (
+                (isinstance(func, ast.Name) and func.id == "add_points")
+                or (
+                    isinstance(func, ast.Attribute)
+                    and func.attr == "add_points"
+                )
+            )
+            if not is_add_points:
                 continue
             keywords = {keyword.arg for keyword in node.keywords if keyword.arg}
             if "idempotency_key" not in keywords:

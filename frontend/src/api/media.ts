@@ -183,7 +183,7 @@ export interface MediaCalendarEntry {
   materials: string;
   publication_url: string | null;
   publication_evidence: string | null;
-  revision: number;
+  revision: number | null;
 }
 export const fetchMediaWorkspaces = () => request<MediaWorkspace[]>("/api/v1/media/workspaces");
 export const fetchMediaCalendar = (area: string, beforeId?: number, statusGroup: "all" | "active" | "published" = "all") => {
@@ -269,13 +269,13 @@ export const createMediaTasks = (contentId: number, taskKinds: string[]) =>
     body: JSON.stringify({ task_kinds: taskKinds }),
   });
 
-export const requestEventMedia = (eventId: number, packageType = "full") =>
+export const requestEventMedia = (eventId: number, packageType = "full", dueAt?: string) =>
   request<MediaRequestResult>(`/api/v1/media/requests/event/${eventId}`, {
     method: "POST",
-    body: JSON.stringify({ package_type: packageType }),
+    body: JSON.stringify({ package_type: packageType, ...(dueAt ? { due_at: dueAt } : {}) }),
   });
-export const requestProjectMedia = (projectId: number, packageType = "full") =>
+export const requestProjectMedia = (projectId: number, packageType = "full", dueAt?: string) =>
   request<MediaRequestResult>(`/api/v1/media/requests/project/${projectId}`, {
     method: "POST",
-    body: JSON.stringify({ package_type: packageType }),
+    body: JSON.stringify({ package_type: packageType, ...(dueAt ? { due_at: dueAt } : {}) }),
   });

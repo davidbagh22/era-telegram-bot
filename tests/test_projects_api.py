@@ -35,6 +35,10 @@ def _project(**overrides) -> SimpleNamespace:
         admin_comment=None,
         form_data={},
         generated_document=None,
+        cover_content_type=None,
+        cover_bytes=None,
+        proposed_date=None,
+        proposed_time=None,
     )
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -72,6 +76,35 @@ class ProjectsListApiTests(unittest.TestCase):
             response = client.get("/api/v1/projects")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()[0]["title"], "Idea")
+        self.assertIsNone(response.json()[0]["proposed_date"])
+        self.assertTrue(response.json()[0]["date_is_tentative"])
+
+    def test_list_projects_exposes_proposed_schedule_without_form_data(self) -> None:
+        from datetime import date, time
+
+        session = SimpleNamespace()
+        app = _build_app(session)
+        client = TestClient(app)
+        with patch(
+            "app.api.v1.projects.project_workflow_service.list_projects_for_user",
+            new=AsyncMock(
+                return_value=[
+                    _project(
+                        proposed_date=date(2026, 12, 12),
+                        proposed_time=time(18, 0),
+                        form_data={"secret": "no"},
+                    )
+                ]
+            ),
+        ):
+            response = client.get("/api/v1/projects?scope=open")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()[0]
+        self.assertEqual(body["proposed_date"], "2026-12-12")
+        self.assertEqual(body["proposed_time"], "18:00")
+        self.assertTrue(body["date_is_tentative"])
+        self.assertNotIn("form_data", body)
+        self.assertNotIn("secret", body)
 
 
 class ProjectQuestionsApiTests(unittest.TestCase):

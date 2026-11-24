@@ -116,7 +116,7 @@ router = Router(name="admin")
 
 SETTING_LINK_KEYS = {
     "channel": ("Официальный канал", "era_channel_url"),
-    "pro": ("Канал ERA PRO", "era_pro_channel_url"),
+    "pro": ("Канал Лидеры ЭРА", "era_pro_channel_url"),
     "general": ("Общий чат", "general_chat_url"),
     "internal": ("Чат внутренних связей", "internal_department_chat_url"),
     "external": ("Чат внешних связей", "external_department_chat_url"),
@@ -138,6 +138,9 @@ def _is_admin(
     telegram_id: int,
     event: Message | CallbackQuery,
 ) -> bool:
+    # A configured ADMIN_IDS entry never overrides a revoked account.
+    if user is not None and (user.is_blocked or user.is_archived):
+        return False
     if telegram_id in settings.admin_ids or (
         user and user.role == Role.ADMIN and not user.is_blocked
     ):
@@ -712,62 +715,15 @@ async def approve_proof(
     session: AsyncSession,
     bot: Bot,
 ) -> None:
-    if not await _guard(call, user, settings):
+    if not await _guard(call, user, settings) or user is None:
         return
     proof = await session.get(AttendanceProof, int(call.data.rsplit(":", 1)[-1]))
     if proof is None or proof.status != "pending":
         return
-    event = await session.get(Event, proof.event_id)
-    target = await session.get(User, proof.user_id)
-    proof.status = "approved"
-    proof.reviewed_by = user.id if user else None
-    registration = await session.scalar(
-        select(EventRegistration).where(
-            EventRegistration.event_id == proof.event_id,
-            EventRegistration.user_id == proof.user_id,
-        )
-    )
-    if registration:
-        registration.status = RegistrationStatus.ATTENDED
-    points = (event.points_for_visit if event else 5) + 5
-    await add_points(
-        session,
-        user_id=proof.user_id,
-        points=points,
-        reason="Подтверждённое участие в мероприятии",
-        approved_by=user.id if user else None,
-        related_event_id=proof.event_id,
-        source_type="attendance_proof",
-        source_id=proof.id,
-        idempotency_key=f"attendance_proof:{proof.id}:approval",
-    )
-    await add_portfolio_item(
-        session,
-        user_id=proof.user_id,
-        title=f"Участие: {event.title if event else 'мероприятие ЭРА'}",
-        item_type="event",
-        description="Участие подтверждено командой ЭРА",
-        issued_by=user.id if user else None,
-        related_event_id=proof.event_id,
-    )
-    await call.message.answer("Участие подтверждено.")
-    if target:
-        feedback_keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="Оставить обратную связь",
-                        callback_data=f"feedback:start:{proof.event_id}",
-                    )
-                ]
-            ]
-        )
-        await safe_send(
-            bot,
-            target.telegram_id,
-            texts.SELFIE_APPROVED.format(points=points),
-            reply_markup=feedback_keyboard,
-        )
+    from app.services.attendance_proof_service import approve_proof as approve_attendance_proof
+
+    result = await approve_attendance_proof(session, proof, reviewer=user, bot=bot)
+    await call.message.answer("Участие подтверждено." + result.cert_note)
 
 
 @router.callback_query(F.data.startswith("admin:proof:reject:"))
@@ -870,17 +826,12 @@ async def review_comment(
                 await safe_send(bot, target.telegram_id, texts.APPLICATION_NEEDS_INFO.format(comment=comment))
     elif kind == "proof":
         proof = await session.get(AttendanceProof, entity_id)
-        if proof:
-            proof.status = "rejected"
-            proof.reviewed_by = user.id if user else None
-            proof.admin_comment = comment
-            target = await session.get(User, proof.user_id)
-            if target:
-                await safe_send(
-                    bot,
-                    target.telegram_id,
-                    texts.SELFIE_REJECTED.format(comment=comment),
-                )
+        if proof and user is not None:
+            from app.services.attendance_proof_service import reject_proof as reject_attendance_proof
+
+            await reject_attendance_proof(
+                session, proof, reviewer=user, comment=comment, bot=bot
+            )
     else:
         entity = await session.get(Event if kind == "event" else Project, entity_id)
         if entity:

@@ -59,7 +59,7 @@ class GeneralChatKeyboardShapeTests(unittest.TestCase):
 
 class PinnedFaqRouteTests(unittest.IsolatedAsyncioTestCase):
     async def test_events_callback_sends_exact_webapp_route_to_private_chat(self) -> None:
-        call = SimpleNamespace(answer=AsyncMock())
+        call = SimpleNamespace(data="faq:events", answer=AsyncMock())
         settings = Settings(
             bot_token="1234567890:test-token",
             miniapp_auth_secret="secret",
@@ -67,7 +67,7 @@ class PinnedFaqRouteTests(unittest.IsolatedAsyncioTestCase):
         )
         user = _approved_user()
         with patch.object(chat_faq, "safe_send", AsyncMock(return_value=True)) as safe_send:
-            await chat_faq.faq_events(call, user, SimpleNamespace(id=1), settings)
+            await chat_faq.faq_miniapp_route(call, user, SimpleNamespace(id=1), settings)
         args, kwargs = safe_send.call_args
         self.assertEqual(args[1], user.telegram_id)
         button = kwargs["reply_markup"].inline_keyboard[0][0]

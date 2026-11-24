@@ -1,6 +1,6 @@
 import json
 import unittest
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.config import Settings
 from app.database.base import Base
-from app.database.models import AppSetting, Broadcast, Department, Office, Task, TaskDelivery, User, UserDepartment, UserOffice
+from app.database.models import AppSetting, Broadcast, Department, Office, TaskDelivery, User, UserDepartment, UserOffice
 from app.database.system_models import NotificationDelivery
 from app.handlers.leaders_native import native_leaders
 from app.services import leaders_access_service as access, leaders_campaign_service as campaigns, leaders_workspace as work

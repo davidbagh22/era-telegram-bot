@@ -40,6 +40,32 @@ class ReleaseLagTests(unittest.TestCase):
         data["ci"]["jobs"][0]["conclusion"] = "failure"
         self.check(data, "CI_FAILED")
 
+    def test_cancelled_required_job_blocks_release(self):
+        data = snapshot(live=MAIN)
+        data["ci"]["jobs"][0]["conclusion"] = "cancelled"
+        self.check(data, "CI_FAILED")
+
+    def test_timed_out_required_job_blocks_release(self):
+        data = snapshot(live=MAIN)
+        data["ci"]["jobs"][0]["conclusion"] = "timed_out"
+        self.check(data, "CI_FAILED")
+
+    def test_failed_workflow_with_missing_jobs_is_not_pending(self):
+        data = snapshot(live=MAIN)
+        data["ci"]["workflow_status"] = "completed"
+        data["ci"]["workflow_conclusion"] = "failure"
+        data["ci"]["jobs"] = []
+        data["ci"].pop("completed_at")
+        self.check(data, "CI_FAILED")
+
+    def test_in_progress_workflow_remains_pending(self):
+        data = snapshot(live=MAIN)
+        data["ci"]["workflow_status"] = "in_progress"
+        data["ci"]["workflow_conclusion"] = None
+        data["ci"]["jobs"][0]["status"] = "in_progress"
+        data["ci"]["jobs"][0]["conclusion"] = None
+        self.check(data, "CI_PENDING")
+
     def test_matching_prefix_is_not_live(self):
         self.check(snapshot(live=MAIN[:7] + OLD[7:]), "STALE_LIVE")
 
@@ -131,6 +157,16 @@ class ReleaseLagTests(unittest.TestCase):
     def test_naive_clock_fails_closed(self):
         with self.assertRaises(ValueError):
             module.assess(snapshot(), now=datetime(2026, 10, 30, 8, 0))
+
+
+
+class NewerSameCommitAttemptTests(unittest.TestCase):
+    def test_previous_live_does_not_mask_newer_failed_or_pending_attempt(self):
+        for status, expected in (("build_failed", "DEPLOY_FAILED"),
+                                 ("update_in_progress", "UNVERIFIED")):
+            data = snapshot(live=MAIN, main_deploy=status)
+            with self.subTest(status=status):
+                self.assertEqual(module.assess(data, now=NOW)["status"], expected)
 
 
 if __name__ == "__main__":

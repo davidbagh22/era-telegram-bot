@@ -195,7 +195,7 @@ export function ProjectModerationPanel() {
       {state.data.map((project: ProjectForModeration) => (
         <Card key={project.id}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
-            <strong>{project.title}</strong>
+            <strong style={{ display: "block", minWidth: 0, lineHeight: 1.3, overflowWrap: "anywhere", textWrap: "balance" }}>{project.title.replace(/\s+/g, " ").trim() || "Без названия"}</strong>
             <StatusBadge label={projectStatusLabel(project.status)} tone="violet" />
           </div>
           {project.short_description && <p style={{ margin: "0.375rem 0 0", color: "var(--era-text-muted)" }}>{project.short_description}</p>}

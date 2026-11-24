@@ -44,9 +44,9 @@ class NextStep:
     # entity_id lets the frontend reuse its existing onOpenTask/onOpenEvent/
     # etc. callbacks (preferred, matches how every other Home card already
     # navigates), route is the literal path per the ToR's API contract for
-    # any future generic router. action_label is the CTA text; kinds with
-    # no single entity ("growth") leave entity_id/route unset and the
-    # frontend falls back to its kind-specific handler (e.g. onOpenDevelopment).
+    # any future generic router. action_label is the CTA text. A growth
+    # nudge has no single entity and opens the participation progress
+    # screen. It must not open the private «Мой вектор» questionnaire.
     entity_id: int | None = None
     route: str | None = None
     action_label: str = "Открыть"
@@ -75,6 +75,9 @@ class ProjectSummary:
     id: int
     title: str
     status: str
+    proposed_date: str | None = None
+    proposed_time: str | None = None
+    date_is_tentative: bool = True
 
 
 @dataclass(frozen=True)
@@ -244,18 +247,39 @@ async def _top_opportunities(
     applied_subquery = select(PartnerOfferApplication.initiative_id).where(
         PartnerOfferApplication.user_id == user_id
     )
-    result = await session.scalars(
-        select(PartnerInitiative)
-        .where(
-            PartnerInitiative.is_active.is_(True),
-            PartnerInitiative.is_archived.is_(False),
-            PartnerInitiative.id.not_in(applied_subquery),
-            (PartnerInitiative.expires_at.is_(None)) | (PartnerInitiative.expires_at >= now),
-        )
-        .order_by(PartnerInitiative.expires_at.asc().nullslast())
-        .limit(limit)
+    # Fetch a wider candidate set so we can drop unfinished recognition
+    # certificates without leaving the home strip empty.
+    candidates = list(
+        (
+            await session.execute(
+                select(PartnerInitiative, Partner)
+                .join(Partner, Partner.id == PartnerInitiative.partner_id)
+                .where(
+                    PartnerInitiative.is_active.is_(True),
+                    PartnerInitiative.is_archived.is_(False),
+                    Partner.is_active.is_(True),
+                    Partner.is_archived.is_(False),
+                    PartnerInitiative.id.not_in(applied_subquery),
+                    (PartnerInitiative.expires_at.is_(None)) | (PartnerInitiative.expires_at >= now),
+                )
+                .order_by(PartnerInitiative.expires_at.asc().nullslast(), PartnerInitiative.id.asc())
+                .limit(max(limit * 8, 24))
+            )
+        ).all()
     )
-    return list(result.all())
+    user = await session.get(User, user_id)
+    if user is None:
+        return []
+    selected: list[PartnerInitiative] = []
+    for offer, _partner in candidates:
+        if offer.opportunity_type in RECOGNITION_TYPES:
+            eligibility = await evaluate_eligibility(session, offer, user)
+            if not eligibility.eligible:
+                continue
+        selected.append(offer)
+        if len(selected) >= limit:
+            break
+    return selected
 
 
 def _rank_progress(user: User) -> RankProgress:
@@ -333,11 +357,11 @@ async def _recognition_progress(
     OpportunityProgress | None,
     OpportunityProgress | None,
 ]:
-    """Return one truthful available/almost/locked recognition opportunity.
+    """Return at most one *available* recognition opportunity for Home.
 
-    Eligibility itself remains owned by opportunity_service. Home only projects
-    its existing checks into concise progress text, so rank/metrics/prerequisites
-    can never be replaced by a misleading points-only countdown.
+    ERA 2.0: unfinished certificates stay in the catalog for admins, but Home
+    must not surface «almost/locked» / «Скоро доступно» teaser cards. Data is
+    not deleted — we simply omit non-eligible recognition from this projection.
     """
 
     now = datetime.now(timezone.utc)
@@ -363,27 +387,15 @@ async def _recognition_progress(
     ).all()
 
     available: OpportunityProgress | None = None
-    almost: OpportunityProgress | None = None
-    locked: OpportunityProgress | None = None
-    locked_missing_count: int | None = None
-
     for offer, partner in rows:
         eligibility = await evaluate_eligibility(session, offer, user)
         failed = [check for check in eligibility.checks if not check.ok]
-        progress = _opportunity_progress(offer, partner, failed=failed)
-        if not failed:
-            if available is None:
-                available = progress
+        if failed:
             continue
-        if len(failed) == 1:
-            if almost is None:
-                almost = progress
-            continue
-        if locked is None or locked_missing_count is None or len(failed) < locked_missing_count:
-            locked = progress
-            locked_missing_count = len(failed)
+        available = _opportunity_progress(offer, partner, failed=failed)
+        break
 
-    return available, almost, locked
+    return available, None, None
 
 
 def _build_next_step(
@@ -428,9 +440,9 @@ def _build_next_step(
         return NextStep(
             kind="growth",
             title="Продолжайте расти в ЭРА",
-            description="Участвуйте в мероприятиях и задачах, чтобы перейти на следующий уровень.",
-            route="/development",
-            action_label="Пройти",
+            description="Участвуйте в мероприятиях и задачах, чтобы перейти на следующий уровень. Уровень не даёт прав администратора.",
+            route="/progress",
+            action_label="Смотреть прогресс",
         )
     if opportunities:
         return NextStep(
@@ -499,10 +511,21 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
 
     active_project_summary = None
     if active_project is not None:
+        proposed_date = getattr(active_project, "proposed_date", None)
+        proposed_time = getattr(active_project, "proposed_time", None)
+        if proposed_date is not None and hasattr(proposed_date, "isoformat"):
+            proposed_date = proposed_date.isoformat()
+        if proposed_time is not None and hasattr(proposed_time, "strftime"):
+            proposed_time = proposed_time.strftime("%H:%M")
+        elif proposed_time is not None:
+            proposed_time = str(proposed_time).strip()[:5] or None
         active_project_summary = ProjectSummary(
             id=active_project.id,
             title=active_project.title,
             status=active_project.status,
+            proposed_date=proposed_date,
+            proposed_time=proposed_time,
+            date_is_tentative=True,
         )
 
     return HomeSnapshot(

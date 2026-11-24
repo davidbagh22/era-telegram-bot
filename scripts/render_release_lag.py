@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 
 REQUIRED_JOBS = frozenset({"test", "frontend", "secret-scan", "e2e", "postgres-migration"})
+TERMINAL_CI_FAILURES = frozenset({"failure", "cancelled", "timed_out", "action_required", "startup_failure"})
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 
 
@@ -64,6 +65,12 @@ def assess(snapshot: dict, *, now: datetime, max_lag_minutes: int = 45) -> dict:
     if ci.get("head_sha") != main:
         result.update(status="CI_PENDING", reason="no CI evidence for exact main SHA")
         return result
+    # A completed unsuccessful workflow blocks release even if its latest
+    # attempt omits a required job from the GitHub jobs response.
+    if (ci.get("workflow_status") == "completed"
+            and ci.get("workflow_conclusion") in TERMINAL_CI_FAILURES):
+        result.update(status="CI_FAILED", reason="exact-main CI workflow did not succeed")
+        return result
     jobs = ci.get("jobs") or []
     if not isinstance(jobs, list):
         raise ValueError("ci.jobs must be a list")
@@ -72,11 +79,12 @@ def assess(snapshot: dict, *, now: datetime, max_lag_minutes: int = 45) -> dict:
         result.update(status="UNVERIFIED", reason="malformed or duplicate CI job records")
         return result
     by_name = {j["name"]: j for j in jobs}
+    if any(by_name[name].get("conclusion") in TERMINAL_CI_FAILURES
+           for name in REQUIRED_JOBS.intersection(by_name)):
+        result.update(status="CI_FAILED", reason="required CI job failed or was cancelled")
+        return result
     if not REQUIRED_JOBS.issubset(by_name):
         result.update(status="CI_PENDING", reason="required CI jobs missing")
-        return result
-    if any(by_name[name].get("conclusion") == "failure" for name in REQUIRED_JOBS):
-        result.update(status="CI_FAILED", reason="required CI job failed")
         return result
     if any(by_name[name].get("status") != "completed" or by_name[name].get("conclusion") != "success" for name in REQUIRED_JOBS):
         result.update(status="CI_PENDING", reason="required CI jobs not all successful")
@@ -89,6 +97,13 @@ def assess(snapshot: dict, *, now: datetime, max_lag_minutes: int = 45) -> dict:
         result.update(status="UNVERIFIED", reason="CI completion is later than snapshot observation")
         return result
     if live_sha == main and _SHA.fullmatch(live_sha):
+        if latest_main is not live:
+            failed = latest_main.get("status") in {"build_failed", "update_failed", "failed", "canceled"}
+            result.update(
+                status="DEPLOY_FAILED" if failed else "UNVERIFIED",
+                reason="newer deployment attempt for main is not LIVE",
+            )
+            return result
         result.update(status="LIVE", reason="exact main SHA is Render LIVE with green CI")
         return result
     age_minutes = max(0, int((now.astimezone(timezone.utc) - completed).total_seconds() // 60))

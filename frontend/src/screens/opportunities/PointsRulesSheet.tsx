@@ -126,7 +126,7 @@ export function PointsRulesSheet() {
       <BottomSheet open={open} onClose={() => setOpen(false)} title="Как получать баллы">
         <div style={{ display: "flex", flexDirection: "column", gap: "0.7rem", maxHeight: "68vh", overflowY: "auto", paddingBottom: "0.5rem" }}>
           <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.82rem", lineHeight: 1.45 }}>
-            Начни с простого: заходи в приложение, участвуй в событиях и выполняй задачи. Баллы начисляются за подтверждённые действия. За документы и участие в ЭРА PRO они не списываются.
+            Начни с простого: заходи в приложение, участвуй в событиях и выполняй задачи. Баллы начисляются за подтверждённые действия. За документы и участие в «Лидеры ЭРА» они не списываются.
           </p>
 
           {RULE_GROUPS.map((group) => (

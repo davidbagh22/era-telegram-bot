@@ -294,6 +294,8 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(task)
             self.assertTrue(task.reward_json["media_task"])
             self.assertEqual(task.points, 50)
+            self.assertTrue(task.title.startswith("Написать текст для «"))
+            self.assertNotIn("Медиа ·", task.title)
 
             membership, error = await task_service.claim(session, task, member)
             self.assertIsNone(error)
@@ -375,6 +377,73 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
                 media_service.MEDIA_TASK_POINTS,
             )
 
+    async def test_photo_package_respects_explicit_due_at(self) -> None:
+        async with self.session_factory() as session:
+            owner = User(
+                telegram_id=21,
+                first_name="Owner",
+                application_status=ApplicationStatus.APPROVED,
+            )
+            session.add(owner)
+            await session.flush()
+            event = Event(
+                title="Photo Event",
+                description="Description",
+                event_date=date.today() + timedelta(days=21),
+                event_time=time(19, 0),
+                location="Дом Москвы",
+                format="offline",
+                created_by=owner.id,
+            )
+            session.add(event)
+            await session.flush()
+            due = datetime.now(timezone.utc) + timedelta(days=2)
+            request = await media_service.request_media_package(
+                session,
+                source_type="event",
+                source_id=event.id,
+                package_type="photo",
+                requester=owner,
+                settings=self.settings,
+                due_at=due,
+            )
+            self.assertEqual(request.package_type, "photo")
+            self.assertEqual(request.metadata_json.get("due_at"), due.isoformat())
+            content = await session.get(MediaContentItem, request.content_id)
+            self.assertIsNotNone(content)
+            assert content is not None
+            stored = content.scheduled_at
+            assert stored is not None
+            if stored.tzinfo is None:
+                stored = stored.replace(tzinfo=timezone.utc)
+            self.assertEqual(stored, due)
+            task_count = int(
+                await session.scalar(
+                    select(func.count(MediaContentTask.id)).where(
+                        MediaContentTask.content_id == request.content_id
+                    )
+                )
+                or 0
+            )
+            self.assertEqual(task_count, 1)
+            task_row = (
+                await session.execute(
+                    select(Task)
+                    .join(MediaContentTask, MediaContentTask.task_id == Task.id)
+                    .where(MediaContentTask.content_id == request.content_id)
+                )
+            ).scalar_one()
+            task_deadline = task_row.deadline
+            assert task_deadline is not None
+            if task_deadline.tzinfo is None:
+                task_deadline = task_deadline.replace(tzinfo=timezone.utc)
+            self.assertEqual(task_deadline, due)
+
+    def _approved_auto(self, item: MediaContentItem):
+        """Explicit test-only consent, never a production publication approval."""
+        key = media_service._media_approval_key(item, media_service._channel_target(self.settings))
+        return patch.object(media_service, "APPROVED_SCHEDULED_MEDIA_PUBLICATIONS", frozenset({key}))
+
     async def test_authored_text_is_published_once(self) -> None:
         async with self.session_factory() as session:
             item = MediaContentItem(
@@ -393,16 +462,18 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
                 send_message=AsyncMock(return_value=SimpleNamespace(message_id=777)),
                 send_poll=AsyncMock(),
             )
-            first = await media_service.publish_content(
-                session, bot, self.settings, item, manual=False
-            )
+            with self._approved_auto(item):
+                first = await media_service.publish_content(
+                    session, bot, self.settings, item, manual=False
+                )
             # send_message now covers two purposes: the actual content
             # delivery and the "Опубликовано ✓" Media Chat notice (ToR
             # §42) -- exactly 2 calls after one successful publish.
             after_first = bot.send_message.await_count
-            second = await media_service.publish_content(
-                session, bot, self.settings, item, manual=False
-            )
+            with self._approved_auto(item):
+                second = await media_service.publish_content(
+                    session, bot, self.settings, item, manual=False
+                )
             self.assertTrue(first.ok)
             self.assertFalse(second.ok)
             self.assertEqual(second.code, "already_published")
@@ -433,9 +504,10 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
                 send_message=AsyncMock(),
                 send_poll=AsyncMock(return_value=SimpleNamespace(message_id=778)),
             )
-            result = await media_service.publish_content(
-                session, bot, self.settings, item, manual=False
-            )
+            with self._approved_auto(item):
+                result = await media_service.publish_content(
+                    session, bot, self.settings, item, manual=False
+                )
             self.assertTrue(result.ok)
             # The poll itself goes out via send_poll; send_message is used
             # only for the separate "Опубликовано ✓" Media Chat notice
@@ -463,7 +535,8 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
                 send_message=AsyncMock(return_value=SimpleNamespace(message_id=1)),
                 send_poll=AsyncMock(),
             )
-            await media_service.publish_content(session, bot, self.settings, item, manual=False)
+            with self._approved_auto(item):
+                await media_service.publish_content(session, bot, self.settings, item, manual=False)
 
             notice = await session.scalar(
                 select(MediaChatNotice).where(MediaChatNotice.notice_kind == "published")
@@ -508,7 +581,8 @@ class MediaOsTests(unittest.IsolatedAsyncioTestCase):
             bot = SimpleNamespace(
                 send_message=AsyncMock(side_effect=_content_fails_notice_succeeds), send_poll=AsyncMock()
             )
-            result = await media_service.publish_content(session, bot, self.settings, item, manual=False)
+            with self._approved_auto(item):
+                result = await media_service.publish_content(session, bot, self.settings, item, manual=False)
 
             self.assertFalse(result.ok)
             notice = await session.scalar(

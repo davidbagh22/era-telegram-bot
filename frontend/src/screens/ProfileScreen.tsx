@@ -1,21 +1,20 @@
 import { useCallback, useState } from "react";
-import { fetchMe, fetchProfile, requestAccountDeletion } from "../api/client";
+import { describeActionError, fetchMe, fetchProfile, nominateLeader, requestAccountDeletion } from "../api/client";
 import { ActionCell } from "../components/ActionCell";
 import { Avatar } from "../components/Avatar";
 import { BottomSheet } from "../components/BottomSheet";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { MonoLabel } from "../components/MonoLabel";
-import { ProgressBar } from "../components/ProgressBar";
 import { Skeleton, SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
 import { useToast } from "../components/Toast";
 import { useAsync } from "../hooks/useAsync";
+import { useMotionPreference } from "../motion/MotionPreference";
 import { CareerPortfolioScreen } from "./CareerPortfolioScreen";
 import { ReferralScreen } from "./ReferralScreen";
 import type { PortfolioEntry } from "../types/profile";
 
-const GROWTH_LABELS = ["Участник", "Активный", "Лидер"];
 type DashboardCell = "projects" | "events" | "tasks" | "volunteer" | "leadership" | "achievements";
 
 const DASHBOARD_CELLS: { key: DashboardCell; label: string; title: string }[] = [
@@ -34,8 +33,8 @@ function PortfolioSection({ title, entries }: { title: string; entries: Portfoli
       {entries.length === 0 ? <EmptyState text="Здесь пока нет подтверждённых записей." /> : (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
           {entries.map((entry, index) => (
-            <Card key={`${entry.title}-${index}`}>
-              <strong>{entry.title}</strong>
+            <Card key={`${entry.title}-${index}`} style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+              <strong style={{ display: "block", overflowWrap: "anywhere" }}>{entry.title}</strong>
               {entry.description && <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)" }}>{entry.description}</p>}
               {(entry.status || entry.date_label) && <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>{[entry.status, entry.date_label].filter(Boolean).join(" · ")}</p>}
             </Card>
@@ -60,6 +59,7 @@ interface ProfileScreenProps {
 }
 
 export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevelopment }: ProfileScreenProps = {}) {
+  const motion = useMotionPreference();
   const state = useAsync(fetchProfile, []);
   const me = useAsync(fetchMe, []);
   const toast = useToast();
@@ -69,6 +69,9 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
   const [deletionOpen, setDeletionOpen] = useState(false);
   const [requestingDeletion, setRequestingDeletion] = useState(false);
   const [deletionRequested, setDeletionRequested] = useState(false);
+  const [nominateOpen, setNominateOpen] = useState(false);
+  const [nominateReason, setNominateReason] = useState("");
+  const [nominating, setNominating] = useState(false);
 
   const referralsEnabled = me.status === "ready" && me.data.features.referrals;
   const vectorEnabled = me.status === "ready" && me.data.features.vector;
@@ -99,7 +102,16 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
     );
   }
 
-  if (state.status === "error") return <StatusBanner title="Не удалось загрузить профиль" description="Открой раздел ещё раз." />;
+  if (state.status === "error") {
+    return (
+      <StatusBanner
+        title="Не удалось загрузить профиль"
+        description="Проверь соединение и обнови экран."
+        actionLabel="Обновить"
+        onAction={state.reload}
+      />
+    );
+  }
 
   const { data } = state;
   const resultEntries = {
@@ -110,10 +122,22 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
     leadership: data.leadership,
     achievements: [...data.badges, ...data.certificates, ...data.recommendations],
   } satisfies Record<DashboardCell, PortfolioEntry[]>;
+  const registrations = data.registrations ?? [];
   const totalResults = Object.values(resultEntries).reduce((sum, entries) => sum + entries.length, 0);
+  // История участия — только подтверждённые визиты и результаты (не заявки/регистрации).
+  // Backend already limits tasks/volunteer to approved submissions; keep a
+  // defensive match for both Russian labels and raw English codes.
+  const confirmedResult = /выполн|подтвержд|заверш|одобрен|принят|approved|completed|verified|leader_approved/i;
   const timeline = Object.entries(resultEntries)
     .flatMap(([group, entries]) => entries.map((entry) => ({ ...entry, group })))
     .filter((entry) => Boolean(entry.date_label))
+    .filter((entry) => {
+      if (entry.group === "events") return true;
+      if (entry.group === "tasks" || entry.group === "volunteer") return confirmedResult.test(entry.status);
+      if (entry.group === "achievements" || entry.group === "leadership") return true;
+      if (entry.group === "projects") return /подтвержд|заверш|вклад|completed|verified/i.test(entry.status);
+      return false;
+    })
     .sort((a, b) => dateOrder(b.date_label) - dateOrder(a.date_label))
     .slice(0, 8);
 
@@ -132,46 +156,28 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
       <Card gradient>
         <div style={{ display: "flex", gap: "0.9rem", alignItems: "center" }}>
           <Avatar firstName={data.first_name} lastName={data.last_name} size="lg" />
-          <div style={{ minWidth: 0 }}>
+          <div data-testid="profile-identity" style={{ minWidth: 0 }}>
             <MonoLabel tone="violet">Профиль</MonoLabel>
             <h1 style={{ margin: "0.25rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "1.75rem", overflowWrap: "anywhere" }}>{data.full_name || data.first_name}</h1>
-            <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-secondary)" }}>{data.growth.label}{data.city ? ` · ${data.city}` : ""}</p>
+            {data.city && <p data-testid="profile-location" style={{ margin: "0.25rem 0 0", color: "var(--era-text-secondary)" }}>{data.city}</p>}
           </div>
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "0.6rem", marginTop: "1rem" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.6rem", marginTop: "1rem" }}>
           <div><strong style={{ display: "block", fontSize: "1.3rem" }}>{data.stats.points ?? 0}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.75rem" }}>баллов</span></div>
           <div><strong style={{ display: "block", fontSize: "1.3rem" }}>{totalResults}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.75rem" }}>записей в обзоре</span></div>
-          <div><strong style={{ display: "block", fontSize: "1.3rem" }}>{data.growth.level_index + 1}</strong><span style={{ color: "var(--era-text-muted)", fontSize: "0.75rem" }}>этап пути</span></div>
         </div>
       </Card>
 
-      <section>
-        <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Мой путь</h2>
-        <ProgressBar currentIndex={data.growth.level_index} totalSteps={data.growth.level_count} labels={GROWTH_LABELS} />
-        {data.growth_criteria.next_label && data.growth_criteria.criteria.length > 0 && (
-          <Card style={{ marginTop: "0.75rem" }}>
-            <strong>До уровня «{data.growth_criteria.next_label}»</strong>
-            <p style={{ margin: "0.3rem 0 0.7rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>
-              Достаточно выполнить любой из подтверждённых вариантов. Баллы сами по себе уровень не меняют.
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              {data.growth_criteria.criteria.map((criterion) => (
-                <div key={criterion.key} style={{ display: "grid", gridTemplateColumns: "1.4rem 1fr auto", gap: "0.5rem", alignItems: "start" }}>
-                  <span aria-hidden="true" style={{ color: criterion.done ? "var(--era-success)" : "var(--era-text-muted)", fontWeight: 800 }}>{criterion.done ? "✓" : "○"}</span>
-                  <span style={{ lineHeight: 1.4 }}>{criterion.label}</span>
-                  <span style={{ color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)", whiteSpace: "nowrap" }}>{criterion.current}/{criterion.required}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-        )}
-      </section>
-
+      <Card>
+        <button type="button" aria-pressed={motion.liveBackground} onClick={motion.toggleLiveBackground} style={{ width: "100%", textAlign: "left" }}>
+          Живой фон · {motion.liveBackground ? "Включён" : "Выключен"}
+        </button>
+      </Card>
       <section>
         <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Мой вклад и опыт</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.6rem" }}>
           {DASHBOARD_CELLS.map((cell) => (
-            <button key={cell.key} type="button" onClick={() => setActiveCell(cell.key)} style={{ minHeight: 72, textAlign: "left", padding: "0.85rem", borderRadius: "var(--era-radius-md)", background: "var(--era-surface)", border: "1px solid var(--era-border)" }}>
+            <button key={cell.key} type="button" onClick={() => setActiveCell(cell.key)} style={{ minHeight: 72, minWidth: 0, textAlign: "left", overflowWrap: "anywhere", padding: "0.85rem", borderRadius: "var(--era-radius-md)", background: "var(--era-surface)", border: "1px solid var(--era-border)" }}>
               <strong style={{ display: "block" }}>{cell.label}</strong>
               <span style={{ display: "block", marginTop: "0.22rem", color: "var(--era-text-muted)", fontSize: "0.78rem" }}>{resultEntries[cell.key].length} записей</span>
             </button>
@@ -180,8 +186,8 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
       </section>
 
       <section>
-        <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Лента пути</h2>
-        {timeline.length === 0 ? <EmptyState text="История появится после первых подтверждённых действий." /> : (
+        <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>История участия</h2>
+        {timeline.length === 0 ? <EmptyState text="История появится после первых подтверждённых посещений и результатов." /> : (
           <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
             {timeline.map((entry, index) => (
               <div key={`${entry.group}-${entry.title}-${entry.date_label}-${index}`} style={{ display: "grid", gridTemplateColumns: "1.25rem 1fr", gap: "0.65rem", minWidth: 0 }}>
@@ -200,12 +206,34 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
         )}
       </section>
 
+      <section>
+        <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Мои регистрации</h2>
+        {registrations.length === 0 ? <EmptyState text="Активных регистраций пока нет." /> : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+            {registrations.slice(0, 6).map((entry, index) => (
+              <Card key={`reg-${entry.title}-${entry.date_label}-${index}`} style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                <strong style={{ display: "block", overflowWrap: "anywhere" }}>{entry.title}</strong>
+                <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>{[entry.status, entry.date_label].filter(Boolean).join(" · ")}</p>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
+
       <section style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
         <h2 style={{ margin: "0 0 0.15rem", fontSize: "var(--era-text-xl)" }}>Ещё</h2>
         <ActionCell title="Моё портфолио" description="Резюме, сертификаты и подтверждённые результаты" meta="Открыть" onClick={() => setShowPortfolio(true)} />
         {vectorEnabled && onOpenDevelopment && <ActionCell title="Мой вектор" description="Личные цели, состояние и история развития" meta="Открыть" onClick={onOpenDevelopment} />}
         {referralsEnabled && <ActionCell title="Пригласить в ЭРА" description="Персональная ссылка и история приглашений" meta="Открыть" onClick={() => setShowReferral(true)} />}
-        {(isAdmin || isLeader) && onEnterWorkspace && <ActionCell title={isAdmin ? "Управление ЭРА" : "Пространство лидера"} description="Рабочие инструменты и управление" meta="Открыть" onClick={onEnterWorkspace} />}
+        {me.status === "ready" && (
+          <ActionCell
+            title="Предложить в руководство"
+            description="Отправь кандидатуру админам — они назначат пакет функций"
+            meta="Открыть"
+            onClick={() => setNominateOpen(true)}
+          />
+        )}
+        {(isAdmin || isLeader) && onEnterWorkspace && <ActionCell title={isAdmin ? "Управление ЭРА" : "Режим лидера"} description="Рабочие инструменты и управление" meta="Открыть" onClick={onEnterWorkspace} />}
       </section>
 
       <section>
@@ -222,6 +250,40 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem" }}>
           <button type="button" onClick={() => setDeletionOpen(false)}>Отмена</button>
           <button type="button" className="era-btn-primary" disabled={requestingDeletion} onClick={handleRequestDeletion}>{requestingDeletion ? "Отправляем…" : "Отправить"}</button>
+        </div>
+      </BottomSheet>
+
+      <BottomSheet open={nominateOpen} onClose={() => setNominateOpen(false)} title="Предложить в руководство">
+        <p style={{ margin: "0 0 0.75rem", color: "var(--era-text-muted)", fontSize: "0.9rem", lineHeight: 1.45 }}>
+          Сейчас отправляется твоя кандидатура. Админ назначит должность и пакеты функций вручную.
+        </p>
+        <textarea
+          value={nominateReason}
+          onChange={(event) => setNominateReason(event.target.value)}
+          placeholder="Почему ты готов взять ответственность (минимум 8 символов)"
+          rows={4}
+        />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginTop: "0.75rem" }}>
+          <button type="button" onClick={() => setNominateOpen(false)}>Отмена</button>
+          <button
+            type="button"
+            className="era-btn-primary"
+            disabled={nominating || nominateReason.trim().length < 8 || me.status !== "ready"}
+            onClick={() => {
+              if (me.status !== "ready") return;
+              setNominating(true);
+              void nominateLeader(me.data.id, nominateReason.trim())
+                .then(() => {
+                  toast.show("Предложение отправлено админам", "success");
+                  setNominateOpen(false);
+                  setNominateReason("");
+                })
+                .catch((error) => toast.show(describeActionError(error), "error"))
+                .finally(() => setNominating(false));
+            }}
+          >
+            {nominating ? "Отправляем…" : "Отправить"}
+          </button>
         </div>
       </BottomSheet>
     </div>

@@ -4,7 +4,7 @@ const ADMIN_TELEGRAM_ID = 900003;
 
 async function enterAdminWorkspace(page: import("@playwright/test").Page) {
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
-  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
   await expect(page.getByText("Управление", { exact: true })).toBeVisible();
 }
@@ -22,7 +22,7 @@ test("admin creates an office and assigns the seeded participant to it", async (
   const officeCard = page.locator(".era-card", { hasText: officeTitle });
   await officeCard.getByRole("button", { name: "Управлять" }).click();
   await officeCard.getByRole("button", { name: "Назначить человека" }).click();
-  await officeCard.getByPlaceholder("Имя, имя пользователя или ID Telegram").fill("E2E Participant");
+  await officeCard.getByPlaceholder("Имя, имя пользователя или номер Telegram").fill("E2E Participant");
   await officeCard.getByRole("button", { name: "Найти" }).click();
   await officeCard.getByRole("button", { name: "E2E Participant" }).click();
   await expect(officeCard.getByText("E2E Participant", { exact: true })).toBeVisible();

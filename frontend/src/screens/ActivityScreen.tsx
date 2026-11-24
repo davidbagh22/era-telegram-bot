@@ -75,7 +75,7 @@ export function ActivityScreen({ initialSection, initialItemId, initialProjectId
                 padding: ".5rem .25rem",
                 border: 0,
                 borderRadius: "var(--era-radius-pill)",
-                background: active ? "rgba(99,44,255,.10)" : "transparent",
+                background: active ? "var(--era-selected)" : "transparent",
                 color: active ? "var(--era-violet)" : "var(--era-text-secondary)",
                 fontSize: ".75rem",
                 fontWeight: active ? 800 : 650,

@@ -13,9 +13,9 @@ interface OnboardingGateProps {
 }
 
 const STEPS = [
-  { number: "01", title: "Включайся", description: "События, задачи, проекты" },
-  { number: "02", title: "Делай", description: "Получай реальный результат" },
-  { number: "03", title: "Расти", description: "Новые роли и возможности" },
+  { number: "01", title: "Участвуй", description: "События, задачи и проекты" },
+  { number: "02", title: "Делай", description: "Фиксируй подтверждённый результат" },
+  { number: "03", title: "Расти", description: "Роли, баллы и новые возможности" },
 ];
 
 export function OnboardingGate({ children }: OnboardingGateProps) {
@@ -76,10 +76,10 @@ export function OnboardingGate({ children }: OnboardingGateProps) {
       <header style={{ paddingTop: "1rem" }}>
         <MonoLabel tone="violet">ЭРА</MonoLabel>
         <h1 style={{ margin: ".55rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "clamp(1.8rem,8vw,2.35rem)", lineHeight: 1.05 }}>
-          Включайся. Делай. Расти.
+          Три шага в ЭРА
         </h1>
         <p style={{ margin: ".7rem 0 0", color: "var(--era-text-secondary)", fontSize: "1rem", lineHeight: 1.5 }}>
-          Здесь участие превращается в подтверждённый опыт, а опыт — в новые возможности.
+          Участие → подтверждённый результат → рост внутри ЭРА.
         </p>
       </header>
 
@@ -100,7 +100,7 @@ export function OnboardingGate({ children }: OnboardingGateProps) {
       </div>
 
       <button type="button" className="era-btn-primary" disabled={saving} onClick={() => void finish()} style={{ marginTop: "auto", width: "100%", minHeight: 48 }}>
-        {saving ? "Сохраняем…" : "Начать"}
+        {saving ? "Сохраняем…" : "Открыть ЭРА"}
       </button>
     </div>
   );

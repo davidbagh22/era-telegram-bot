@@ -26,9 +26,13 @@ def buttons(markup):
 
 
 def test_admin_has_native_shortcuts_even_with_the_app_enabled():
+    from app.keyboards.bot_shell import ADMIN_HUB_BUTTON, admin_hub_keyboard
     for miniapp_url in ('', 'https://era.example/app/'):
         labels = {b.text for b in buttons(main_reply_keyboard(miniapp_url, admin=True))}
-        assert {'📊 Статистика', '📥 Заявки'} <= labels
+        assert ADMIN_HUB_BUTTON in labels
+        assert '📊 Статистика' not in labels and '📥 Заявки' not in labels
+        hub = buttons(admin_hub_keyboard(miniapp_url))
+        assert {'admin:applications', 'admin:management:open'} <= {b.callback_data for b in hub}
         inline = buttons(main_inline_keyboard(miniapp_url=miniapp_url, admin=True))
         assert {'admin:applications', 'admin:management:open'} <= {b.callback_data for b in inline}
         assert not any(b.text == '📥 Заявки' for b in buttons(main_reply_keyboard(miniapp_url)))

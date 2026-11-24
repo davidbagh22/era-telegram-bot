@@ -7,13 +7,14 @@ import { useAsync } from "../../hooks/useAsync";
 import type { AdminMetricKey } from "../../types/adminMetrics";
 import { AdminDashboardScreen } from "./AdminDashboardScreen";
 
-// Every item shown in "Нужно решить" must open a screen where the admin can
+// Every item shown in "Решить сегодня" must open a screen where the admin can
 // actually complete the task. Do not add informational counters here without
 // a resolver flow — that creates dead-end cards on the command center.
 const ATTENTION_LABELS = {
   users_pending: "Новые регистрации",
   projects_review: "Проекты на проверке",
   events_pending: "События на согласовании",
+  attendance_proofs: "Фото-подтверждения участия",
   tasks_attention: "Задачи требуют внимания",
   questions: "Обращения ждут ответа",
   activity_results: "Результаты активностей",
@@ -37,7 +38,12 @@ interface AdminOverviewScreenProps {
   onOpenPeople: () => void;
   onOpenApplications: () => void;
   onOpenProjects: () => void;
+  onOpenProjectReview: () => void;
   onOpenEvents: () => void;
+  onOpenEventModeration: () => void;
+  onOpenEventWaitlist: () => void;
+  onOpenActivityResults: () => void;
+  onOpenAttendanceProofs: () => void;
   onOpenTasks: () => void;
   onOpenComms: () => void;
   onOpenOffers: () => void;
@@ -62,7 +68,12 @@ export function AdminOverviewScreen({
   onOpenPeople,
   onOpenApplications,
   onOpenProjects,
+  onOpenProjectReview,
   onOpenEvents,
+  onOpenEventModeration,
+  onOpenEventWaitlist,
+  onOpenActivityResults,
+  onOpenAttendanceProofs,
   onOpenTasks,
   onOpenComms,
   onOpenOffers,
@@ -98,11 +109,12 @@ export function AdminOverviewScreen({
 
   const attentionActions: Record<AttentionKey, () => void> = {
     users_pending: onOpenApplications,
-    projects_review: onOpenProjects,
-    events_pending: onOpenEvents,
+    projects_review: onOpenProjectReview,
+    events_pending: onOpenEventModeration,
+    attendance_proofs: onOpenAttendanceProofs,
     tasks_attention: () => openNativeQueue("admin_task_attention"),
     questions: () => openNativeQueue("admin_question_attention"),
-    activity_results: onOpenEvents,
+    activity_results: onOpenActivityResults,
     rewards: onOpenOffers,
     portfolio: onOpenCareer,
   };
@@ -121,6 +133,17 @@ export function AdminOverviewScreen({
         </div>
       </Card>
 
+      <section>
+        <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .5rem" }}>Быстро сделать</h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
+          <ActionCell title="Мероприятие" description="Создать и вести" leading="＋" onClick={onOpenEvents} />
+          <ActionCell title="Редактировать мероприятие" description="Карточка, афиша и сообщения зарегистрированным" leading="✎" onClick={onOpenEventWaitlist} />
+          <ActionCell title="Рассылка" description="Написать людям" leading="↗" onClick={onOpenComms} />
+          <ActionCell title="Проект" description="Создать и проверить" leading="＋" onClick={onOpenProjects} />
+          <ActionCell title="Участники" description="Состав и роли" leading="👥" onClick={onOpenPeople} />
+        </div>
+      </section>
+
       <section aria-label="Сейчас">
         <h2 style={{ fontSize: ".82rem", color: "var(--era-text-muted)", margin: "0 0 .5rem", letterSpacing: ".04em" }}>СЕЙЧАС</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: ".5rem" }}>
@@ -132,7 +155,7 @@ export function AdminOverviewScreen({
       </section>
 
       <section>
-        <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .5rem" }}>Нужно решить</h2>
+        <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .5rem" }}>Решить сегодня</h2>
         {attentionItems.length === 0 && (metrics.event_waitlist ?? 0) === 0 ? (
           <Card style={{ background: "var(--era-surface-2)", textAlign: "center", padding: ".9rem" }}>
             <strong>Очередь чистая ✓</strong>
@@ -140,21 +163,20 @@ export function AdminOverviewScreen({
           </Card>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: ".45rem" }}>
-            {(metrics.event_waitlist ?? 0) > 0 && <ActionCell title={`${metrics.event_waitlist} · лист ожидания`} description="Проверить места на событиях" leading="!" onClick={onOpenEvents} />}
+            {(metrics.event_waitlist ?? 0) > 0 && (
+              <ActionCell
+                title={`${metrics.event_waitlist} · лист ожидания`}
+                description="Открыть участников и посещаемость"
+                leading="!"
+                onClick={onOpenEventWaitlist}
+              />
+            )}
             {attentionItems.map((item) => <ActionCell key={item.key} title={`${item.value} · ${item.label}`} description={item.key === "tasks_attention" || item.key === "questions" ? "Открыть рабочую очередь в боте" : "Открыть и решить"} leading="!" onClick={attentionActions[item.key]} />)}
           </div>
         )}
       </section>
 
-      <section>
-        <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .5rem" }}>Быстро сделать</h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
-          <ActionCell title="Мероприятие" description="Создать и вести" leading="＋" onClick={onOpenEvents} />
-          <ActionCell title="Рассылка" description="Написать людям" leading="↗" onClick={onOpenComms} />
-          <ActionCell title="Проект" description="Создать и проверить" leading="＋" onClick={onOpenProjects} />
-          <ActionCell title="Участники" description="Состав и роли" leading="👥" onClick={onOpenPeople} />
-        </div>
-      </section>
+
 
       <section>
         <Card style={{ padding: ".9rem" }}>

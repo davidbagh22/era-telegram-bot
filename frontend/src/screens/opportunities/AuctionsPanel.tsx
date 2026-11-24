@@ -4,6 +4,7 @@ import { BottomSheet } from "../../components/BottomSheet";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { AuctionIcon } from "../../components/icons";
+import { SkeletonList } from "../../components/Skeleton";
 import { useAsync } from "../../hooks/useAsync";
 import type { Auction } from "../../types/opportunity";
 
@@ -99,8 +100,9 @@ function AuctionHeroCard({ auction, onOpen }: AuctionHeroCardProps) {
               fontWeight: 600,
               padding: "0.25rem 0.5rem",
               borderRadius: "var(--era-radius-pill)",
-              background: countdown.urgent ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.18)",
-              color: countdown.urgent ? "var(--era-red)" : "#fff",
+              background: countdown.urgent ? "var(--era-surface)" : "rgba(255,255,255,0.14)",
+              color: countdown.urgent ? "var(--era-warning)" : "#fff",
+              border: countdown.urgent ? "1px solid var(--era-border-strong)" : "1px solid transparent",
               whiteSpace: "nowrap",
             }}
           >
@@ -233,10 +235,17 @@ export function AuctionsPanel() {
   );
 
   if (state.status === "loading") {
-    return <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>;
+    return <SkeletonList count={2} />;
   }
   if (state.status === "error") {
-    return <EmptyState text="Не удалось загрузить аукционы." />;
+    return (
+      <EmptyState
+        title="Не удалось загрузить аукционы"
+        text="Проверьте соединение и обновите список."
+        actionLabel="Обновить"
+        onAction={state.reload}
+      />
+    );
   }
   if (state.data.length === 0) {
     return <EmptyState text="Активных лотов пока нет." />;

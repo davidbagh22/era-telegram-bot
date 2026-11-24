@@ -18,7 +18,7 @@ from app.database.certificate_models import CertificateIssue
 from app.database.models import Event, EventRegistration, PermissionGrant, PortfolioItem, User
 from app.services import career_service, certificate_service as service
 from app.services.certificate_pdf_service import build_certificate_pdf
-from app.utils.constants import ApplicationStatus, EventStatus, RegistrationStatus, Role
+from app.utils.constants import ApplicationStatus, EventStatus, RegistrationStatus
 
 
 def test_issuance_revocation_reissue_and_current_permissions():

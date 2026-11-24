@@ -19,12 +19,25 @@ from app.states.auction import AuctionAdminStates
 
 router = Router(name="admin_auction_block17")
 
+AUCTION_STATUS_LABELS = {
+    "active": "идут ставки",
+    "completed": "победитель подтверждён",
+    "delivered": "лот передан",
+    "cancelled": "отменён",
+}
+
 
 def auctions_keyboard(auctions: list[Auction]) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text="➕ Создать лот", callback_data="admin:auction:add")]]
     for auction in auctions:
         icon = "🟢" if auction.status == "active" else "⚪️"
-        rows.append([InlineKeyboardButton(text=f"{icon} {auction.title[:38]}", callback_data=f"admin:auction:view:{auction.id}")])
+        status = AUCTION_STATUS_LABELS.get(auction.status, "статус уточняется")
+        rows.append([
+            InlineKeyboardButton(
+                text=f"{icon} {auction.title[:28]} · {status}",
+                callback_data=f"admin:auction:view:{auction.id}",
+            )
+        ])
     rows.append([InlineKeyboardButton(text="← Развитие", callback_data="admin:menu:growth")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -133,8 +146,15 @@ async def auction_admin_view(call: CallbackQuery, user: User | None, settings: S
         rows.append([InlineKeyboardButton(text="🎁 Лот передан победителю", callback_data=f"admin:auction:deliver:{auction.id}")])
     rows.append([InlineKeyboardButton(text="🔄 Обновить", callback_data=f"admin:auction:view:{auction.id}")])
     rows.append([InlineKeyboardButton(text="← К аукционам", callback_data="admin:auctions")])
+    status_label = AUCTION_STATUS_LABELS.get(auction.status, "статус уточняется")
     await call.message.answer(
-        f"🔨 {auction.title}\n\n{auction.description}\n\nСтатус: {auction.status}\nСтавок: {len(bids)}\nПоследняя ставка: {top_bid.amount if top_bid else 'нет'}\nЛидер: {bidder_name(top_user) if top_bid else 'нет'}\nЗавершение: {format_local(auction.ends_at, settings.timezone)}\nОсталось: {remaining_time(auction.ends_at)}",
+        f"🔨 {auction.title}\n\n{auction.description}\n\n"
+        f"Статус: {status_label}\n"
+        f"Ставок: {len(bids)}\n"
+        f"Последняя ставка: {top_bid.amount if top_bid else 'нет'}\n"
+        f"Лидер: {bidder_name(top_user) if top_bid else 'нет'}\n"
+        f"Завершение: {format_local(auction.ends_at, settings.timezone)}\n"
+        f"Осталось: {remaining_time(auction.ends_at)}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
     )
 

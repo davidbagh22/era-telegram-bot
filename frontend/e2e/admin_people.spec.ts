@@ -4,7 +4,7 @@ const ADMIN_TELEGRAM_ID = 900003;
 
 async function enterAdminWorkspace(page: import("@playwright/test").Page) {
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
-  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("navigation", { name: "Основная навигация" }).getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
   await expect(page.getByText("Управление", { exact: true })).toBeVisible();
 }
@@ -13,7 +13,7 @@ test("admin opens a rich participant profile and awards points", async ({ page }
   await enterAdminWorkspace(page);
   await page.getByRole("button", { name: "Люди" }).click();
   await page.getByRole("button", { name: "Участники" }).click();
-  await page.getByPlaceholder("Имя, имя пользователя или ID Telegram").fill("E2E Participant");
+  await page.getByPlaceholder("Имя, имя пользователя или номер Telegram").fill("E2E Participant");
   await page.getByText("E2E Participant").click();
 
   await expect(page.getByText("Карточка участника")).toBeVisible();

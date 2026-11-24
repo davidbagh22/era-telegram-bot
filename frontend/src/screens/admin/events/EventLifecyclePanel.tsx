@@ -101,7 +101,14 @@ export function EventLifecyclePanel({ eventId, onChanged }: EventLifecyclePanelP
     return <Card><span style={{ color: "var(--era-text-muted)" }}>Загружаем управление мероприятием…</span></Card>;
   }
   if (state.status === "error") {
-    return <Card><span style={{ color: "var(--era-error)" }}>Не удалось загрузить управление мероприятием.</span></Card>;
+    return (
+      <Card>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: ".75rem" }}>
+          <span style={{ color: "var(--era-error)" }}>Не удалось загрузить управление мероприятием.</span>
+          <button type="button" onClick={() => setRefreshKey((key) => key + 1)}>Повторить загрузку управления</button>
+        </div>
+      </Card>
+    );
   }
 
   const item = state.data;
@@ -109,8 +116,9 @@ export function EventLifecyclePanel({ eventId, onChanged }: EventLifecyclePanelP
   const completed = Boolean(item.completed_at);
 
   return (
-    <Card style={{ borderColor: item.confirmation_open ? "rgba(255,100,0,.32)" : "var(--era-border)" }}>
+    <Card style={{ borderColor: item.confirmation_open ? "var(--era-border-strong)" : "var(--era-border)" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: ".8rem" }}>
+        <button type="button" onClick={() => setRefreshKey((key) => key + 1)} style={{ alignSelf: "flex-start" }}>Обновить управление</button>
         <div>
           <div style={{ display: "flex", justifyContent: "space-between", gap: ".65rem", alignItems: "center" }}>
             <strong style={{ fontSize: "1.03rem" }}>Управление мероприятием</strong>
@@ -124,7 +132,7 @@ export function EventLifecyclePanel({ eventId, onChanged }: EventLifecyclePanelP
         </div>
 
         {item.attendance_code && (
-          <div style={{ border: "1px solid rgba(255,100,0,.24)", borderRadius: "1rem", padding: ".9rem", background: "rgba(255,100,0,.055)" }}>
+          <div style={{ border: "1px solid var(--era-border-strong)", borderRadius: "1rem", padding: ".9rem", background: "var(--era-selected)" }}>
             <span style={{ display: "block", color: "var(--era-text-muted)", fontSize: ".72rem", fontWeight: 800, letterSpacing: ".06em" }}>КОД ДЛЯ ВЕДУЩИХ</span>
             <div style={{ marginTop: ".35rem", fontSize: "clamp(1.6rem,8vw,2.25rem)", fontWeight: 950, letterSpacing: ".12em", color: "var(--era-gold-ink)" }}>
               {formatCode(item.attendance_code)}
@@ -143,8 +151,13 @@ export function EventLifecyclePanel({ eventId, onChanged }: EventLifecyclePanelP
 
         {item.can_complete && (
           <button type="button" className="era-btn-primary" disabled={busy !== null} onClick={() => void complete()}>
-            {busy === "complete" ? "Завершаем…" : "Завершить и открыть ввод кода"}
+            {busy === "complete" ? "Завершаем…" : "Завершить · убрать с активной афиши · открыть код"}
           </button>
+        )}
+        {!item.can_complete && !completed && (
+          <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: ".78rem", lineHeight: 1.4 }}>
+            Чтобы убрать событие с афиши для всех — завершите его здесь. Участники увидят его во вкладке «Прошедшие».
+          </p>
         )}
 
         {item.confirmation_open && (

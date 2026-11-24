@@ -73,23 +73,32 @@ export function QuickEventCreateDialog({ draft, posterUrl, busy, saving, saveLab
                 {draft.full_description.split("\n")[0].trim() !== draft.title.trim() && <h3>{draft.title}</h3>}
                 <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{draft.full_description}</p>
                 <p>📅 {draft.event_date.split("-").reverse().join(".")} · {draft.event_time.slice(0, 5)}<br />📍 {draft.location}</p>
-                <p style={{ color: "var(--era-text-muted)" }}>{draft.registration_required ? "Регистрация открывается после публикации." : "Без регистрации."} Анонс отправится в тему «Мероприятия».</p>
+                <p style={{ color: "var(--era-text-muted)" }}>{draft.registration_url ? "Запись пройдёт по внешней ссылке организаторов." : draft.registration_required ? "Регистрация откроется в Mini App." : "Регистрация не требуется."} Будет создана тема в чате ЭРА.</p>
               </>
             ) : (
               <>
                 <p style={{ marginTop: 0, color: "var(--era-text-muted)" }}>Вставьте готовый текст и добавьте фото. Черновик сохраняется автоматически.</p>
                 <Field label="Текст анонса"><textarea required value={draft.full_description} onChange={(event) => updateText(event.target.value)} rows={8} maxLength={10000} placeholder="Вставьте текст мероприятия целиком…" /></Field>
                 <Field label="Заголовок"><input required value={draft.title === "Новое мероприятие" ? "" : draft.title} onChange={(event) => onChange((current) => ({ ...current, title: event.target.value }))} maxLength={255} placeholder="Первая строка текста или свой заголовок" /></Field>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem" }}>
-                  <Field label="Дата"><input required type="date" value={draft.event_date} onChange={(event) => onChange((current) => ({ ...current, event_date: event.target.value }))} /></Field>
-                  <Field label="Время"><input required type="time" value={draft.event_time} onChange={(event) => onChange((current) => ({ ...current, event_time: event.target.value }))} /></Field>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 10rem), 1fr))", gap: ".5rem" }}>
+                  <Field label="Дата"><input required type="date" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={draft.event_date} onChange={(event) => onChange((current) => ({ ...current, event_date: event.target.value }))} /></Field>
+                  <Field label="Время"><input required type="time" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} value={draft.event_time} onChange={(event) => onChange((current) => ({ ...current, event_time: event.target.value }))} /></Field>
                 </div>
                 <Field label="Место или ссылка"><input required value={draft.location} maxLength={255} onChange={(event) => onChange((current) => ({ ...current, location: event.target.value }))} placeholder="Адрес или ссылка на онлайн-встречу" /></Field>
+                <Field label="Ссылка для внешней записи (необязательно)"><input type="url" maxLength={500} placeholder="https://t.me/..." value={draft.registration_url ?? ""} onChange={(event) => onChange((current) => ({ ...current, registration_url: event.target.value, registration_required: event.target.value ? false : current.registration_required }))} /></Field>
                 <Field label="Фото (до 5 МБ)"><input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void poster(file); event.target.value = ""; }} /></Field>
                 {draft.has_poster && <div style={{ marginBottom: ".8rem" }}>{posterUrl && <img alt="Прикреплённая афиша" src={posterUrl} style={{ width: "100%", maxHeight: 200, objectFit: "contain", borderRadius: ".8rem" }} /> }<button type="button" onClick={() => void poster(null)}>Удалить фото</button></div>}
                 <details><summary>Регистрация и баллы</summary>
+                  <label><input type="checkbox" checked={draft.issue_certificate === true} onChange={e => onChange(current => ({ ...current, issue_certificate: e.target.checked }))} /> Сертификат участника с подписью и печатью</label>
+                  <Field label="Анонс"><select value={draft.broadcast_enabled ? draft.broadcast_targets[0] : "general"} onChange={e => {
+                    const choice = e.target.value;
+                    onChange(current => ({ ...current, broadcast_enabled: choice !== "general", broadcast_targets: [choice] }));
+                  }}><option value="general">Общий чат</option><option value="bot">В личные сообщения участников</option><option value="bot_and_chat">Общий чат и личные сообщения</option></select></Field>
+                  <p>Напомнить зарегистрированным</p>
+                  {[1440, 180, 60].map(minutes => <label key={minutes}><input type="checkbox" checked={draft.reminders.includes(minutes)}
+                    onChange={e => onChange(current => ({ ...current, reminders: e.target.checked ? [...current.reminders, minutes] : current.reminders.filter(m => m !== minutes) }))}/> За {minutes / 60} ч </label>)}
                   <Field label="Формат"><select value={draft.attendance_mode} onChange={(event) => onChange((current) => ({ ...current, attendance_mode: event.target.value as AdminEventDraft["attendance_mode"] }))}><option value="offline">Офлайн</option><option value="online">Онлайн</option><option value="hybrid">Гибрид</option></select></Field>
-                  <label><input type="checkbox" checked={draft.registration_required} onChange={(event) => onChange((current) => ({ ...current, registration_required: event.target.checked }))} /> Нужна регистрация</label>
+                  <label><input type="checkbox" checked={draft.registration_required} disabled={Boolean(draft.registration_url)} onChange={(event) => onChange((current) => ({ ...current, registration_required: event.target.checked }))} /> Регистрация внутри ЭРА</label>
                   {draft.registration_required && <Field label="Количество мест"><input type="number" min={1} max={5000} value={draft.participant_limit ?? ""} onChange={(event) => onChange((current) => ({ ...current, participant_limit: event.target.value ? Number(event.target.value) : null }))} placeholder="Без ограничения" /></Field>}
                   <Field label="Баллы за посещение"><input type="number" min={0} max={200} value={draft.points_for_visit} onChange={(event) => onChange((current) => ({ ...current, points_for_visit: Number(event.target.value) }))} /></Field>
                 </details>

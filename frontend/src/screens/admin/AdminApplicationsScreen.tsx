@@ -204,7 +204,7 @@ function ApplicationCard({
         </Section>
         <details style={{ color: "var(--era-text-muted)", fontSize: ".8125rem" }}>
           <summary>Служебные сведения</summary>
-          <ValueRow label="Telegram ID" value={application.telegram_id} />
+          <ValueRow label="номер Telegram" value={application.telegram_id} />
           <ValueRow label="Версия условий" value={application.consent_policy_version} />
         </details>
       </div>
