@@ -1,7 +1,8 @@
-"""PostgreSQL 18 rehearsal for the reversible public-listing migration.
+"""PostgreSQL rehearsal for the reversible public-listing migration.
 
 CI-only: operates in a transaction-local synthetic schema and rolls back all DDL.
 Never point this probe at production or an externally reachable database.
+Matches Bot checks postgres-migration (postgres:16-alpine + client 16).
 """
 from __future__ import annotations
 
@@ -34,7 +35,7 @@ def rehearse(connection: sa.Connection) -> None:
     migration.op = Operations(MigrationContext.configure(connection))
 
     version = int(connection.exec_driver_sql("SHOW server_version_num").scalar_one())
-    assert 180000 <= version < 190000, f"Expected disposable PostgreSQL 18, got {version}"
+    assert 160000 <= version < 190000, f"Expected disposable PostgreSQL 16–18, got {version}"
 
     # The probe runs BEFORE Alembic on a fresh disposable CI database.
     # The entire fixture, including DDL, is rolled back without a commit.
@@ -111,7 +112,7 @@ def rehearse(connection: sa.Connection) -> None:
 async def main() -> None:
     url = os.environ.get("DATABASE_URL")
     if url != EXPECTED_URL or os.environ.get("GITHUB_ACTIONS") != "true":
-        raise RuntimeError("Only the disposable local PostgreSQL 18 GitHub CI database is allowed")
+        raise RuntimeError("Only the disposable local PostgreSQL GitHub CI database is allowed")
     engine = create_async_engine(url)
     try:
         async with engine.connect() as connection:
@@ -122,7 +123,7 @@ async def main() -> None:
                 await transaction.rollback()
     finally:
         await engine.dispose()
-    print("PostgreSQL 18 synthetic visibility migration: retention, default, idempotency and fail-closed rollback PASS")
+    print("PostgreSQL synthetic visibility migration: retention, default, idempotency and fail-closed rollback PASS")
 
 
 if __name__ == "__main__":
