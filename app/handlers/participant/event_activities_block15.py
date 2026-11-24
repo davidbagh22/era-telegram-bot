@@ -90,6 +90,11 @@ async def _registration(
     )
 
 
+async def _commit_submission(session: AsyncSession) -> None:
+    """Persist the submission before any Telegram admin notice (#529)."""
+    await session.commit()
+
+
 async def _notify_proof(
     bot: Bot,
     settings: Settings,
@@ -261,6 +266,8 @@ async def proof_start(
             session.add(submission)
         await session.flush()
         event = await session.get(Event, activity.event_id)
+        # Commit before Telegram I/O so a notice never outruns a durable row.
+        await _commit_submission(session)
         await _notify_proof(bot, settings, submission, activity, event, user)
         await call.message.answer("Заявка отправлена на проверку.")
         return
@@ -359,6 +366,8 @@ async def proof_finish(
         session.add(submission)
     await session.flush()
     event = await session.get(Event, activity.event_id)
+    # Commit before Telegram I/O so a notice never outruns a durable row.
+    await _commit_submission(session)
     await _notify_proof(bot, settings, submission, activity, event, user)
     await state.clear()
     await message.answer(

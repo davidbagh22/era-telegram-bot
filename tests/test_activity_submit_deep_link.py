@@ -104,7 +104,9 @@ class TryActivitySubmissionHandoffTests(unittest.IsolatedAsyncioTestCase):
         event = SimpleNamespace(title="Событие")
         submission = SimpleNamespace(id=1)
         session = SimpleNamespace(
-            get=AsyncMock(side_effect=[activity, event]), scalar=AsyncMock(return_value=registration)
+            get=AsyncMock(side_effect=[activity, event]),
+            scalar=AsyncMock(return_value=registration),
+            commit=AsyncMock(),
         )
         command = SimpleNamespace(args="activity_submit_7")
         with (
@@ -122,6 +124,7 @@ class TryActivitySubmissionHandoffTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertTrue(result)
         state.set_state.assert_not_awaited()
+        session.commit.assert_awaited_once()
         notify_mock.assert_awaited_once()
         message.answer.assert_awaited_once()
 
