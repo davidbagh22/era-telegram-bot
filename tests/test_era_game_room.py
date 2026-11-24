@@ -141,7 +141,7 @@ def test_group_commands_accept_bot_mention():
     command_filter = router.message.handlers[0].filters[0].callback
     bot = SimpleNamespace(
         me=AsyncMock(return_value=SimpleNamespace(username='ERA_1bot')),
-        usernames=AsyncMock(return_value=['ERA_1bot']),  # empty skips mention rejection in current aiogram
+        usernames=AsyncMock(return_value=['ERA_1bot']),
     )
     for text in ('/games', '/game@ERA_1bot', '/games@ERA_1bot'):
         message = Message(message_id=1, date=datetime.now(timezone.utc), chat=Chat(id=-100123, type='supergroup'), text=text)

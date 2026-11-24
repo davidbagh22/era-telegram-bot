@@ -1,14 +1,25 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { fetchEventDraft, saveEventDraft, type AdminEventDraftPatch } from "../../../api/adminEvents";
+import { changeEventTopic, fetchEventDraft, saveEventDraft, type AdminEventDraftPatch } from "../../../api/adminEvents";
 import { describeActionError } from "../../../api/client";
 import { useAsync } from "../../../hooks/useAsync";
+
+function yerevanInputTime(value: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 16);
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Asia/Yerevan", year: "numeric", month: "2-digit",
+    day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).format(date).replace(" ", "T");
+}
 
 export function EventDetailsEditor({ eventId, onClose }: { eventId: number; onClose: () => void }) {
   const [revision, setRevision] = useState(0);
   const state = useAsync(() => fetchEventDraft(eventId), [eventId, revision]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [confirmTopicAction, setConfirmTopicAction] = useState<"close" | "reopen" | null>(null);
   if (state.status === "loading") return <p>Открываем карточку…</p>;
   if (state.status === "error") return <p>Карточка недоступна. <button onClick={() => setRevision(revision + 1)}>Повторить</button> <button onClick={onClose}>Назад</button></p>;
   const event = state.data;
@@ -32,12 +43,28 @@ export function EventDetailsEditor({ eventId, onClose }: { eventId: number; onCl
     if (reminders.join(",") !== [...event.reminders].sort((a, b) => a - b).join(",")) patch.reminders = reminders;
     const nativeRegistration = data.has("native_registration") && !value("registration_url");
     if (nativeRegistration !== event.registration_required) patch.registration_required = nativeRegistration;
+    const topicCloseTime = value("topic_close_at");
+    if (topicCloseTime !== yerevanInputTime(event.topic_close_at)) {
+      // The API interprets an unzoned datetime as Asia/Yerevan.
+      patch.topic_close_at = topicCloseTime || null;
+    }
     const certificate = data.has("certificate");
     if (certificate !== Boolean(event.issue_certificate)) patch.issue_certificate = certificate;
     if (!Object.keys(patch).length) { onClose(); return; }
     setBusy(true);
     try { await saveEventDraft(eventId, patch); onClose(); }
     catch (reason) { setError(describeActionError(reason)); }
+    finally { setBusy(false); }
+  }
+  async function actOnTopic(action: "close" | "reopen") {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await changeEventTopic(eventId, action);
+      setConfirmTopicAction(null);
+      setRevision((value) => value + 1);
+    } catch (reason) { setError(describeActionError(reason)); }
     finally { setBusy(false); }
   }
   return <form onSubmit={submit}><fieldset disabled={busy} style={{ display: "grid", gap: 12, padding: 16 }}>
@@ -55,6 +82,28 @@ export function EventDetailsEditor({ eventId, onClose }: { eventId: number; onCl
         <label key={mins}><input type="checkbox" name="reminder" value={mins} defaultChecked={event.reminders.includes(Number(mins))} /> {label}</label>)}
       <small>Напоминания ЭРА работают только для регистраций, оформленных внутри Mini App.</small>
     </details>
+    <section style={{ padding: ".9rem", border: "1px solid var(--era-border)", borderRadius: "1rem", background: "var(--era-surface-2)", display: "grid", gap: ".65rem" }}>
+      <strong>💬 Тема мероприятия в Telegram</strong>
+      <span style={{ fontSize: ".82rem", color: "var(--era-text-secondary)" }}>
+        {event.topic_close_state === "closed" ? "Тема закрыта: сообщения сохранены." :
+          event.topic_close_state === "attention" ? "Тема требует проверки организатора." : "Тема открыта."}
+      </span>
+      <label>Автоматически закрыть (Ереван)
+        <input type="datetime-local" name="topic_close_at" defaultValue={yerevanInputTime(event.topic_close_at)}
+          disabled={event.topic_close_state === "closed"} style={{ width: "100%", boxSizing: "border-box" }} />
+      </label>
+      <small>Необязательно. Можно изменить или очистить дату. Закрывается только тема этого проекта, не весь чат. Это не срок окончания регистрации.</small>
+      {event.topic_close_state === "closed" ? (
+        <button type="button" onClick={() => setConfirmTopicAction("reopen")}>↪ Переоткрыть тему</button>
+      ) : (
+        <button type="button" onClick={() => setConfirmTopicAction("close")}>Закрыть тему сейчас</button>
+      )}
+      {confirmTopicAction && <div role="group" aria-label="Подтвердить действие с темой" style={{ display: "grid", gap: ".45rem" }}>
+        <small>{confirmTopicAction === "close" ? "Закрыть обсуждение? История сохранится." : "Снова разрешить сообщения? Дата автоматического закрытия будет очищена."}</small>
+        <button type="button" className="era-btn-primary" onClick={() => void actOnTopic(confirmTopicAction)}>Подтвердить</button>
+        <button type="button" onClick={() => setConfirmTopicAction(null)}>Отмена</button>
+      </div>}
+    </section>
     <label>Баллы за посещение<input required type="number" min={0} max={200} name="points" defaultValue={event.points_for_visit}/></label>
     <label><input type="checkbox" name="certificate" defaultChecked={Boolean(event.issue_certificate)} /> Сертификат после посещения</label>
     <small>При изменении даты, времени или места бот отправит обновление в «Мероприятия», записанным и в лист ожидания.</small>

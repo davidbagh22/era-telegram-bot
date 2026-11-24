@@ -34,6 +34,37 @@ TaskScope = Literal["available", "for_you", "team", "mine", "review", "completed
 # to fake here — see docs/ERA_PLATFORM_PROGRESS.md.
 
 
+def _same_geo_dictation(event: Event) -> bool:
+    """Narrowly identify duplicate advertisements of the SAME partner session.
+
+    Never generalize this to matching event titles or recurring sessions.
+    """
+    return (event.event_date == date(2026, 11, 22)
+            and "географический диктант" in (event.title or "").casefold()
+            and (event.event_time.hour, event.event_time.minute) == (12, 0))
+
+
+def collapse_duplicate_geo_dictation(
+    rows: list[tuple[Event, EventRegistration | None]],
+) -> list[tuple[Event, EventRegistration | None]]:
+    """Hide duplicate 22 Nov cards only; preserve registrations and database.
+
+    Favor an event the *current user* registered for; otherwise the official
+    marker. No rows are deleted, no associations are transferred.
+    """
+    matches = [(idx, row) for idx, row in enumerate(rows) if _same_geo_dictation(row[0])]
+    if len(matches) < 2:
+        return rows
+    preferred_idx, _ = max(matches, key=lambda pair: (
+        bool(pair[1][1] and pair[1][1].status not in (
+            RegistrationStatus.CANCELLED, RegistrationStatus.NOT_COMING)),
+        pair[1][0].additional_info == "geo-dictation-2026-russian-house",
+        -pair[1][0].id,
+    ))
+    return [row for idx, row in enumerate(rows)
+            if not (_same_geo_dictation(row[0]) and idx != preferred_idx)]
+
+
 async def list_events(
     session: AsyncSession, user: User, scope: EventScope
 ) -> list[tuple[Event, EventRegistration | None]]:
@@ -82,7 +113,7 @@ async def list_events(
             )
         ).all()
         reg_by_event = {registration.event_id: registration for registration in registrations}
-        return [(event, reg_by_event.get(event.id)) for event in events]
+        return collapse_duplicate_geo_dictation([(event, reg_by_event.get(event.id)) for event in events])
 
     if scope == "mine":
         # Waitlist is an active personal seat claim: users must see and cancel it
