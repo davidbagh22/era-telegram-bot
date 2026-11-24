@@ -39,7 +39,6 @@ const ACTIVE_REGISTRATION_STATUSES = new Set(["registered", "will_come", "attend
 const WAITLIST_STATUS = "waitlist";
 
 const SCOPES: { value: EventScope; label: string; description: string }[] = [
-  { value: "for_me", label: "Для меня", description: "Ближайшие события, ваши записи и лист ожидания" },
   { value: "all", label: "Все события", description: "Вся открытая афиша ЭРА" },
   { value: "mine", label: "Мои мероприятия", description: "Записи и лист ожидания" },
   { value: "past", label: "Прошедшие", description: "История мероприятий" },
@@ -640,7 +639,7 @@ interface EventsTabProps {
 
 export function EventsTab({ initialItemId, initialScope, canEdit }: EventsTabProps = {}) {
   const [editing, setEditing] = useState(false);
-  const [scope, setScope] = useState<EventScope>(initialItemId ? "all" : initialScope ?? "for_me");
+  const [scope, setScope] = useState<EventScope>(initialScope === "for_me" ? "all" : initialItemId ? "all" : initialScope ?? "all");
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchEvents(scope), [scope, refreshKey]);
   const [selectedId, setSelectedId] = useState<number | null>(initialItemId ?? null);
@@ -739,7 +738,7 @@ export function EventsTab({ initialItemId, initialScope, canEdit }: EventsTabPro
     setActionError(null);
     setRegistrationSuccess(null);
     setWaitlistSuccess(null);
-    setScope("for_me");
+    setScope("all");
     window.location.hash = "#/events";
   };
 
@@ -842,8 +841,8 @@ export function EventsTab({ initialItemId, initialScope, canEdit }: EventsTabPro
   const scopeMeta = SCOPES.find((item) => item.value === scope) ?? SCOPES[0];
 
   return (
-    <div className="era-page" style={{ display: "flex", flexDirection: "column", gap: "0.8rem" }}>
-      <button type="button" onClick={() => setFilterOpen(true)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div className="era-page era-events-feed" style={{ display: "flex", flexDirection: "column", gap: "0.8rem", paddingBottom: "var(--era-page-bottom-safe)", touchAction: "pan-y" }}>
+      <button type="button" aria-label="Фильтр афиши" onClick={() => setFilterOpen(true)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", minHeight: 48 }}>
         <span>Показать: <strong>{scopeMeta.label}</strong></span><span>⌄</span>
       </button>
 
@@ -865,8 +864,11 @@ export function EventsTab({ initialItemId, initialScope, canEdit }: EventsTabPro
           }
         />
       )}
+      {state.status === "ready" && state.data.length > 1 && (
+        <p style={{ margin: "0 0 -.2rem", fontSize: ".78rem", color: "var(--era-text-secondary)" }} role="status">↓ Листайте ниже · {state.data.length} мероприятий</p>
+      )}
       {state.status === "ready" && state.data.length > 0 && (
-        <div className="era-stagger" style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+        <div className="era-stagger" style={{ display: "flex", flexDirection: "column", gap: "0.65rem", touchAction: "pan-y" }}>
           {state.data.map((event) => (
             <TypographyFeedCard
               key={event.id}
