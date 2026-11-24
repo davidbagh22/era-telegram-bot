@@ -5,7 +5,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.handlers.registration import _begin_registration, offer_registration_resume, registration_start
+from app.handlers.registration import _begin_registration, offer_registration_resume
 from app.keyboards.registration import consent_keyboard, referral_code_keyboard
 from app.services.consent_policy import CONSENT_SUMMARY
 from app.services.referral_service import validate_referral_code
@@ -67,6 +67,7 @@ async def referral_deep_link(
     state: FSMContext,
     session: AsyncSession,
     user,
+    settings: Settings,
 ) -> None:
     raw = (command.args or "").strip()
     code = raw.removeprefix("ref_")
@@ -77,6 +78,15 @@ async def referral_deep_link(
             telegram_id=message.from_user.id,
         )
     except ValueError:
+        if user is not None:
+            await state.clear()
+            await message.answer(
+                "Эта ссылка-приглашение больше не действует.\n"
+                "Вы уже в ЭРА — открываю главное меню."
+            )
+            from app.handlers.start import show_home
+            await show_home(message, user, settings, session)
+            return
         await message.answer(
             "Код приглашения не найден или больше не доступен. "
             "Можно продолжить обычную регистрацию через /start."
@@ -84,9 +94,12 @@ async def referral_deep_link(
         return
 
     if user is not None:
+        await state.clear()
         await message.answer(
             "Вы уже зарегистрированы в ЭРА. Код приглашения применяется только при первой регистрации."
         )
+        from app.handlers.start import show_home
+        await show_home(message, user, settings, session)
         return
 
     await state.clear()
@@ -123,7 +136,13 @@ async def registration_start_with_referral(
         return
 
     if user is not None:
-        await registration_start(call, state, bot, settings, user)
+        await call.answer()
+        await state.clear()
+        await call.message.answer(
+            "Вы уже в ЭРА. Код приглашения применяется только при первой регистрации."
+        )
+        from app.handlers.start import show_home
+        await show_home(call.message, user, settings, session)
         return
 
     await call.answer()

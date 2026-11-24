@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && TZ=Asia/Tokyo node scripts/check-feed-date.mjs",
     "test:e2e": "playwright test"
   },
   "dependencies": {

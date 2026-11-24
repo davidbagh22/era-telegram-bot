@@ -812,8 +812,10 @@ async def broadcast_detailed_once(
     for chat_id, delivery in deliveries:
         if delivery.duplicate:
             result.duplicates += 1
-        elif delivery.sent:
-            result.sent += 1
+        # Duplicate failed/uncertain receipts are not successful deliveries.
+        if delivery.sent and delivery.status == "sent":
+            if not delivery.duplicate:
+                result.sent += 1
         else:
             result.failed += 1
             result.failures.append(

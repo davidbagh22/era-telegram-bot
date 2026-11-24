@@ -5,7 +5,7 @@ test("registration deadline fits a 320px Telegram viewport", async ({ page }) =>
   await page.setViewportSize({ width: 320, height: 800 });
   await page.goto("/app/?devTelegramId=900003");
   await page.getByRole("navigation", { name: "Основная навигация" })
-    .getByRole("button", { name: "Профиль", exact: true }).click();
+    .getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
   await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
   await page.getByRole("button", { name: /Создать мероприятие.*Черновик/ }).click();
@@ -15,7 +15,7 @@ test("registration deadline fits a 320px Telegram viewport", async ({ page }) =>
     await expect(page.getByText(`ШАГ ${step} ИЗ 10`)).toBeVisible();
   }
 
-  const registrationToggle = page.getByLabel("Регистрация нужна", { exact: true });
+  const registrationToggle = page.getByLabel("Регистрация внутри ЭРА", { exact: true });
   if (!(await registrationToggle.isChecked())) await registrationToggle.check();
   const capacity = page.getByLabel("Количество мест", { exact: true });
   const deadline = page.getByLabel("Закрыть регистрацию", { exact: true });

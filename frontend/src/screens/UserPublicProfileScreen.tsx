@@ -48,6 +48,28 @@ export function UserPublicProfileScreen({ userId, onBack }: UserPublicProfileScr
           <p style={{ margin: ".4rem 0 0", color: "var(--era-text-muted)" }}>Участник пока не закреплён за департаментом.</p>
         )}
       </Card>
+      {(user.directions?.length ?? 0) > 0 && (
+        <Card>
+          <strong>Направления</strong>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: ".4rem", marginTop: ".6rem" }}>
+            {user.directions!.map((direction) => (
+              <span
+                key={direction}
+                style={{
+                  padding: ".35rem .7rem",
+                  borderRadius: "var(--era-radius-pill)",
+                  background: "var(--era-selected)",
+                  color: "var(--era-cyan)",
+                  fontSize: "0.8rem",
+                  fontWeight: 700,
+                }}
+              >
+                {direction}
+              </span>
+            ))}
+          </div>
+        </Card>
+      )}
       <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: ".78rem", textAlign: "center" }}>
         Публичный профиль показывает только роль и участие в структуре. Контакты и другие персональные данные не раскрываются.
       </p>

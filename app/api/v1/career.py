@@ -18,10 +18,50 @@ from app.database.career_models import CareerPortfolioItem, RecommendationReques
 from app.database.certificate_models import CertificateIssue
 from app.database.models import User
 from app.services import career_service
-from app.services.career_pdf_service import build_career_resume, build_official_recommendation
+from app.services.career_pdf_service import RESUME_MODES, build_career_resume, build_official_recommendation
 from app.services.portfolio_service import build_portfolio_data
 
 router = APIRouter(prefix="/career", tags=["career"])
+
+
+async def _active_certificate_pdfs(session: AsyncSession, user_id: int) -> list[bytes]:
+    """Issued certificate PDFs that the participant still wants in the export.
+
+    Honors ``PortfolioItem.include_in_resume`` on the linked career/portfolio row
+    so a privacy toggle actually removes the attachment from
+    ``portfolio_with_certificates``.
+    """
+    from app.services.certificate_pdf_service import build_certificate_pdf
+
+    rows = (
+        await session.execute(
+            select(CertificateIssue, CareerPortfolioItem)
+            .join(
+                CareerPortfolioItem,
+                CareerPortfolioItem.id == CertificateIssue.portfolio_item_id,
+            )
+            .where(
+                CertificateIssue.user_id == user_id,
+                CertificateIssue.status == "issued",
+                CareerPortfolioItem.include_in_resume.is_(True),
+            )
+            .order_by(CertificateIssue.id.asc())
+        )
+    ).all()
+    blobs: list[bytes] = []
+    for issue, _item in rows:
+        try:
+            blobs.append(
+                build_certificate_pdf(
+                    issue.snapshot,
+                    number=issue.document_number,
+                    issued_at=issue.issued_at,
+                    revoked=False,
+                )
+            )
+        except Exception:
+            continue
+    return blobs
 
 
 @router.get("/certificates")
@@ -58,6 +98,7 @@ class CareerProfileIn(BaseModel):
     headline: str | None = Field(default=None, max_length=180)
     about: str | None = Field(default=None, max_length=1200)
     languages: list[dict[str, str]] | None = None
+    skills: list[str] | None = None
 
 
 class CareerItemIn(BaseModel):
@@ -82,6 +123,7 @@ class CareerItemPatch(BaseModel):
 
 class PurposeIn(BaseModel):
     purpose: str = "universal"
+    mode: str = "portfolio"
 
 
 def _owned_item(item: CareerPortfolioItem | None, user: User) -> CareerPortfolioItem:
@@ -128,11 +170,14 @@ async def patch_profile(
         headline=payload.headline,
         about=payload.about,
         languages=payload.languages,
+        skills=payload.skills,
     )
+    await session.refresh(user)
     return {
         "headline": profile.headline or "",
         "about": profile.about or "",
         "languages": profile.languages or [],
+        "skills": [str(skill).strip() for skill in (user.skills or []) if str(skill).strip()],
     }
 
 
@@ -274,19 +319,32 @@ async def submit_item_for_verification(
 @router.get("/resume.pdf")
 async def download_resume(
     purpose: str = "universal",
+    mode: str = "portfolio",
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     if purpose not in career_service.RESUME_PURPOSES:
         raise HTTPException(status_code=400, detail="invalid_purpose")
+    if mode not in RESUME_MODES:
+        raise HTTPException(status_code=400, detail="invalid_resume_mode")
     profile = await career_service.get_or_create_profile(session, user.id)
     items = await career_service.list_items(session, user.id)
-    portfolio = await build_portfolio_data(session, user)
-    pdf = build_career_resume(user, profile, portfolio, items, purpose=purpose)
+    portfolio = await build_portfolio_data(session, user, preview_limit=None)
+    certs = await _active_certificate_pdfs(session, user.id) if mode == "portfolio_with_certificates" else []
+    pdf = build_career_resume(
+        user,
+        profile,
+        portfolio,
+        items,
+        purpose=purpose,
+        mode=mode,
+        certificate_pdfs=certs,
+    )
+    filename = f"ERA_{mode}_{user.id}_{purpose}.pdf"
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="ERA_CV_{user.id}_{purpose}.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -299,15 +357,30 @@ async def send_resume_to_bot_chat(
 ) -> dict[str, bool]:
     if payload.purpose not in career_service.RESUME_PURPOSES:
         raise HTTPException(status_code=400, detail="invalid_purpose")
+    if payload.mode not in RESUME_MODES:
+        raise HTTPException(status_code=400, detail="invalid_resume_mode")
     profile = await career_service.get_or_create_profile(session, user.id)
     items = await career_service.list_items(session, user.id)
-    portfolio = await build_portfolio_data(session, user)
-    pdf = build_career_resume(user, profile, portfolio, items, purpose=payload.purpose)
+    portfolio = await build_portfolio_data(session, user, preview_limit=None)
+    certs = (
+        await _active_certificate_pdfs(session, user.id)
+        if payload.mode == "portfolio_with_certificates"
+        else []
+    )
+    pdf = build_career_resume(
+        user,
+        profile,
+        portfolio,
+        items,
+        purpose=payload.purpose,
+        mode=payload.mode,
+        certificate_pdfs=certs,
+    )
     try:
         sent = await bot.send_document(
             user.telegram_id,
-            BufferedInputFile(pdf, filename="Резюме_ЭРА.pdf"),
-            caption="Твоё резюме из портфолио ЭРА.",
+            BufferedInputFile(pdf, filename="Портфолио_ЭРА.pdf"),
+            caption="Твоё портфолио ЭРА готово.",
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail="resume_delivery_unavailable") from exc

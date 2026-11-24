@@ -20,6 +20,16 @@ interface AuthErrorScreenProps {
   onRetry: () => void;
 }
 
+
+function supportCode(code: number, detail: string): string {
+  const labels: Record<string, string> = {
+    empty_init_data: "нет данных входа",
+    user_not_registered: "нет регистрации",
+  };
+  const label = labels[detail];
+  return label ? `${code} · ${label}` : String(code);
+}
+
 function messageFor(code: number, detail: string): { title: string; description: string } {
   if (code === 401 && detail === "empty_init_data") {
     return {
@@ -53,7 +63,7 @@ export function AuthErrorScreen({ code, detail, onRetry }: AuthErrorScreenProps)
     <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
       <StatusBanner title={title} description={description} actionLabel={needsLogin ? "Войти через бота" : "Обновить"} onAction={needsLogin ? openBotLogin : onRetry} />
       <p style={{ margin: 0, textAlign: "center", fontSize: "var(--era-text-xs)", color: "var(--era-text-muted)" }}>
-        Код: {code} · {detail}
+        Код для поддержки: {supportCode(code, detail)}
       </p>
     </div>
   );

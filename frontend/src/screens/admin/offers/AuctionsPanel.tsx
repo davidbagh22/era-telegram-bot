@@ -147,7 +147,7 @@ export function AuctionsPanel() {
           <Card key={auction.id}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
               <strong>{auction.title}</strong>
-              <StatusBadge label={STATUS_LABELS[auction.status] ?? auction.status} tone="violet" />
+              <StatusBadge label={STATUS_LABELS[auction.status] ?? "Статус обновлён"} tone="violet" />
             </div>
             <p style={{ margin: "0.25rem 0 0.5rem", color: "var(--era-text-muted)" }}>{auction.description}</p>
             <p style={{ margin: "0 0 0.5rem", fontSize: "0.875rem" }}>

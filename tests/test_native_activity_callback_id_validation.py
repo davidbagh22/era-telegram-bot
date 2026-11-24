@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, patch
 
 from app.database.models import Event, EventActivity
 from app.handlers.participant.event_activities_block15 import activities_list, proof_start, proof_finish
-from app.handlers.participant.event_activities_block7 import activity_submit_start, activity_submit_finish
 from app.utils.callback_ids import positive_pg_int_callback, positive_pg_int_value
 
 
@@ -73,17 +72,6 @@ class ActivityCallbackHandlerTests(IsolatedAsyncioTestCase):
                 state.set_state.assert_not_awaited()
                 call.message.answer.assert_awaited_once()
 
-    async def test_legacy_submit_router_also_rejects_bad_id(self):
-        call = _call("activity:submit:" + "9" * 5000)
-        session = SimpleNamespace(get=AsyncMock(), scalar=AsyncMock())
-        state = SimpleNamespace(set_state=AsyncMock(), update_data=AsyncMock())
-        with patch("app.handlers.participant.event_activities_block7.approved", return_value=True):
-            await activity_submit_start(call, SimpleNamespace(id=1), session, state)
-        session.get.assert_not_awaited()
-        session.scalar.assert_not_awaited()
-        state.set_state.assert_not_awaited()
-        call.message.answer.assert_awaited_once()
-
     async def test_valid_ids_reach_existing_lookup_without_writes(self):
         call = _call("event:activities:42")
         session = SimpleNamespace(get=AsyncMock(return_value=None))
@@ -101,28 +89,22 @@ class ActivityCallbackHandlerTests(IsolatedAsyncioTestCase):
                                       SimpleNamespace(), SimpleNamespace())
                 session.get.assert_awaited_once_with(EventActivity, 42)
 
-        call = _call("activity:submit:42")
-        session = SimpleNamespace(get=AsyncMock(return_value=None))
-        state = SimpleNamespace(set_state=AsyncMock(), update_data=AsyncMock())
-        with patch("app.handlers.participant.event_activities_block7.approved", return_value=True):
-            await activity_submit_start(call, SimpleNamespace(id=1), session, state)
-        session.get.assert_awaited_once_with(EventActivity, 42)
-
     async def test_malformed_fsm_activity_id_is_cleared_without_database_lookup(self):
-        for handler in (proof_finish, activity_submit_finish):
-            with self.subTest(handler=handler.__name__):
-                message = SimpleNamespace(answer=AsyncMock())
-                session = SimpleNamespace(get=AsyncMock(), scalar=AsyncMock())
-                state = SimpleNamespace(
-                    get_data=AsyncMock(return_value={"activity_id": "9" * 5000}),
-                    clear=AsyncMock(),
-                )
-                if handler is proof_finish:
-                    await handler(message, SimpleNamespace(id=1), session, state,
-                                  SimpleNamespace(), SimpleNamespace())
-                else:
-                    await handler(message, SimpleNamespace(id=1), session, state)
-                session.get.assert_not_awaited()
-                session.scalar.assert_not_awaited()
-                state.clear.assert_awaited_once()
-                message.answer.assert_awaited_once()
+        message = SimpleNamespace(answer=AsyncMock())
+        session = SimpleNamespace(get=AsyncMock(), scalar=AsyncMock())
+        state = SimpleNamespace(
+            get_data=AsyncMock(return_value={"activity_id": "9" * 5000}),
+            clear=AsyncMock(),
+        )
+        await proof_finish(
+            message,
+            SimpleNamespace(id=1),
+            session,
+            state,
+            SimpleNamespace(),
+            SimpleNamespace(),
+        )
+        session.get.assert_not_awaited()
+        session.scalar.assert_not_awaited()
+        state.clear.assert_awaited_once()
+        message.answer.assert_awaited_once()

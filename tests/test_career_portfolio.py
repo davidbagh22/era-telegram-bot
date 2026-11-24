@@ -73,6 +73,11 @@ async def _run_flow() -> None:
                 raise AssertionError("verified item must be locked")
             except ValueError as exc:
                 assert str(exc) == "verified_item_locked"
+            # Privacy toggle remains allowed on verified items.
+            hidden = await career_service.update_item(session, item, include_in_resume=False)
+            assert hidden.include_in_resume is False
+            shown = await career_service.update_item(session, item, include_in_resume=True)
+            assert shown.include_in_resume is True
 
             profile = await career_service.update_profile(
                 session,
@@ -80,7 +85,12 @@ async def _run_flow() -> None:
                 headline="Начинающий проектный менеджер",
                 about="Развиваюсь через реальные проекты и общественные инициативы.",
                 languages=[{"name": "Русский", "level": "C2"}],
+                skills=["Фасилитация", "Публичные выступления"],
             )
+            await session.refresh(participant)
+            assert participant.skills == ["Фасилитация", "Публичные выступления"]
+            dash = await career_service.dashboard(session, participant)
+            assert dash["profile"]["skills"] == ["Фасилитация", "Публичные выступления"]
             automatic = await career_service.automatic_recommendation(session, participant)
             assert "Моего вектора" in automatic["privacy_note"]
             assert "психологические" in automatic["privacy_note"]
@@ -102,6 +112,8 @@ async def _run_flow() -> None:
             )
             assert verified is not None and verified.id == request.id
 
+            from app.services.portfolio_service import PortfolioEntry
+
             portfolio = PortfolioData(
                 full_name="Тест Участник",
                 role="Участник",
@@ -111,6 +123,24 @@ async def _run_flow() -> None:
                 period="с 01.01.2026",
                 skills=["Командная работа"],
                 stats={},
+                events=[
+                    PortfolioEntry(
+                        title="Вечер ЭРА",
+                        description="Культурная программа",
+                        status="Посетил",
+                        date_label="01.11.2026",
+                        category="event",
+                    )
+                ],
+                certificates=[
+                    PortfolioEntry(
+                        title="Сертификат участника",
+                        description="Автоматически выдан",
+                        status="Выдан",
+                        date_label="01.11.2026",
+                        category="certificate",
+                    )
+                ],
             )
             cv = build_career_resume(
                 participant,
@@ -121,6 +151,11 @@ async def _run_flow() -> None:
             )
             assert cv.startswith(b"%PDF")
             assert len(cv) > 5000
+            # Ensure event/certificate sections are wired into the export order.
+            from app.services.career_pdf_service import PURPOSE_ORDER
+
+            assert PURPOSE_ORDER["universal"][0] == "event"
+            assert PURPOSE_ORDER["universal"][1] == "certificate"
 
             letter = build_official_recommendation(
                 participant,

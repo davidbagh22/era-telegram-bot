@@ -50,7 +50,7 @@ def keyboard():
     ]])
 
 
-async def prepare_campaign(bot, settings, factory):
+async def prepare_campaign(bot, settings, factory, *, now=None):
     poster = POSTER.read_bytes()
     if hashlib.sha256(poster).hexdigest() != POSTER_SHA:
         raise ValueError("anniversary_original_poster_mismatch")
@@ -67,6 +67,7 @@ async def prepare_campaign(bot, settings, factory):
     thread = await ensure_topic(bot, settings, "announcements", session_factory=factory, create_if_missing=False)
     if not settings.general_chat_id or not thread:
         raise ValueError("anniversary_existing_topic_required")
+    prepared_at = (now or datetime.now(TZ)).astimezone(TZ).isoformat()
     async with factory() as session:
         if session.bind.dialect.name == "postgresql":
             await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": 66920261212})
@@ -103,7 +104,7 @@ async def prepare_campaign(bot, settings, factory):
                    {"name": "announcements", "chat_id": settings.general_chat_id, "thread_id": thread}]
         value = {"event_id": event.id, "poster_sha256": POSTER_SHA, "registration_url": URL,
                  "targets": targets, "dates": list(DATES), "copy": COPY,
-                 "prepared_at": datetime.now(TZ).isoformat(), "deliveries": []}
+                 "prepared_at": prepared_at, "deliveries": []}
         for target in targets:
             for slot in ("initial", *DATES):
                 value["deliveries"].append({"key": f"{KEY}:{target['name']}:{slot}",
@@ -128,12 +129,16 @@ async def campaign_snapshot(factory):
         creator = await session.get(User, event.created_by)
         bot_visible = event.id in [e.id for e in await published_events(session)]
         miniapp_visible = event.id in [e.id for e, _ in await list_events(session, creator, "all")]
-        card = await _to_event_out(session, event, None)
+        # Mini App RSVP lives on main; campaign deep-link URL is only for channel/topic posts.
+        card = await _to_event_out(session, event, None, creator)
         receipts = list((await session.scalars(select(NotificationDelivery).where(
             NotificationDelivery.delivery_key.in_([d["key"] for d in value["deliveries"]])
         ))).all())
         return {"prepared": True, "event_id": event.id, "status": event.status,
-                "bot_visible": bot_visible, "miniapp_visible": miniapp_visible, "registration_url": card.registration_url,
+                "bot_visible": bot_visible, "miniapp_visible": miniapp_visible,
+                "registration_url": value.get("registration_url") or URL,
+                "can_register": card.can_register,
+                "anniversary_registration_open": card.anniversary_registration_open,
                 "guest_registration": is_anniversary(event), "dates": value["dates"], "targets": value["targets"],
                 "poster_sha256": hashlib.sha256(exp.poster_bytes).hexdigest(),
                 "deliveries_saved": len(value["deliveries"]),
@@ -153,7 +158,7 @@ async def run_campaign(bot, settings, factory, *, now=None):
     try:
         if now >= STOP:
             return
-        value = await prepare_campaign(bot, settings, factory)
+        value = await prepare_campaign(bot, settings, factory, now=now)
         if mode == "publish":
             async with factory() as session:
                 event = await session.get(Event, value["event_id"])

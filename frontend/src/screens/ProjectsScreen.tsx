@@ -10,9 +10,9 @@ export function ProjectsScreen({ initialProjectId = null }: ProjectsScreenProps)
   return (
     <div className="era-page" style={{ padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
       <EditorialHero
-        eyebrow="Рабочая зона"
+        eyebrow="Проекты ЭРА"
         title="Проекты"
-        description="Инициативы, команда, задачи и вклад в одном месте."
+        description="Идея, команда, задачи и вклад — в одном месте."
         glow="hot"
       >
         <span
@@ -31,6 +31,13 @@ export function ProjectsScreen({ initialProjectId = null }: ProjectsScreenProps)
           <ProjectsIcon width={22} height={22} />
         </span>
       </EditorialHero>
+      {!initialProjectId && <>
+        <button className="era-btn-primary" onClick={() => { window.location.hash = "#/ideas"; }}>Предложить идею</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button style={{ flex: 1 }} onClick={() => { window.location.hash = "#/teams"; }}>Команды</button>
+          <button style={{ flex: 1 }} onClick={() => { window.location.hash = "#/tasks"; }}>Задачи</button>
+        </div>
+      </>}
       <ProjectsSection initialProjectId={initialProjectId} />
     </div>
   );

@@ -90,6 +90,7 @@ class HomeApiTests(unittest.TestCase):
             patch(
                 "app.api.v1.home.build_home_snapshot", new=AsyncMock(return_value=_snapshot())
             ),
+            patch("app.api.v1.home.anniversary.featured_event", new=AsyncMock(return_value=None)),
         ):
             response = client.get(
                 "/api/v1/home", headers={"Authorization": f"Bearer {token}"}

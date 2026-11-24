@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database.base import Base
-from app.database.models import Office, PositionApplication, User, UserOffice
+from app.database.models import Office, User, UserOffice
 from app.services import position_management_service as svc
 from app.utils.constants import PositionApplicationStatus
 

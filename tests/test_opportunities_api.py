@@ -319,6 +319,30 @@ class OpportunityFilterHelpersTests(unittest.TestCase):
             "closed",
         )
 
+    def test_participant_list_hides_locked_and_almost_teasers(self) -> None:
+        from app.api.v1.opportunities import OpportunityOut, _visible_to_participant
+
+        def _out(**overrides) -> OpportunityOut:
+            defaults = dict(
+                id=1, partner_name="ЭРА", title="Doc", description="d", point_cost=1500,
+                required_points=1500, opportunity_type="certificate", category="public_activity",
+                min_rank=None, eligible=False, default_award_wording=None,
+                partner_review_required=False, remaining_slots="unlimited",
+                expires_at=None, instruction=None, source_url=None,
+                application_status=None, is_saved=False, is_offer_open=True,
+                state="almost", display_state="almost",
+            )
+            defaults.update(overrides)
+            return OpportunityOut(**defaults)
+
+        almost = _out(id=1, state="almost")
+        available = _out(id=2, state="available", eligible=True, display_state="available")
+        applied = _out(id=3, state="almost", application_status="pending")
+        external = _out(id=4, opportunity_type="external", state="almost")
+        closed = _out(id=5, state="closed", display_state="locked")
+        visible = [item for item in (almost, available, applied, external, closed) if _visible_to_participant(item)]
+        self.assertEqual([item.id for item in visible], [2, 3])
+
     def test_sort_opportunities_by_organization_and_newest(self) -> None:
         from app.api.v1.opportunities import OpportunityOut, _sort_opportunities
 

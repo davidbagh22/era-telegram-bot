@@ -1,21 +1,26 @@
 import { useState } from "react";
 import { ActionCell } from "../components/ActionCell";
 import { ActivitiesTab } from "./leader/ActivitiesTab";
+import { LeaderMediaRequestPanel } from "./leader/LeaderMediaRequestPanel";
 import { OpenTasksTab } from "./leader/OpenTasksTab";
 import { OverviewTab } from "./leader/OverviewTab";
 import { WeeklyPulseTab } from "./leader/WeeklyPulseTab";
 
-type LeaderSection = "overview" | "weekly-pulse" | "open-tasks" | "activities";
+type LeaderSection = "overview" | "weekly-pulse" | "open-tasks" | "activities" | "media-request";
 
 const SECTIONS: { value: LeaderSection; label: string; description: string }[] = [
-  { value: "overview", label: "Обзор", description: "Состояние вашей зоны и главное на сейчас" },
-  { value: "weekly-pulse", label: "Пульс недели", description: "Факты недели, ваша оценка и следующий приоритет" },
-  { value: "open-tasks", label: "Открытые задачи", description: "Задачи, которые требуют внимания команды" },
+  { value: "overview", label: "Моя команда", description: "Состояние зоны и кто в контуре" },
+  { value: "open-tasks", label: "Задачи на проверке", description: "Что требует решения прямо сейчас" },
+  { value: "weekly-pulse", label: "Пульс недели", description: "Короткий отчёт: факты и следующий шаг" },
   { value: "activities", label: "Активности", description: "Проекты, события и работа участников" },
 ];
 
 export function LeaderScreen() {
   const [section, setSection] = useState<LeaderSection | null>(null);
+
+  if (section === "media-request") {
+    return <LeaderMediaRequestPanel onBack={() => setSection(null)} />;
+  }
 
   if (section) {
     const current = SECTIONS.find((item) => item.value === section);
@@ -26,7 +31,7 @@ export function LeaderScreen() {
         </button>
         <div>
           <p style={{ margin: "0 0 0.25rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>
-            Пространство лидера
+            Режим лидера
           </p>
           <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-2xl)", margin: 0 }}>
             {current?.label}
@@ -47,10 +52,10 @@ export function LeaderScreen() {
           Управление своей зоной
         </p>
         <h1 style={{ fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-3xl)", margin: 0 }}>
-          Пространство лидера
+          Режим лидера
         </h1>
         <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)" }}>
-          Команда, Пульс недели, задачи и активности — всё в одном рабочем контуре.
+          Команда, проверка задач, пульс и активности — без лишнего шума.
         </p>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", minWidth: 0 }}>
@@ -62,6 +67,11 @@ export function LeaderScreen() {
             onClick={() => setSection(item.value)}
           />
         ))}
+        <ActionCell
+          title="Медиа-запрос"
+          description="Пакет (фото / рилс / полный) и срок для команды Медиа"
+          onClick={() => setSection("media-request")}
+        />
       </div>
     </div>
   );

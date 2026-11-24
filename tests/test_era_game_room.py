@@ -70,11 +70,13 @@ def test_room_limits_and_question_bank():
 
 def test_leisure_is_accessible_from_both_bot_keyboards():
     from app.keyboards.bot_shell import main_inline_keyboard, main_reply_keyboard
+    # Wave-1: leisure stays on the inline shell only — reply keyboard stays short.
     reply_labels = [button.text for row in main_reply_keyboard().keyboard for button in row]
-    assert "🎲 Досуг" in reply_labels
+    assert "🎲 Досуг" not in reply_labels
     assert "📚 Литература" not in reply_labels
     inline_buttons = [button for row in main_inline_keyboard().inline_keyboard for button in row]
     assert any(button.callback_data == "leisure:home" for button in inline_buttons)
+    assert any(button.text == "🎲 Досуг" for button in inline_buttons)
 
 
 def test_leisure_hides_game_link_until_public_launch():
@@ -137,7 +139,10 @@ def test_group_commands_accept_bot_mention():
     from aiogram.types import Chat, Message
     from app.handlers.era_game_room import router
     command_filter = router.message.handlers[0].filters[0].callback
-    bot = SimpleNamespace(me=AsyncMock(return_value=SimpleNamespace(username='ERA_1bot')))
+    bot = SimpleNamespace(
+        me=AsyncMock(return_value=SimpleNamespace(username='ERA_1bot')),
+        usernames=AsyncMock(return_value=[]),
+    )
     for text in ('/games', '/game@ERA_1bot', '/games@ERA_1bot'):
         message = Message(message_id=1, date=datetime.now(timezone.utc), chat=Chat(id=-100123, type='supergroup'), text=text)
         assert asyncio.run(command_filter(message, bot))

@@ -81,13 +81,14 @@ async def send_monthly_development_reminders(
                 bot,
                 user.telegram_id,
                 emoji="🧭",
-                title="Новая отметка месяца доступна",
+                title="Новый месяц — новая карта вектора",
                 body=(
-                    "Прошёл ещё один месяц. За несколько минут можно увидеть, "
-                    "что изменилось, и выбрать один фокус на следующий шаг."
+                    "Ты уже прошёл путь, который не виден снаружи. "
+                    "Короткая отметка в «Мой вектор» покажет сдвиг по энергии, "
+                    "действию и направлению — и подскажет один следующий шаг."
                 ),
-                footer="Без оценок, штрафов и обязательных серий — только твоя собственная динамика.",
-                action=PrimaryAction(label="Проверить себя", callback_data="vector:start"),
+                footer="Без оценок и штрафов. Можно начать сейчас и дописать позже.",
+                action=PrimaryAction(label="Пройти отметку", callback_data="vector:start"),
                 settings=settings,
                 delivery_key=f"development-monthly:{month}:{user.id}",
                 notification_type="development_monthly_checkin",
@@ -143,18 +144,49 @@ async def send_weekly_development_pulses(
             if already_sent is not None:
                 continue
 
-            sent = await send_bot_notification(
-                bot,
-                user.telegram_id,
-                emoji="⚡",
-                title="Короткая отметка недели",
-                body="Как у тебя с энергией прямо сейчас? Один ответ — и готово.",
-                footer="Это необязательно и ни на что не влияет. Пульс нужен только для твоей личной динамики.",
-                action=PrimaryAction(label="Отметить состояние", callback_data="vector:pulse:start"),
-                settings=settings,
-                delivery_key=f"development-weekly:{week_start.isoformat()}:{user.id}",
-                notification_type="development_weekly_pulse",
+            # Prefer the monthly vector survey when it is still open — that is
+            # what reshapes the radar. Otherwise offer a one-tap energy pulse.
+            month = now.strftime("%Y-%m")
+            monthly_done = await session.scalar(
+                select(MonthlyCheckin.id).where(
+                    MonthlyCheckin.user_id == user.id,
+                    MonthlyCheckin.month == month,
+                    MonthlyCheckin.status == "completed",
+                )
             )
+            if monthly_done is None:
+                sent = await send_bot_notification(
+                    bot,
+                    user.telegram_id,
+                    emoji="🧭",
+                    title="Твой вектор ждёт новую точку",
+                    body=(
+                        "За неделю многое могло сдвинуться — энергия, связи, "
+                        "направление. Три минуты в «Мой вектор», и карта снова "
+                        "станет честной: без оценок, без гонки, только ты и рост."
+                    ),
+                    footer="Можно остановиться в любой момент и продолжить позже.",
+                    action=PrimaryAction(label="Обновить вектор", callback_data="vector:start"),
+                    settings=settings,
+                    delivery_key=f"development-weekly:{week_start.isoformat()}:{user.id}",
+                    notification_type="development_weekly_pulse",
+                )
+            else:
+                sent = await send_bot_notification(
+                    bot,
+                    user.telegram_id,
+                    emoji="⚡",
+                    title="Пульс недели",
+                    body=(
+                        "Месячная отметка уже есть — круто. "
+                        "Один короткий ответ про энергию удержит динамику живой."
+                    ),
+                    footer="Необязательно. Только для твоей личной карты.",
+                    action=PrimaryAction(label="Отметить состояние", callback_data="vector:pulse:start"),
+                    settings=settings,
+                    delivery_key=f"development-weekly:{week_start.isoformat()}:{user.id}",
+                    notification_type="development_weekly_pulse",
+                )
             if not sent:
                 continue
             session.add(

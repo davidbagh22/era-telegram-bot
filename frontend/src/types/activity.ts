@@ -1,5 +1,11 @@
 export type EventScope = "all" | "for_me" | "mine" | "past";
 
+export interface AnniversaryRegistrationFields {
+  first_name: string | null;
+  last_name: string | null;
+  organization: string | null;
+}
+
 export interface EventProgramItem {
   title?: string;
   description?: string;
@@ -17,7 +23,10 @@ export interface EventParticipantTask {
   reviewer?: string;
 }
 
+export interface EventSignup { full_name: string; phone: string; organization: string }
+
 export interface EventItem {
+  signup_defaults?: EventSignup | null;
   id: number;
   title: string;
   description: string;
@@ -35,6 +44,7 @@ export interface EventItem {
   participant_value: string | null;
   contact: string | null;
   chat_url: string | null;
+  registration_url?: string | null;
   points_for_visit: number;
   project_id: number | null;
   status: string;
@@ -52,6 +62,9 @@ export interface EventItem {
   program: EventProgramItem[];
   participant_tasks: EventParticipantTask[];
   poster_url: string | null;
+  anniversary_registered?: boolean | null;
+  anniversary_registration_open?: boolean;
+  anniversary_defaults?: AnniversaryRegistrationFields | null;
 }
 
 export interface EventActivity {

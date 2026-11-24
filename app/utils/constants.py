@@ -199,6 +199,16 @@ TASK_STATUS_LABELS = {
     TaskStatus.CANCELLED: "Отменена",
 }
 
+ACTIVITY_SUBMISSION_TYPE_LABELS = {
+    "photo": "фото",
+    "link": "ссылка",
+    "text": "текст",
+    "file": "файл",
+    "video": "видео",
+    "manual": "вручную",
+    "feedback": "отзыв",
+}
+
 REPORT_TYPE_LABELS = {
     "event": "Отчёт по мероприятию",
     "monthly": "Месячный отчёт лидера",
@@ -274,6 +284,7 @@ SOURCE_TYPE_TO_CATEGORY: dict[str, PointCategory] = {
     "digital_event_registration": PointCategory.DIGITAL_ENGAGEMENT,
     "digital_vector_checkin": PointCategory.DIGITAL_ENGAGEMENT,
     "digital_vector_pulse": PointCategory.DIGITAL_ENGAGEMENT,
+    "digital_assessment_complete": PointCategory.DIGITAL_ENGAGEMENT,
     "digital_goal_set": PointCategory.DIGITAL_ENGAGEMENT,
     "digital_goal_completed": PointCategory.DIGITAL_ENGAGEMENT,
 }
@@ -291,6 +302,7 @@ DIGITAL_ENGAGEMENT_POINTS = {
     "event_registration": 10,
     "vector_monthly_checkin": 30,
     "vector_weekly_pulse": 10,
+    "assessment_complete": 25,
     "goal_set": 15,
     "goal_completed": 25,
 }

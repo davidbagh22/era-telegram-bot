@@ -106,8 +106,17 @@ async def refresh_games_pin(bot, settings, session_factory, thread_id: int) -> b
                 if "not modified" not in str(exc).lower():
                     raise
             if not confirmed:
-                await bot.pin_chat_message(chat_id=settings.general_chat_id, message_id=message_id,
-                                           disable_notification=True)
+                try:
+                    await bot.pin_chat_message(
+                        chat_id=settings.general_chat_id,
+                        message_id=message_id,
+                        disable_notification=True,
+                    )
+                except TelegramBadRequest as exc:
+                    from app.utils.telegram_pin import telegram_already_pinned
+
+                    if not telegram_already_pinned(exc):
+                        raise
             state.update(status="confirmed", version=version, attempts=0)
             await _save(session, key, state)
             await session.commit()

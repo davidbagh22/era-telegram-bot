@@ -16,7 +16,7 @@ test("participant's earned badge appears in their portfolio", async ({ page }) =
   const profileResponse = page.waitForResponse(
     (response) => /\/api\/v1\/profile(?:\?|$)/.test(response.url()) && response.status() === 200,
   );
-  await page.getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("button", { name: "Я", exact: true }).click();
   const profile = (await (await profileResponse).json()) as { city: string; growth: { label: string } };
   const identity = page.getByTestId("profile-identity");
   await expect(identity).toBeVisible();
@@ -45,7 +45,7 @@ test("participant's earned badge appears in their portfolio", async ({ page }) =
 test("profile dashboard cells fit a narrow mobile viewport", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
-  await page.getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("button", { name: "Я", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Мой вклад и опыт" })).toBeVisible();
 
   const cells = page.locator("section").filter({ has: page.getByRole("heading", { name: "Мой вклад и опыт" }) }).locator("button");
@@ -69,7 +69,7 @@ test("profile dashboard cells fit a narrow mobile viewport", async ({ page }) =>
 test("profile detail cards wrap long unbroken titles at 320px", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
   await page.goto(`/app/?devTelegramId=${PARTICIPANT_TELEGRAM_ID}`);
-  await page.getByRole("button", { name: "Профиль", exact: true }).click();
+  await page.getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Достижения/ }).click();
   await expect(page.getByRole("heading", { name: "Достижения", exact: true })).toBeVisible();
 

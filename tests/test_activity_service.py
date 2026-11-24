@@ -100,7 +100,8 @@ class ActivityServiceTests(unittest.IsolatedAsyncioTestCase):
             user = await self._make_user(session)
             event1 = self._event(created_by=user.id, days_offset=1)
             event2 = self._event(created_by=user.id, days_offset=3)
-            session.add_all([event1, event2])
+            event3 = self._event(created_by=user.id, days_offset=4)
+            session.add_all([event1, event2, event3])
             await session.flush()
             session.add_all(
                 [
@@ -110,12 +111,15 @@ class ActivityServiceTests(unittest.IsolatedAsyncioTestCase):
                     EventRegistration(
                         event_id=event2.id, user_id=user.id, status=RegistrationStatus.CANCELLED
                     ),
+                    EventRegistration(
+                        event_id=event3.id, user_id=user.id, status=RegistrationStatus.WAITLIST
+                    ),
                 ]
             )
             await session.flush()
 
             rows = await list_events(session, user, "mine")
-            self.assertEqual([event.id for event, _ in rows], [event1.id])
+            self.assertEqual([event.id for event, _ in rows], [event1.id, event3.id])
 
     async def test_reverted_unpublished_events_are_hidden_from_participant_tabs(self) -> None:
         # An event can retain historical registrations after a moderator
@@ -420,6 +424,72 @@ class ActivityServiceTests(unittest.IsolatedAsyncioTestCase):
 
             items = await calendar_items(session, user, days_ahead=30)
             self.assertEqual(items, [])
+
+    async def test_calendar_excludes_past_registrations_from_now(self) -> None:
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            past = self._event(
+                created_by=user.id, days_offset=-5, status=EventStatus.COMPLETED
+            )
+            future = self._event(created_by=user.id, days_offset=4)
+            session.add_all([past, future])
+            await session.flush()
+            session.add_all(
+                [
+                    EventRegistration(
+                        event_id=past.id,
+                        user_id=user.id,
+                        status=RegistrationStatus.REGISTERED,
+                    ),
+                    EventRegistration(
+                        event_id=future.id,
+                        user_id=user.id,
+                        status=RegistrationStatus.REGISTERED,
+                    ),
+                ]
+            )
+            await session.flush()
+
+            items = await calendar_items(session, user, days_ahead=30)
+            self.assertEqual([item.id for item in items], [future.id])
+
+    async def test_all_scope_hides_stale_completed_registrations(self) -> None:
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            stale = self._event(
+                created_by=user.id, days_offset=-40, status=EventStatus.COMPLETED
+            )
+            recent = self._event(
+                created_by=user.id, days_offset=-2, status=EventStatus.COMPLETED
+            )  # still inside the 7-day organizer confirmation window
+            attended = self._event(
+                created_by=user.id, days_offset=-1, status=EventStatus.COMPLETED
+            )
+            session.add_all([stale, recent, attended])
+            await session.flush()
+            session.add_all(
+                [
+                    EventRegistration(
+                        event_id=stale.id,
+                        user_id=user.id,
+                        status=RegistrationStatus.REGISTERED,
+                    ),
+                    EventRegistration(
+                        event_id=recent.id,
+                        user_id=user.id,
+                        status=RegistrationStatus.REGISTERED,
+                    ),
+                    EventRegistration(
+                        event_id=attended.id,
+                        user_id=user.id,
+                        status=RegistrationStatus.ATTENDED,
+                    ),
+                ]
+            )
+            await session.flush()
+
+            rows = await list_events(session, user, "all")
+            self.assertEqual([event.id for event, _ in rows], [recent.id])
 
     async def test_history_hides_reverted_unpublished_attended_events(self) -> None:
         # Attendance records may survive a moderator returning an event to

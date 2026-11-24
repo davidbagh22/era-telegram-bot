@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.database.models import User
-from app.keyboards.registration import consent_keyboard, time_keyboard
+from app.keyboards.registration import consent_keyboard, registration_review_keyboard, time_keyboard
 from app.states.registration import RegistrationStates
 
 
@@ -20,12 +20,22 @@ def test_user_profile_has_country_and_region_columns() -> None:
     assert "region" in User.__table__.columns
 
 
-def test_complete_registration_requires_photo_and_keeps_social_link_optional() -> None:
+def test_complete_registration_keeps_photo_and_social_link_optional() -> None:
     source = Path("app/handlers/registration.py").read_text(encoding="utf-8")
     assert "async def _ensure_complete" in source
-    assert "('profile_photo_file_id', RegistrationStates.profile_photo" in source
+    assert "('profile_photo_file_id', RegistrationStates.profile_photo" not in source
     assert "reg:social:skip" in source
     assert 'if data.get("social_url"):' in source
+
+
+def test_review_lets_participant_finish_without_photo_and_still_upload_if_wanted() -> None:
+    keyboard = registration_review_keyboard(has_photo=False)
+    labels = [button.text for row in keyboard.inline_keyboard for button in row]
+    callbacks = [button.callback_data for row in keyboard.inline_keyboard for button in row]
+    assert "✅ Продолжить без фото" in labels
+    assert "📷 Добавить фото (необязательно)" in labels
+    assert "reg:review:ok" in callbacks
+    assert "reg:photo:add" in callbacks
 
 
 def test_registration_uses_three_clear_availability_choices() -> None:

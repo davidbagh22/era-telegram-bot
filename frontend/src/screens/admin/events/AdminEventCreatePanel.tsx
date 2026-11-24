@@ -59,6 +59,7 @@ function taskDeadlineIso(value: string): string {
 
 function patchFromDraft(draft: AdminEventDraft, wizardStep = draft.wizard_step): AdminEventDraftPatch {
   return {
+    issue_certificate: draft.issue_certificate,
     wizard_step: wizardStep,
     creation_mode: draft.creation_mode,
     title: draft.title,
@@ -78,6 +79,7 @@ function patchFromDraft(draft: AdminEventDraft, wizardStep = draft.wizard_step):
     waitlist_enabled: draft.waitlist_enabled,
     registration_audience: draft.registration_audience,
     chat_url: draft.chat_url,
+    registration_url: draft.registration_url,
     organizer: draft.organizer,
     participant_value: draft.participant_value,
     contact: draft.contact,
@@ -407,7 +409,7 @@ export function AdminEventCreatePanel() {
             <Question title="Добавим афишу?" hint="Фото сразу станет главным визуалом карточки и страницы события. До 5 МБ." />
             {draft.has_poster ? (
               <div style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
-                <div style={{ minHeight: 150, borderRadius: "1rem", background: "linear-gradient(135deg,#632CFF,#D71978,#FF6400)", display: "grid", placeItems: "center", fontWeight: 900 }}>{posterUrl ? <img src={posterUrl} alt="Афиша мероприятия" style={{ width: "100%", maxHeight: 250, objectFit: "contain", borderRadius: "1rem" }} /> : "Афиша загружена ✓"}</div>
+                <div style={{ minHeight: 150, borderRadius: "1rem", background: "linear-gradient(135deg,#512074,#bc2184,#ffa5ea)", display: "grid", placeItems: "center", fontWeight: 900 }}>{posterUrl ? <img src={posterUrl} alt="Афиша мероприятия" style={{ width: "100%", maxHeight: 250, objectFit: "contain", borderRadius: "1rem" }} /> : "Афиша загружена ✓"}</div>
                 <label className="era-btn-primary" style={{ textAlign: "center", cursor: "pointer" }}>Заменить афишу<input hidden disabled={busy} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) void changePoster(file); }} /></label>
                 <button type="button" disabled={busy} onClick={() => void changePoster(null)}>Удалить</button>
               </div>
@@ -423,7 +425,8 @@ export function AdminEventCreatePanel() {
         {step === 4 && (
           <>
             <Question title="Нужна регистрация?" hint="Настройте места один раз — Mini App сам покажет остаток и при необходимости включит лист ожидания." />
-            <Toggle checked={draft.registration_required} onChange={(checked) => mutate((current) => ({ ...current, registration_required: checked }))} title="Регистрация нужна" />
+            <Field label="Внешняя регистрация у организаторов (необязательно)" hint="Если запись проходит в отдельном чате или на сайте партнёра, укажите ссылку — она станет главной кнопкой. Участники не будут считаться зарегистрированными в ЭРА."><input type="url" value={draft.registration_url ?? ""} onChange={(event) => mutate((current) => ({ ...current, registration_url: event.target.value, registration_required: event.target.value ? false : current.registration_required }))} placeholder="https://t.me/..." /></Field>
+            {!draft.registration_url && <Toggle checked={draft.registration_required} onChange={(checked) => mutate((current) => ({ ...current, registration_required: checked }))} title="Регистрация внутри ЭРА" />}
             {draft.registration_required && (
               <>
                 <Field label="Количество мест"><input inputMode="numeric" value={draft.participant_limit ?? ""} onChange={(event) => mutate((current) => ({ ...current, participant_limit: event.target.value ? Number(event.target.value) : null }))} placeholder="40" /></Field>
@@ -439,7 +442,7 @@ export function AdminEventCreatePanel() {
           <>
             <Question title="Есть отдельный чат мероприятия?" hint="Это отдельная сущность. Ссылка появится только на странице события и после регистрации." />
             <Toggle checked={Boolean(draft.chat_url)} onChange={(checked) => mutate((current) => ({ ...current, chat_url: checked ? "https://t.me/" : null }))} title="Да, есть чат" />
-            {draft.chat_url !== null && <Field label="URL Telegram-чата"><input type="url" value={draft.chat_url} onChange={(event) => mutate((current) => ({ ...current, chat_url: event.target.value }))} placeholder="https://t.me/+..." /></Field>}
+            {draft.chat_url !== null && <Field label="Ссылка на Telegram-чат"><input type="url" value={draft.chat_url} onChange={(event) => mutate((current) => ({ ...current, chat_url: event.target.value }))} placeholder="https://t.me/+..." /></Field>}
             <Field label="Организатор"><input value={draft.organizer ?? ""} onChange={(event) => mutate((current) => ({ ...current, organizer: event.target.value }))} placeholder="Команда ЭРА / имя ответственного" /></Field>
             <Field label="Контакт"><input value={draft.contact ?? ""} onChange={(event) => mutate((current) => ({ ...current, contact: event.target.value }))} placeholder="К кому обратиться по вопросам" /></Field>
             <Field label="Что получит участник"><textarea rows={4} value={draft.participant_value ?? ""} onChange={(event) => mutate((current) => ({ ...current, participant_value: event.target.value }))} placeholder="Практика, сертификат, новые знакомства, результат…" /></Field>
@@ -479,6 +482,7 @@ export function AdminEventCreatePanel() {
 
         {step === 8 && (
           <>
+            <Toggle checked={draft.issue_certificate === true} onChange={checked => mutate(current => ({ ...current, issue_certificate: checked }))} title="Сертификат после подтверждения участия" />
             <Question title="Отправлять напоминания зарегистрированным?" hint="Можно выбрать несколько моментов. Они сохраняются в событии и используются планировщиком уведомлений." />
             {REMINDERS.map((item) => <Toggle key={item.value} checked={draft.reminders.includes(item.value)} onChange={(checked) => mutate((current) => ({ ...current, reminders: checked ? [...current.reminders, item.value] : current.reminders.filter((value) => value !== item.value) }))} title={item.label} />)}
             <Field label="Своё время, минут до события"><div style={{ display: "flex", gap: ".5rem", minWidth: 0 }}><input style={{ flex: "1 1 0", minWidth: 0, width: "100%", boxSizing: "border-box" }} inputMode="numeric" value={customReminder} onChange={(event) => setCustomReminder(event.target.value)} placeholder="Например, 30" /><button type="button" onClick={() => { const value = Number(customReminder); if (value > 0) { mutate((current) => ({ ...current, reminders: [...current.reminders.filter((item) => item !== value), value] })); setCustomReminder(""); } }}>Добавить</button></div></Field>
@@ -506,7 +510,7 @@ export function AdminEventCreatePanel() {
         {step === 10 && (
           <>
             <Question title="Так событие увидят участники" hint="Проверьте главное. Вернуться на любой шаг можно кнопкой «Назад». Рассылка отправится только после публикации." />
-            <div style={{ minHeight: 150, borderRadius: "1rem", background: posterUrl ? `url("${posterUrl}") center/cover` : "linear-gradient(135deg,#632CFF,#D71978,#FF6400)", marginBottom: ".75rem" }} />
+            <div style={{ minHeight: 150, borderRadius: "1rem", background: posterUrl ? `url("${posterUrl}") center/cover` : "linear-gradient(135deg,#512074,#bc2184,#ffa5ea)", marginBottom: ".75rem" }} />
             <h2 style={{ margin: "0 0 .35rem", fontSize: "1.55rem" }}>{draft.title}</h2>
             <p style={{ margin: "0 0 .8rem", color: "var(--era-text-muted)" }}>{draft.short_description}</p>
             <Card style={{ padding: ".8rem" }}><strong>📅 {draft.event_date} · {draft.event_time}{draft.end_time ? `–${draft.end_time}` : ""}</strong><p style={{ margin: ".25rem 0 0" }}>📍 {draft.location}</p><p style={{ margin: ".25rem 0 0" }}>{draft.participant_limit ? `${draft.participant_limit} мест` : "Без ограничения мест"} · {draft.points_for_visit} баллов</p></Card>

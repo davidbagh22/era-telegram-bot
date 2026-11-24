@@ -1,8 +1,9 @@
 # ERA bot and Mini App handoff
 
-- #669: anniversary publication implementation. Original IMG_3322.PNG is bundled unchanged (SHA256 6bc159a980bad0ec7cf27d23957add7a75dd42a4c22b37c948735719bc7d88c0).
-- ANNIVERSARY_2026_CAMPAIGN defaults off. Scoped operator endpoint /api/v1/internal/anniversary2026/activate requires a separate strong ANNIVERSARY_2026_ACTIVATION_TOKEN and the exact running release SHA; status endpoint returns only public campaign evidence. Activation persists in AppSetting and the scheduler owns all sends. After exact-head/main CI and automatic Render LIVE, prepare creates exactly one event plus 18 durable delivery intents; publish enables the two initial posts and eight dated reminders per target. Existing candidate events fail closed for reconciliation.
-- Destinations resolve from active channel configuration and existing general_forum announcements topic, then freeze in AppSetting anniversary:2026:campaign. Existing safe_send_once ledger owns receipts; unknown outcomes are never replayed. No guest/member writes or private broadcasts.
-- Event marker routes bot/Mini App registration to existing /start anniversary2026. Generic event registration is rejected. /anniversary_guests remains the only guest roster.
-- ANNIVERSARY_669 log contains event ID, original poster checksum, target IDs, dates and real delivery message IDs. CI/LIVE and actual publication evidence will be recorded in #669. Do not declare success from this handoff alone.
-- Prior requirements and role acceptance remain in docs/AUTONOMOUS_PROGRESS.md; no other campaign is authorized by this work.
+- 24 November / #670 rebased onto main `aaf7cdbe`: keep Mini App guest RSVP from main; restore dormant anniversary publication campaign (`anniversary-2026` job, activation gate). #723 CI green `0bed67ac` awaits owner merge. No manual Render; campaign stays OFF until exact-head LIVE + activation.
+- #669/#670 campaign: original IMG_3322.PNG SHA256 `6bc159a980bad0ec7cf27d23957add7a75dd42a4c22b37c948735719bc7d88c0`. `ANNIVERSARY_2026_CAMPAIGN` defaults off; activate only after CI+LIVE with strong token + exact SHA. Durable intents + notification ledger; no guest/member writes from campaign.
+- Event management: published cards open a role-gated details editor. The home orbit opens assessments. Release and Telegram device acceptance pending.
+- Release scope includes project topics, scoped recipient preview, notice routing, attendance certificates and the four November events. Reconcile any uncertain Telegram creation before retrying.
+- 19 November / **AURA×ORBIT redesign** (#713 merged): Stage A–D on main. Device VERIFIED still open.
+- 14 November: existing 12 December anniversary featured on home + bot menu; Mini App one-click RSVP via guest store. Publication/reminder campaign is #670 (dormant until activation).
+- #667 guest RSVP `/start anniversary2026` and #668 event photo/direct links already on main.

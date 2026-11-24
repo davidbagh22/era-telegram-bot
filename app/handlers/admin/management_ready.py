@@ -180,10 +180,15 @@ async def goals_menu(call: CallbackQuery, user: User | None, settings: Settings,
     goals = (await session.scalars(select(MonthlyGoal).where(MonthlyGoal.status != "deleted").order_by(MonthlyGoal.month.desc(), MonthlyGoal.created_at.desc()).limit(20))).all()
     lines = ["🎯 Ежемесячные цели\n"]
     rows: list[list[InlineKeyboardButton]] = []
+    goal_status = {"active": "в работе", "done": "выполнена", "deleted": "удалена"}
     for goal in goals:
-        lines.append(f"#{goal.id} · {goal.month} · {goal.title}\n{goal.current_value}/{goal.target_value} · {goal.status}")
+        status_label = goal_status.get(goal.status, "статус уточняется")
+        lines.append(
+            f"{goal.month} · {goal.title}\n"
+            f"{goal.current_value}/{goal.target_value} · {status_label}"
+        )
         rows.append([
-            InlineKeyboardButton(text=f"+1 к #{goal.id}", callback_data=f"admin:goal:inc:{goal.id}"),
+            InlineKeyboardButton(text=f"+1 · {goal.title[:24]}", callback_data=f"admin:goal:inc:{goal.id}"),
             InlineKeyboardButton(text="Готово", callback_data=f"admin:goal:done:{goal.id}"),
             InlineKeyboardButton(text="Удалить", callback_data=f"admin:goal:del:{goal.id}"),
         ])
@@ -259,8 +264,17 @@ async def contacts_menu(call: CallbackQuery, user: User | None, settings: Settin
     lines = ["🤝 База организаций и коллег\n"]
     rows = []
     for contact in contacts:
-        lines.append(f"#{contact.id} · {contact.organization_name}\n{contact.contact_name or 'Контакт не указан'} · {contact.position or 'должность не указана'}\n{contact.email or ''} {contact.phone or ''}".strip())
-        rows.append([InlineKeyboardButton(text=f"Удалить #{contact.id}", callback_data=f"admin:contact:del:{contact.id}")])
+        lines.append(
+            f"{contact.organization_name}\n"
+            f"{contact.contact_name or 'Контакт не указан'} · {contact.position or 'должность не указана'}\n"
+            f"{contact.email or ''} {contact.phone or ''}".strip()
+        )
+        rows.append([
+            InlineKeyboardButton(
+                text=f"Удалить · {contact.organization_name[:28]}",
+                callback_data=f"admin:contact:del:{contact.id}",
+            )
+        ])
     if not contacts:
         lines.append("Пока контактов нет")
     rows.append([InlineKeyboardButton(text="➕ Добавить организацию", callback_data="admin:contact:new")])

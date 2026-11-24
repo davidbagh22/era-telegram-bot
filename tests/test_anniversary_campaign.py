@@ -65,7 +65,10 @@ class CampaignTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(hashlib.sha256(exp.poster_bytes).hexdigest(), campaign.POSTER_SHA)
             self.assertEqual(exp.announcement_status, 'not_requested')
             self.assertFalse(exp.broadcast_enabled)
-            self.assertEqual(await register_for_event(session, event, event.created_by), (None, 'guest_registration_required'))
+            self.assertEqual(
+                await register_for_event(session, event, event.created_by),
+                (None, 'anniversary_registration_required'),
+            )
             self.assertEqual(await session.scalar(select(func.count()).select_from(EventRegistration)), 0)
         self.bot.send_photo.assert_not_awaited()
 
@@ -118,10 +121,15 @@ class CampaignTests(unittest.IsolatedAsyncioTestCase):
         a = await campaign.prepare_campaign(self.bot, self.settings, self.factory)
         async with self.factory() as session:
             event = await session.get(Event, a['event_id'])
-            out = await _to_event_out(session, event, None)
+            creator = await session.get(User, event.created_by)
+            out = await _to_event_out(session, event, None, creator)
+            # Member join path stays closed; Mini App uses anniversary-rsvp.
             self.assertFalse(out.can_register)
-            self.assertEqual(out.registration_url, campaign.URL)
+            self.assertTrue(out.anniversary_registration_open)
+            self.assertIsNone(out.registration_url)
             self.assertIsNotNone(out.poster_url)
+            snapshot = await campaign.campaign_snapshot(self.factory)
+            self.assertEqual(snapshot['registration_url'], campaign.URL)
 
     async def test_late_activation_skips_old_dates_instead_of_flooding(self):
         with patch.object(notification_service, '_session_factory', return_value=self.factory):
@@ -152,5 +160,9 @@ class CampaignTests(unittest.IsolatedAsyncioTestCase):
         self.bot.send_photo.assert_not_awaited()
         self.settings.anniversary_2026_campaign = 'off'
         with patch.object(notification_service, '_session_factory', return_value=self.factory):
-            await campaign.run_campaign(self.bot, self.settings, self.factory, now=datetime(2026, 11, 14, 18, tzinfo=campaign.TZ))
-        self.assertEqual(self.bot.send_photo.await_count, 4)
+            # ACTIVE_KEY publish still delivers; wall-clock now only fires initial
+            # (past reminder slots are intentionally skipped by late-activation guard).
+            await campaign.run_campaign(self.bot, self.settings, self.factory, now=datetime.now(campaign.TZ))
+        self.assertEqual(self.bot.send_photo.await_count, 2)
+        snapshot = await campaign.campaign_snapshot(self.factory)
+        self.assertTrue(all(':initial' in r['key'] for r in snapshot['receipts']))

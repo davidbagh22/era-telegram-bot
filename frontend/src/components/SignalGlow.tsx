@@ -11,9 +11,9 @@ interface SignalGlowProps {
 }
 
 const GRADIENTS: Record<SignalGlowVariant, string> = {
-  cool: "radial-gradient(circle, rgba(60,67,255,0.30) 0%, rgba(99,44,255,0.16) 45%, transparent 72%)",
-  hot: "radial-gradient(circle, rgba(255,100,0,0.26) 0%, rgba(215,25,120,0.18) 45%, transparent 72%)",
-  signal: "radial-gradient(circle, rgba(99,44,255,0.28) 0%, rgba(215,25,120,0.16) 45%, rgba(255,100,0,0.10) 65%, transparent 78%)",
+  cool: "radial-gradient(circle, rgba(188, 33, 132,0.32) 0%, rgba(134, 32, 155,0.16) 45%, transparent 72%)",
+  hot: "radial-gradient(circle, rgba(255, 165, 234,0.26) 0%, rgba(188, 33, 132,0.16) 45%, transparent 72%)",
+  signal: "radial-gradient(circle, rgba(188, 33, 132,0.28) 0%, rgba(255, 165, 234,0.16) 45%, rgba(134, 32, 155,0.10) 65%, transparent 78%)",
 };
 
 const POSITIONS: Record<NonNullable<SignalGlowProps["position"]>, CSSProperties> = {

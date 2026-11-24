@@ -89,7 +89,12 @@ class NativeEventHandlerIdTests(IsolatedAsyncioTestCase):
             data="event:view:42", answer=AsyncMock(),
             message=SimpleNamespace(answer=AsyncMock()),
         )
-        session = SimpleNamespace(get=AsyncMock(side_effect=[event, None]), scalar=AsyncMock(return_value=0))
+        # scalar #1: activity count (int); scalar #2: EventRegistration row (or None).
+        # Returning a bare int for both used to crash on existing.status after waitlist UX.
+        session = SimpleNamespace(
+            get=AsyncMock(side_effect=[event, None]),
+            scalar=AsyncMock(side_effect=[0, None]),
+        )
         with (
             patch("app.handlers.participant.events_stability_block8._approved", return_value=True),
             patch("app.handlers.participant.events_stability_block8.registration_stats",

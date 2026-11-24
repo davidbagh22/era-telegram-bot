@@ -138,13 +138,13 @@ def referral_code_keyboard(prefill: str | None = None) -> InlineKeyboardMarkup:
 
 
 
-def registration_review_keyboard() -> InlineKeyboardMarkup:
+def registration_review_keyboard(*, has_photo: bool = False) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Добавить / заменить фото", callback_data="reg:photo:add")],
+            [InlineKeyboardButton(text="📷 Заменить фото" if has_photo else "📷 Добавить фото (необязательно)", callback_data="reg:photo:add")],
             [
                 InlineKeyboardButton(
-                    text="✅ Всё верно",
+                    text="✅ Всё верно — продолжить" if has_photo else "✅ Продолжить без фото",
                     callback_data="reg:review:ok",
                 )
             ],

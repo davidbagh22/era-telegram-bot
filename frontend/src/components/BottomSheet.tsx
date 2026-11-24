@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { ReactNode } from "react";
 
 interface BottomSheetProps {
@@ -15,6 +16,15 @@ interface BottomSheetProps {
  * genuinely wants to be centered (e.g. a first-load informational
  * dialog). See docs/UI_DESIGN_SYSTEM.md. */
 export function BottomSheet({ open, onClose, title, children }: BottomSheetProps) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) {
     return null;
   }

@@ -23,6 +23,7 @@ MATERIAL_ACK_SOURCE = "digital_material_ack"
 EVENT_REGISTRATION_SOURCE = "digital_event_registration"
 VECTOR_CHECKIN_SOURCE = "digital_vector_checkin"
 VECTOR_PULSE_SOURCE = "digital_vector_pulse"
+ASSESSMENT_COMPLETE_SOURCE = "digital_assessment_complete"
 GOAL_SET_SOURCE = "digital_goal_set"
 GOAL_COMPLETED_SOURCE = "digital_goal_completed"
 
@@ -313,6 +314,20 @@ async def award_vector_monthly_checkin(
         reason="Ежемесячный check-in «Моего вектора»",
         source_type=VECTOR_CHECKIN_SOURCE,
         idempotency_key=f"digital:vector_checkin:{user_id}:{month}",
+    )
+
+
+async def award_assessment_complete(
+    session: AsyncSession, *, user_id: int, assessment_code: str, session_id: int
+) -> PointTransaction | None:
+    """Idempotent digital points for finishing a research instrument once."""
+    return await _award_digital(
+        session,
+        user_id=user_id,
+        points=DIGITAL_ENGAGEMENT_POINTS["assessment_complete"],
+        reason=f"Завершено исследование «{assessment_code}»",
+        source_type=ASSESSMENT_COMPLETE_SOURCE,
+        idempotency_key=f"digital:assessment:{user_id}:{assessment_code}:{session_id}",
     )
 
 
