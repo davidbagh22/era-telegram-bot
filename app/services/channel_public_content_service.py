@@ -10,7 +10,7 @@ from app.services.daily_public_content_service import (
     WINDOW_END,
     WINDOW_START,
     _channel_target,
-    _has_explicit_channel_approval,
+    has_channel_publication_approval,
     _deliver_once,
     scheduled_minute,
     text_for_day,
@@ -33,7 +33,14 @@ async def run_daily_channel_content(bot: Bot, settings: Settings, session_factor
     content = text_for_day(day, kind)
     # This legacy entrypoint is still used by the polling process. Keep the
     # same exact day/destination/text approval as the web scheduler.
-    if not _has_explicit_channel_approval(day, target, content):
+    if session_factory is not None:
+        async with session_factory() as session:
+            approved = await has_channel_publication_approval(
+                session, day, target, content
+            )
+    else:
+        approved = await has_channel_publication_approval(None, day, target, content)
+    if not approved:
         return
 
     await _deliver_once(
