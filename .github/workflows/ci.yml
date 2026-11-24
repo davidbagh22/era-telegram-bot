@@ -64,7 +64,7 @@ jobs:
     timeout-minutes: 10
     services:
       postgres:
-        image: postgres:18-alpine
+        image: postgres:16-alpine
         env:
           POSTGRES_USER: era_test
           POSTGRES_PASSWORD: era_test
@@ -88,10 +88,10 @@ jobs:
           cache: pip
       - name: Install backend dependencies
         run: python -m pip install --upgrade pip && pip install -r requirements.txt
-      - name: Rehearse reversible public listing migration on isolated PostgreSQL 18
+      - name: Rehearse reversible public listing migration on isolated PostgreSQL
         run: python scripts/postgres_event_public_listing_probe.py
       - name: Upgrade a clean PostgreSQL database through every migration
-        run: alembic upgrade heads
+        run: alembic upgrade head
       - name: Install PostgreSQL clients for isolated backup restore probe
         shell: bash
         run: |

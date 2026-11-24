@@ -2,8 +2,8 @@
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0065_event_public_listing"
-down_revision = "0064_telegram_analytics"
+revision = "0068_event_public_listing"
+down_revision = "0067_external_event_registration"
 branch_labels = None
 depends_on = None
 

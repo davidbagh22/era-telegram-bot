@@ -7,7 +7,6 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, or_, select
 
-from app.database.event_experience import EventExperience
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.event_experience import EventExperience
