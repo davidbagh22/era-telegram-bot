@@ -53,17 +53,26 @@ async def list_events(
                 )
             ).all()
         )
-        # A completed event remains actionable for its registered participant:
-        # completion must never hide the attendance-code flow.  Reuse the same
-        # Event/EventRegistration models and merge them into the existing list.
+        # Completed events stay actionable only while attendance is still open:
+        # REGISTERED/WILL_COME within a short post-event window. Attended rows
+        # and older leftovers belong in history / past, not the active feed.
+        # Keep only *recent* completed events (14 days) so months-old programs
+        # (e.g. «Проектный акселератор») stay under «Прошедшие».
+        attendance_open_statuses = (
+            RegistrationStatus.REGISTERED,
+            RegistrationStatus.WILL_COME,
+        )
+        # Organizer self-service attendance window is 7 days after the event.
+        attendance_horizon = date.today() - timedelta(days=7)
         registered_completed = list((await session.scalars(
             select(Event)
             .join(EventRegistration, EventRegistration.event_id == Event.id)
             .outerjoin(EventExperience, EventExperience.event_id == Event.id)
             .where(
                 EventRegistration.user_id == user.id,
-                EventRegistration.status.in_(ACTIVE_REGISTRATION_STATUSES),
+                EventRegistration.status.in_(attendance_open_statuses),
                 Event.status.in_((EventStatus.COMPLETED, EventStatus.REPORT_SUBMITTED)),
+                Event.event_date >= attendance_horizon,
                 # Completed registrations stay available in "mine"/"past",
                 # but a hidden event must not leak into the general Afisha
                 # through this legacy completion exception.
@@ -84,13 +93,18 @@ async def list_events(
         return [(event, reg_by_event.get(event.id)) for event in events]
 
     if scope == "mine":
+        # Waitlist is an active personal seat claim: users must see and cancel it
+        # under «Мои мероприятия», not only from the open afisha card.
+        mine_registration_statuses = ACTIVE_REGISTRATION_STATUSES | {
+            RegistrationStatus.WAITLIST,
+        }
         rows = (
             await session.execute(
                 select(Event, EventRegistration)
                 .join(EventRegistration, EventRegistration.event_id == Event.id)
                 .where(
                     EventRegistration.user_id == user.id,
-                    EventRegistration.status.in_(ACTIVE_REGISTRATION_STATUSES),
+                    EventRegistration.status.in_(mine_registration_statuses),
                     # A previously registered event may be returned to draft/review.
                     # Keep unpublished moderation content out of participant tabs.
                     Event.status.not_in((EventStatus.DRAFT, EventStatus.PENDING_APPROVAL, EventStatus.CANCELLED)),
@@ -226,9 +240,11 @@ async def calendar_items(
     horizon = date.today() + timedelta(days=days_ahead)
     items: list[CalendarItem] = []
 
+    today = date.today()
     event_rows = await list_events(session, user, "mine")
     for event, _ in event_rows:
-        if event.event_date > horizon:
+        # «Сейчас» shows only upcoming involvement — past registrations archive.
+        if event.event_date < today or event.event_date > horizon:
             continue
         items.append(
             CalendarItem(
@@ -244,7 +260,7 @@ async def calendar_items(
         if task.deadline is None:
             continue
         deadline_date = task.deadline.date()
-        if deadline_date > horizon:
+        if deadline_date < today or deadline_date > horizon:
             continue
         items.append(
             CalendarItem(

@@ -70,7 +70,7 @@ export function TaskSquadPanel({ task }: { task: TaskItem }) {
     <Card style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <strong>Команда задачи</strong>
-        <span style={{ fontSize: ".78rem", color: "var(--era-text-muted)" }}>{SQUAD_STATUS_LABELS[squad.status] ?? squad.status}</span>
+        <span style={{ fontSize: ".78rem", color: "var(--era-text-muted)" }}>{SQUAD_STATUS_LABELS[squad.status] ?? "Статус обновлён"}</span>
       </div>
       <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: ".85rem" }}>
         {squad.participant_ids.length} участник{squad.participant_ids.length === 1 ? "" : squad.participant_ids.length < 5 ? "а" : "ов"}
@@ -85,7 +85,7 @@ export function TaskSquadPanel({ task }: { task: TaskItem }) {
               <div style={{ minWidth: 0 }}>
                 <strong style={{ fontSize: ".85rem" }}>{subtask.title}</strong>
                 <div style={{ fontSize: ".75rem", color: "var(--era-text-muted)" }}>
-                  {SUBTASK_STATUS_LABELS[subtask.status] ?? subtask.status}
+                  {SUBTASK_STATUS_LABELS[subtask.status] ?? "Статус обновлён"}
                   {subtask.assignee_id ? " · назначена" : " · свободна"}
                 </div>
               </div>

@@ -7,9 +7,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.states.event import EventConfirmationStates
 from app.config import Settings
-from app.database.models import Event, EventActivity, User
+from app.database.event_experience import EventExperience
+from app.database.models import Event, EventActivity, EventRegistration, User
 from app.keyboards.participant import event_list_keyboard
+from app.services import anniversary_registration_service as anniversary
 from app.services.event_card import send_event_card
+from app.services.event_registration_notice_service import (
+    RegistrationNoticeKind,
+    deliver_registration_notice,
+    enqueue_registration_notice,
+)
+from app.services.event_registration_policy import registration_is_closed
 from app.services.notification_service import safe_answer_document
 from app.services.event_registration_service import registration_stats
 from app.services.event_service import (
@@ -19,7 +27,7 @@ from app.services.event_service import (
     register_for_event,
 )
 from app.utils import texts, ux_texts
-from app.utils.constants import ApplicationStatus
+from app.utils.constants import ApplicationStatus, RegistrationStatus
 
 router = Router(name="participant_events_stability_block8")
 
@@ -44,10 +52,18 @@ def _approved(user: User | None) -> bool:
     )
 
 
-def _event_keyboard(event_id: int, *, can_register: bool, has_activities: bool) -> InlineKeyboardMarkup:
+def _event_keyboard(
+    event_id: int,
+    *,
+    registration_button: str | None,
+    leave_button: str | None = None,
+    has_activities: bool,
+) -> InlineKeyboardMarkup:
     rows = []
-    if can_register:
-        rows.append([InlineKeyboardButton(text="Зарегистрироваться", callback_data=f"event:join:{event_id}")])
+    if registration_button is not None:
+        rows.append([InlineKeyboardButton(text=registration_button, callback_data=f"event:join:{event_id}")])
+    if leave_button is not None:
+        rows.append([InlineKeyboardButton(text=leave_button, callback_data=f"event:plans_changed:{event_id}")])
     if has_activities:
         rows.append([InlineKeyboardButton(text="✨ Активности", callback_data=f"event:activities:{event_id}")])
     rows.append([InlineKeyboardButton(text="Добавить в календарь", callback_data=f"event:calendar:{event_id}")])
@@ -89,25 +105,48 @@ async def event_list(call: CallbackQuery, user: User | None, session: AsyncSessi
     await _send_event_list(call.message, user, session)
 
 
-@router.callback_query(F.data.startswith("event:view:"))
-async def event_view(call: CallbackQuery, user: User | None, session: AsyncSession, settings: Settings | None = None) -> None:
-    await call.answer()
+async def show_public_event_registration_card(
+    message: Message,
+    user: User | None,
+    session: AsyncSession,
+    event_id: int | None,
+    settings: Settings | None = None,
+    telegram_id: int | None = None,
+) -> None:
+    """Same published-event card for the afisha and a direct /start URL."""
     if not _approved(user):
-        await call.message.answer(texts.APPLICATION_PENDING)
+        await message.answer(texts.APPLICATION_PENDING)
         return
-    event_id = _event_id_from_callback(call.data, "event:view:")
     if event_id is None:
-        await call.message.answer("Это мероприятие сейчас недоступно в афише")
+        await message.answer("Это мероприятие сейчас недоступно в афише")
         return
     event = await session.get(Event, event_id)
     if event is None or event.status not in PUBLIC_EVENT_STATUSES:
-        await call.message.answer("Это мероприятие сейчас недоступно в афише")
+        await message.answer("Это мероприятие сейчас недоступно в афише")
+        return
+    experience = await session.get(EventExperience, event.id)
+    if anniversary.is_public_anniversary(event):
+        keyboard = _event_keyboard(event.id, registration_button=None, has_activities=False)
+        legacy_status = await anniversary.legacy_registration_status(session, event, user)
+        if await anniversary.get_registration(session, user.telegram_id) or legacy_status in anniversary.ACTIVE_REGISTRATION_STATUSES:
+            extra = "Вы зарегистрированы."
+        elif legacy_status == RegistrationStatus.WAITLIST:
+            extra = "Вы в листе ожидания."
+        elif anniversary.event_registration_open(event, experience):
+            complete = len(anniversary.profile_defaults(user)) == 3
+            extra = anniversary.CONSENT if complete else None
+            action = "quick" if complete else "begin"
+            keyboard.inline_keyboard.insert(0, [InlineKeyboardButton(text="Зарегистрироваться", callback_data=f"anniversary:{action}")])
+        else:
+            extra = "Регистрация закрыта."
+        await send_event_card(message, event, extra_text=extra, keyboard=keyboard)
         return
     stats = await registration_stats(session, event)
-    can_register = (
+    registration_open = (
         event.status in REGISTRATION_ALLOWED_STATUSES
-        and (event.participant_limit is None or int(stats["free"]) > 0)
+        and not registration_is_closed(experience)
     )
+    full = event.participant_limit is not None and int(stats["free"]) <= 0
     has_activities = bool(
         await session.scalar(
             select(func.count())
@@ -115,25 +154,74 @@ async def event_view(call: CallbackQuery, user: User | None, session: AsyncSessi
             .where(EventActivity.event_id == event.id, EventActivity.is_active.is_(True))
         )
     )
+    existing = await session.scalar(
+        select(EventRegistration).where(
+            EventRegistration.event_id == event.id,
+            EventRegistration.user_id == user.id,
+        )
+    )
+    existing_status = existing.status if existing is not None else None
     extra = None
-    if event.status not in REGISTRATION_ALLOWED_STATUSES:
+    registration_button = None
+    leave_button = None
+    if existing_status == RegistrationStatus.WAITLIST:
+        extra = (
+            "Вы в листе ожидания. Место ещё не закреплено — "
+            "если оно освободится, бот сообщит вам автоматически."
+        )
+        leave_button = "Покинуть лист ожидания"
+    elif existing_status in {
+        RegistrationStatus.REGISTERED,
+        RegistrationStatus.WILL_COME,
+        RegistrationStatus.ATTENDED,
+    }:
+        extra = "Вы зарегистрированы на это мероприятие."
+        if existing_status in {RegistrationStatus.REGISTERED, RegistrationStatus.WILL_COME}:
+            leave_button = "Отказаться от места"
+    elif experience is not None and not experience.registration_required:
+        extra = "Для этого мероприятия регистрация не нужна."
+    elif not registration_open:
         extra = "Регистрация закрыта, но карточка мероприятия остаётся доступна."
-    elif event.participant_limit is not None and int(stats["free"]) <= 0:
-        extra = "Свободных мест сейчас нет."
-    keyboard = _event_keyboard(event.id, can_register=can_register, has_activities=has_activities)
+    elif full:
+        if experience is not None and experience.waitlist_enabled:
+            extra = (
+                "Свободных мест нет — можно встать в лист ожидания. "
+                "Если место освободится, бот сообщит вам."
+            )
+            registration_button = "Встать в лист ожидания"
+        else:
+            extra = "Свободных мест сейчас нет."
+    else:
+        registration_button = "Зарегистрироваться"
+    keyboard = _event_keyboard(
+        event.id,
+        registration_button=registration_button,
+        leave_button=leave_button,
+        has_activities=has_activities,
+    )
     if settings is not None:
         from app.services.event_attendance_service import attendance_v2_enabled, participant_state
-        if attendance_v2_enabled(settings, call.from_user.id):
+        if attendance_v2_enabled(settings, telegram_id):
             attendance = await participant_state(session, event.id, user.id)
             if attendance.confirmation_open:
                 keyboard.inline_keyboard.insert(0, [InlineKeyboardButton(text="✅ Подтвердить посещение кодом", callback_data=f"event:confirm_code:{event.id}")])
     await send_event_card(
-        call.message,
+        message,
         event,
         available=str(stats["free"]),
         registered=int(stats["registered"]),
         extra_text=extra,
         keyboard=keyboard,
+    )
+
+
+@router.callback_query(F.data.startswith("event:view:"))
+async def event_view(call: CallbackQuery, user: User | None, session: AsyncSession, settings: Settings | None = None) -> None:
+    await call.answer()
+    event_id = _event_id_from_callback(call.data, "event:view:")
+    await show_public_event_registration_card(
+        call.message, user, session, event_id, settings=settings,
+        telegram_id=getattr(getattr(call, "from_user", None), "id", None),
     )
 
 
@@ -181,21 +269,38 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
     if event is None or event.status not in PUBLIC_EVENT_STATUSES:
         await call.message.answer("Это мероприятие сейчас недоступно")
         return
-    _, error = await register_for_event(session, event, user.id)
-    if error == "already":
-        await call.message.answer(texts.EVENT_ALREADY_REGISTERED)
+    registration, error = await register_for_event(session, event, user.id)
+    if error == "signup_required":
+        from app.utils.deep_links import telegram_event_miniapp_url
+        username = (await call.bot.get_me()).username
+        url = telegram_event_miniapp_url(username, event.id)
+        await call.message.answer("Заполните короткую форму участия.", reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text="Зарегистрироваться", url=url)]]))
         return
-    if error == "full":
-        await call.message.answer(texts.EVENT_FULL)
+    if error is not None:
+        reply = {
+            "already": texts.EVENT_ALREADY_REGISTERED,
+            "full": texts.EVENT_FULL,
+            "closed": "Регистрация на это мероприятие закрыта, но само событие остаётся в афише",
+            "registration_not_required": "Для этого мероприятия регистрация не нужна.",
+            "anniversary_registration_required": "Откройте карточку годовщины или нажмите «🎟 Зарегистрироваться на годовщину» в главном меню.",
+        }[error]
+        if error == "already":
+            status = await session.scalar(
+                select(EventRegistration.status).where(
+                    EventRegistration.event_id == event.id, EventRegistration.user_id == user.id
+                )
+            )
+            if status == RegistrationStatus.WAITLIST:
+                reply = "Вы уже в листе ожидания на это мероприятие."
+        await session.commit()
+        await call.message.answer(reply)
         return
-    if error == "closed":
-        await call.message.answer("Регистрация на это мероприятие закрыта, но само событие остаётся в афише")
-        return
-    stats = await registration_stats(session, event)
-    await call.message.answer(
-        texts.event_registered(event)
-        + f"\n\nЗарегистрировано: {stats['registered']}"
-        + (f"\nСвободных мест: {stats['free']}" if event.participant_limit is not None else "")
+    assert registration is not None
+    notice = await enqueue_registration_notice(session, registration, user.telegram_id, RegistrationNoticeKind.TELEGRAM)
+    await session.commit()
+    await deliver_registration_notice(
+        session, notice, lambda _recipient, text, **kwargs: call.message.answer(text, **kwargs)
     )
 
 

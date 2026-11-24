@@ -22,6 +22,7 @@ class EventExperience(Base):
     event_id: Mapped[int] = mapped_column(
         ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
     )
+    issue_certificate: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     short_description: Mapped[str | None] = mapped_column(Text)
     full_description: Mapped[str | None] = mapped_column(Text)
     category: Mapped[str | None] = mapped_column(String(100))
@@ -32,6 +33,8 @@ class EventExperience(Base):
     participant_value: Mapped[str | None] = mapped_column(Text)
     contact: Mapped[str | None] = mapped_column(String(255))
     chat_url: Mapped[str | None] = mapped_column(String(500))
+    # Separate link for a partner's own registration; never mistaken for ERA RSVP.
+    registration_url: Mapped[str | None] = mapped_column(String(500))
 
     registration_required: Mapped[bool] = mapped_column(Boolean, default=True)
     registration_close_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

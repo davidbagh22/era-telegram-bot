@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
@@ -19,10 +21,228 @@ from app.utils.constants import ApplicationStatus
 
 PROGRAM_START = date(2026, 10, 10)
 SPECIAL_OPENING_DATE = date(2026, 10, 10)
+
+# Opting in to a reading club does not authorize the organization to publish
+# every future issue. Exact day + chat + rendered text must be approved.
+# Code frozenset stays empty (tests may patch it). Production approvals live in
+# AppSetting so editors can approve without a redeploy. Manual reading still works.
+APPROVED_SCHEDULED_LITERATURE_ISSUES: frozenset[tuple[str, str, str]] = frozenset()
+SERIES_APPROVAL_KEY_PREFIX = 'literature-series-approval:'
+
+
+def scheduled_literature_issue_approval_key(
+    on_date: date, chat_id: int | str, number: int
+) -> tuple[str, str, str]:
+    payload = {
+        'topic': 'literature',
+        'parse_mode': 'HTML',
+        'text': render_issue(number),
+    }
+    digest = hashlib.sha256(json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')
+    ).encode('utf-8')).hexdigest()
+    return (on_date.isoformat(), str(chat_id), digest)
+
+
+def series_approval_setting_key(on_date: date, chat_id: int | str) -> str:
+    return f'{SERIES_APPROVAL_KEY_PREFIX}{on_date.isoformat()}:{chat_id}'
+
+
 def publication_number(on_date: date, start_date: date = PROGRAM_START) -> int | None:
     """One issue every calendar day for 48 days from the program start."""
     number = (on_date - start_date).days + 1
     return number if 1 <= number <= 48 else None
+
+
+def yerevan_today() -> date:
+    return datetime.now(ZoneInfo('Asia/Yerevan')).date()
+
+
+def last_readable_issue_number(on_date: date | None = None, start_date: date = PROGRAM_START) -> int:
+    """Latest issue participants may open in the catalog (never beyond 48)."""
+    day = on_date or yerevan_today()
+    number = (day - start_date).days + 1
+    if number < 1:
+        return 1
+    return min(number, 48)
+
+
+async def series_issue_is_approved(
+    session: AsyncSession, on_date: date, chat_id: int | str, number: int
+) -> bool:
+    key = scheduled_literature_issue_approval_key(on_date, chat_id, number)
+    if key in APPROVED_SCHEDULED_LITERATURE_ISSUES:
+        return True
+    row = await session.scalar(
+        select(AppSetting).where(AppSetting.key == series_approval_setting_key(on_date, chat_id))
+    )
+    if not row or not isinstance(row.value, dict):
+        return False
+    if row.value.get('revoked'):
+        return False
+    return (
+        int(row.value.get('number') or 0) == number
+        and row.value.get('digest') == key[2]
+    )
+
+
+async def approve_series_issue(
+    session: AsyncSession,
+    *,
+    on_date: date,
+    chat_id: int | str,
+    number: int,
+    actor_id: int,
+) -> dict:
+    get_issue(number)
+    if publication_number(on_date) != number:
+        raise ValueError('issue_date_mismatch')
+    day_key, chat_key, digest = scheduled_literature_issue_approval_key(on_date, chat_id, number)
+    setting_key = series_approval_setting_key(on_date, chat_id)
+    await _insert_setting(session, key=setting_key, value={}, actor_id=actor_id)
+    row = await session.scalar(
+        select(AppSetting).where(AppSetting.key == setting_key).with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    value = {
+        'date': day_key,
+        'chat_id': chat_key,
+        'number': number,
+        'digest': digest,
+        'revoked': False,
+        'approved_at': datetime.now(ZoneInfo('Asia/Yerevan')).isoformat(),
+        'approved_by': actor_id,
+    }
+    row.value, row.updated_by = value, actor_id
+    from app.services.audit_service import audit
+    await audit(
+        session, actor_id=actor_id, action='literature.series_approved',
+        entity_type='content', entity_id=number, new_value=value,
+    )
+    return value
+
+
+async def revoke_series_issue(
+    session: AsyncSession,
+    *,
+    on_date: date,
+    chat_id: int | str,
+    actor_id: int,
+) -> dict | None:
+    setting_key = series_approval_setting_key(on_date, chat_id)
+    row = await session.scalar(
+        select(AppSetting).where(AppSetting.key == setting_key).with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if not row or not isinstance(row.value, dict):
+        return None
+    value = {**row.value, 'revoked': True, 'revoked_at': datetime.now(ZoneInfo('Asia/Yerevan')).isoformat(),
+             'revoked_by': actor_id}
+    row.value, row.updated_by = value, actor_id
+    from app.services.audit_service import audit
+    await audit(
+        session, actor_id=actor_id, action='literature.series_revoked',
+        entity_type='content', entity_id=int(value.get('number') or 0), new_value=value,
+    )
+    return value
+
+
+async def series_issue_delivery(
+    session: AsyncSession, start_day: date, number: int
+):
+    from app.database.system_models import NotificationDelivery
+    return await session.scalar(select(NotificationDelivery).where(
+        NotificationDelivery.delivery_key == f'general-topic:literature:issue:{start_day.isoformat()}:{number}'
+    ))
+
+
+async def series_status(
+    session: AsyncSession, settings: Settings, *, on_date: date | None = None
+) -> dict:
+    """Editor-facing status for the daily 48-issue series (Yerevan calendar)."""
+    day = on_date or yerevan_today()
+    chat_id = settings.general_chat_id
+    number = publication_number(day)
+    start_row = await session.scalar(select(AppSetting).where(AppSetting.key == 'book_club_start_date'))
+    start_day = date.fromisoformat(start_row.value['date']) if start_row else PROGRAM_START
+    if number is None:
+        if day < start_day:
+            return {
+                'label': 'Ждёт старта',
+                'reason': f'Серия начинается {start_day.isoformat()}',
+                'number': None, 'date': day.isoformat(), 'chat_id': chat_id,
+                'approved': False, 'published': False, 'action': 'none',
+                'preview': '',
+            }
+        return {
+            'label': 'Серия завершена',
+            'reason': 'Все 48 выпусков по календарю уже прошли. Накопленные выпуски автоматически не рассылаются.',
+            'number': 48, 'date': day.isoformat(), 'chat_id': chat_id,
+            'approved': False, 'published': False, 'action': 'none',
+            'preview': render_issue(48)[:500],
+        }
+    if not chat_id:
+        return {
+            'label': 'Нужна проверка',
+            'reason': 'Не настроен general_chat_id — публиковать некуда.',
+            'number': number, 'date': day.isoformat(), 'chat_id': chat_id,
+            'approved': False, 'published': False, 'action': 'none',
+            'preview': render_issue(number)[:900],
+        }
+    approved = await series_issue_is_approved(session, day, chat_id, number)
+    receipt = await series_issue_delivery(session, start_day, number)
+    published = bool(receipt and receipt.status in {'sent', 'already_sent'})
+    uncertain = bool(receipt and receipt.status in {'uncertain', 'conflict'})
+    # daily_job prefers the editorial queue: when enabled (even paused/empty),
+    # run_editorial_queue returns True and the 48-issue series is skipped.
+    editorial = await editorial_settings(session)
+    editorial_blocks_series = bool(editorial.get('enabled'))
+    if published:
+        label, reason, action = 'Опубликован', f'Доставка в чат: {receipt.status}', 'none'
+    elif uncertain:
+        label, reason, action = (
+            'Нужна проверка',
+            f'Исход отправки неизвестен ({receipt.status}). Повтор остановлен до сверки.',
+            'none',
+        )
+    elif approved and editorial_blocks_series:
+        paused = ' (на паузе)' if editorial.get('paused') else ''
+        label, reason, action = (
+            'Нужна проверка',
+            (
+                f'Выпуск одобрен, но включена редакционная очередь{paused}. '
+                'Пока она активна, серия в 19:00 не уходит — отключите очередь, '
+                'чтобы возобновить плановую доставку.'
+            ),
+            'revoke',
+        )
+    elif approved:
+        label, reason, action = (
+            'Запланирован',
+            'Одобрен. Уйдёт один раз в 19:00 Asia/Yerevan (без догона прошлых дней).',
+            'revoke',
+        )
+    else:
+        label, reason, action = (
+            'Ждёт согласования',
+            'Плановая отправка блокируется, пока редактор не одобрит точный текст и дату.',
+            'approve',
+        )
+    return {
+        'label': label,
+        'reason': reason,
+        'number': number,
+        'date': day.isoformat(),
+        'chat_id': chat_id,
+        'approved': approved,
+        'published': published,
+        'action': action,
+        'editorial_blocks_series': editorial_blocks_series,
+        'title': get_issue(number).title,
+        'preview': render_issue(number),
+        'receipt_status': getattr(receipt, 'status', None),
+        'receipt_message_id': getattr(receipt, 'message_id', None),
+    }
 
 
 def eligible(user: User | None) -> bool:
@@ -91,11 +311,26 @@ async def reflection_summary(session, user):
 async def daily_job(bot: Bot, settings: Settings, session_factory) -> None:
     if await run_editorial_queue(bot, settings, session_factory):
         return
+    local_day = datetime.now(ZoneInfo('Asia/Yerevan')).date()
+    candidate = publication_number(local_day)
+    # Only today's calendar slot — never catch up missed days after downtime.
+    if not settings.general_chat_id or candidate is None:
+        return
     async with session_factory() as session:
+        if not await series_issue_is_approved(
+            session, local_day, settings.general_chat_id, candidate
+        ):
+            return
         start_day = await start(session)
         await session.commit()
-        number = publication_number(datetime.now(ZoneInfo('Asia/Yerevan')).date(), start_day)
-        if number is None:
+        number = publication_number(local_day, start_day)
+        if number is None or not await series_issue_is_approved(
+            session, local_day, settings.general_chat_id, number
+        ):
+            return
+        receipt = await series_issue_delivery(session, start_day, number)
+        if receipt and receipt.status in {'uncertain', 'conflict'}:
+            # Unknown prior result: do not retry until a human reconciles.
             return
         ids = (await session.scalars(select(User.id).where(
             User.book_club_subscribed.is_(True), User.is_blocked.is_(False),
@@ -127,6 +362,78 @@ async def daily_job(bot: Bot, settings: Settings, session_factory) -> None:
 # Editorial material shares the existing custom-content storage and sender.
 # It never runs until an administrator explicitly enables this queue.
 EDITORIAL_SETTINGS_KEY = 'book-club-editorial-settings'
+# Editorial review approves a draft revision, not an arbitrary future scheduled
+# public post. A dated scheduled send additionally requires exact authorization
+# (code frozenset for tests; AppSetting for production editor actions).
+APPROVED_SCHEDULED_EDITORIAL_PUBLICATIONS: frozenset[tuple[str, str, str]] = frozenset()
+EDITORIAL_SCHEDULE_APPROVAL_PREFIX = 'literature-editorial-schedule:'
+
+
+def scheduled_editorial_approval_key(
+    on_date: date, chat_id: int | str, content_id: str, item_text: str
+) -> tuple[str, str, str]:
+    payload = {
+        'topic': 'literature',
+        'parse_mode': 'HTML',
+        'content_id': content_id,
+        'text': render_editorial(json.loads(item_text)),
+    }
+    digest = hashlib.sha256(json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')
+    ).encode('utf-8')).hexdigest()
+    return (on_date.isoformat(), str(chat_id), digest)
+
+
+def editorial_schedule_setting_key(on_date: date, chat_id: int | str, content_id: str) -> str:
+    return f'{EDITORIAL_SCHEDULE_APPROVAL_PREFIX}{on_date.isoformat()}:{chat_id}:{content_id}'
+
+
+async def editorial_schedule_is_approved(
+    session: AsyncSession,
+    on_date: date,
+    chat_id: int | str,
+    content_id: str,
+    item_text: str,
+) -> bool:
+    key = scheduled_editorial_approval_key(on_date, chat_id, content_id, item_text)
+    if key in APPROVED_SCHEDULED_EDITORIAL_PUBLICATIONS:
+        return True
+    row = await session.scalar(select(AppSetting).where(
+        AppSetting.key == editorial_schedule_setting_key(on_date, chat_id, content_id)
+    ))
+    if not row or not isinstance(row.value, dict) or row.value.get('revoked'):
+        return False
+    return row.value.get('digest') == key[2]
+
+
+async def approve_editorial_schedule(
+    session: AsyncSession,
+    *,
+    on_date: date,
+    chat_id: int | str,
+    content_id: str,
+    item_text: str,
+    actor_id: int,
+) -> dict:
+    day_key, chat_key, digest = scheduled_editorial_approval_key(
+        on_date, chat_id, content_id, item_text
+    )
+    setting_key = editorial_schedule_setting_key(on_date, chat_id, content_id)
+    await _insert_setting(session, key=setting_key, value={}, actor_id=actor_id)
+    row = await session.scalar(
+        select(AppSetting).where(AppSetting.key == setting_key).with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    value = {
+        'date': day_key, 'chat_id': chat_key, 'content_id': content_id,
+        'digest': digest, 'revoked': False,
+        'approved_at': datetime.now(ZoneInfo('Asia/Yerevan')).isoformat(),
+        'approved_by': actor_id,
+    }
+    row.value, row.updated_by = value, actor_id
+    return value
+
+
 EDITORIAL_FIELDS = {'Название': 'title', 'Автор': 'author', 'Введение': 'intro',
                     'Главная мысль': 'idea', 'Вопрос': 'question', 'Источник': 'source'}
 
@@ -221,7 +528,10 @@ async def approve_editorial_item(session: AsyncSession, item_id: int, revision: 
     return item
 
 
-async def publish_editorial_item(bot, settings, session, item_id: int, revision: str):
+async def publish_editorial_item(
+    bot, settings, session, item_id: int, revision: str, *,
+    scheduled_on_date: date | None = None,
+):
     import json
     from app.database.autocontent_models import GeneralCustomContent
     from app.services.general_topics_service import send_general_topic_once
@@ -231,6 +541,10 @@ async def publish_editorial_item(bot, settings, session, item_id: int, revision:
         GeneralCustomContent.id == item_id, GeneralCustomContent.content_type == 'literature').with_for_update().execution_options(populate_existing=True))
     if not item or not item.is_enabled or editorial_revision(item) != revision:
         raise ValueError('editorial_item_not_approved')
+    if scheduled_on_date is not None and not await editorial_schedule_is_approved(
+        session, scheduled_on_date, settings.general_chat_id, item.content_id, item.text
+    ):
+        return 'approval_required'
     if item.is_skipped:
         return 'already_sent'
     topic = await session.scalar(select(AppSetting).where(
@@ -287,10 +601,18 @@ async def run_editorial_queue(bot, settings, session_factory, *, now=None) -> bo
             item = await session.scalar(select(GeneralCustomContent).where(
                 GeneralCustomContent.content_type == 'literature', GeneralCustomContent.is_enabled.is_(True),
                 GeneralCustomContent.is_skipped.is_(False)).order_by(GeneralCustomContent.id).limit(1))
-            if item:
-                await _insert_setting(session, key=day_key, value={'item_id': item.id})
         if item and item.is_enabled:
-            await publish_editorial_item(bot, settings, session, item.id, editorial_revision(item))
+            publication_date = now.astimezone(ZoneInfo('Asia/Yerevan')).date()
+            if not await editorial_schedule_is_approved(
+                session, publication_date, settings.general_chat_id, item.content_id, item.text
+            ):
+                return True
+            if not day:
+                await _insert_setting(session, key=day_key, value={'item_id': item.id})
+            await publish_editorial_item(
+                bot, settings, session, item.id, editorial_revision(item),
+                scheduled_on_date=publication_date,
+            )
             await session.commit()
     return True
 

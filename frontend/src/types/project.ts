@@ -9,6 +9,10 @@ export interface ProjectSummary {
   updated_at: string;
   submitted_at: string | null;
   admin_comment: string | null;
+  cover_url?: string | null;
+  proposed_date?: string | null;
+  proposed_time?: string | null;
+  date_is_tentative?: boolean;
 }
 
 export interface ProjectDetail extends ProjectSummary {
@@ -16,6 +20,7 @@ export interface ProjectDetail extends ProjectSummary {
   can_edit: boolean;
   can_submit: boolean;
   can_delete: boolean;
+  can_edit_cover?: boolean;
 }
 
 export interface ProjectQuestion {

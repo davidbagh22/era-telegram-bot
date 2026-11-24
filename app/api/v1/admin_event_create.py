@@ -12,12 +12,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
-from app.api.v1.event_posters import _SAFE_POSTER_MIME_TYPES
 from app.config import Settings
 from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration, User
 from app.services.audit_service import audit
 from app.services.authorization_service import can_manage_events
+from app.services.event_poster_security import normalized_event_poster_mime
 from app.services.notification_service import broadcast_detailed
 from app.services.event_publication_service import public_event_keyboard, publish_event_announcement, record_announcement_status
 from app.services.general_topics_service import send_general_topic
@@ -157,6 +157,7 @@ async def create_event_from_admin(
 
 
 class EventDraftPatch(BaseModel):
+    issue_certificate: bool | None = None
     creation_mode: Literal["wizard", "quick"] | None = None
     wizard_step: int | None = Field(default=None, ge=1, le=10)
     title: str | None = Field(default=None, max_length=255)
@@ -179,6 +180,7 @@ class EventDraftPatch(BaseModel):
     registration_audience: str | None = Field(default=None, max_length=64)
 
     chat_url: str | None = Field(default=None, max_length=500)
+    registration_url: str | None = Field(default=None, max_length=500)
     organizer: str | None = Field(default=None, max_length=255)
     participant_value: str | None = Field(default=None, max_length=5000)
     contact: str | None = Field(default=None, max_length=255)
@@ -194,6 +196,7 @@ class EventDraftPatch(BaseModel):
 
 
 class EventDraftOut(BaseModel):
+    issue_certificate: bool | None = None
     creation_mode: str = "wizard"
     announcement_status: str = "not_requested"
     id: int
@@ -219,6 +222,7 @@ class EventDraftOut(BaseModel):
     waitlist_enabled: bool
     registration_audience: str
     chat_url: str | None
+    registration_url: str | None = None
     organizer: str | None
     participant_value: str | None
     contact: str | None
@@ -262,6 +266,7 @@ async def _broadcast_estimate(session: AsyncSession, experience: EventExperience
 
 async def _draft_out(session: AsyncSession, event: Event, experience: EventExperience) -> EventDraftOut:
     return EventDraftOut(
+        issue_certificate=experience.issue_certificate,
         creation_mode=experience.creation_mode,
         announcement_status=experience.announcement_status,
         id=event.id,
@@ -287,6 +292,7 @@ async def _draft_out(session: AsyncSession, event: Event, experience: EventExper
         waitlist_enabled=experience.waitlist_enabled,
         registration_audience=experience.registration_audience,
         chat_url=experience.chat_url,
+        registration_url=getattr(experience, "registration_url", None),
         organizer=experience.organizer,
         participant_value=experience.participant_value,
         contact=experience.contact,
@@ -466,6 +472,8 @@ async def save_event_draft_step(
     if payload.creation_mode is not None and not was_public:
         experience.creation_mode = payload.creation_mode
 
+    if payload.issue_certificate is not None:
+        experience.issue_certificate = payload.issue_certificate
     if payload.title is not None:
         event.title = payload.title.strip() or event.title
     if payload.short_description is not None:
@@ -508,6 +516,13 @@ async def save_event_draft_step(
 
     if "chat_url" in payload.model_fields_set:
         experience.chat_url = payload.chat_url.strip() if payload.chat_url else None
+    if "registration_url" in payload.model_fields_set:
+        value = (payload.registration_url or "").strip()
+        if value and (not value.startswith("https://") or any(char.isspace() for char in value)):
+            raise HTTPException(status_code=422, detail="registration_url_invalid")
+        experience.registration_url = value or None
+        if value:
+            experience.registration_required = False
     if "organizer" in payload.model_fields_set:
         experience.organizer = payload.organizer.strip() if payload.organizer else None
     if "participant_value" in payload.model_fields_set:
@@ -565,8 +580,8 @@ async def read_admin_event_poster_preview(
     experience = await session.get(EventExperience, event_id)
     if experience is None or not experience.poster_bytes:
         raise HTTPException(status_code=404, detail="event_poster_not_found")
-    poster_mime = (experience.poster_content_type or "image/jpeg").split(";", 1)[0].strip().lower()
-    if poster_mime not in _SAFE_POSTER_MIME_TYPES:
+    poster_mime = normalized_event_poster_mime(experience.poster_content_type)
+    if poster_mime is None:
         raise HTTPException(status_code=404, detail="event_poster_not_found")
     return Response(
         content=experience.poster_bytes,
@@ -682,6 +697,7 @@ async def publish_event(
     settings: Settings = Depends(get_settings),
     bot: Bot | None = Depends(get_bot),
     background_tasks: BackgroundTasks = None,
+    project_topic: bool = False,
 ) -> EventDraftOut:
     event = await _managed_event(session, event_id)
     experience = await _experience(session, event)
@@ -700,6 +716,10 @@ async def publish_event(
     event.approved_by = admin.id
     experience.wizard_step = 10
     experience.is_complete = True
+    if project_topic:
+        if experience.issue_certificate is None:
+            experience.issue_certificate = False
+        experience.broadcast_targets = list(dict.fromkeys([*(experience.broadcast_targets or []), "project_topic"]))
     experience.announcement_status = "pending"
     await session.flush()
     await audit(

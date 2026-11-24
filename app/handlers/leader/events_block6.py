@@ -14,6 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import Event, User
+from app.keyboards.bot_shell import ADMIN_HUB_BUTTON
+from app.services.anniversary_registration_service import MENU_BUTTON as ANNIVERSARY_MENU_BUTTON
+from app.services.anniversary_registration_service import MENU_TICKET_BUTTON as ANNIVERSARY_TICKET_BUTTON
 from app.services.audit_service import audit
 from app.services.notification_service import notify_admins
 from app.utils import texts
@@ -21,7 +24,23 @@ from app.utils.constants import PRIVILEGED_ROLES, EventStatus
 from app.utils.validators import clean_text, parse_date, parse_time
 
 router = Router(name="leader_events_block6")
-MENU_BUTTONS = {"👤 Личный кабинет", "📅 Афиша", "💡 Проекты", "⭐ Возможности", "💬 Связь", "⚙️ Панель", "🧭 Главное меню"}
+
+MENU_BUTTONS = {
+    "👤 Личный кабинет",
+    "📅 Афиша",
+    "💡 Проекты",
+    "⭐ Возможности",
+    "💬 Связь",
+    "⚙️ Панель",
+    ADMIN_HUB_BUTTON,
+    "🧭 Главное меню",
+    "🔥 Открыть ЭРА",
+    "🌱 Мой путь",
+    "🧭 Лидеры",
+    "🎬 Медиа",
+    ANNIVERSARY_MENU_BUTTON,
+    ANNIVERSARY_TICKET_BUTTON,
+}
 
 
 class EventBlock6States(StatesGroup):
@@ -56,8 +75,10 @@ async def guard(event: CallbackQuery | Message, user: User | None) -> bool:
 
 def mode_keyboard(settings: Settings | None = None, user: User | None = None) -> InlineKeyboardMarkup:
     from app.handlers.leader.event_quick_composer import enabled
-    from app.services.authorization_service import can_manage_events
-    if settings and user and enabled(settings, user.telegram_id) and can_manage_events(user, settings, user.telegram_id):
+    from app.services.authorization_service import can_manage_events, is_full_admin
+    if settings and user and can_manage_events(user, settings, user.telegram_id) and (
+        enabled(settings, user.telegram_id) or is_full_admin(user, settings, user.telegram_id)
+    ):
         return InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="⚡ Быстро · текст и фото", callback_data="leader:eventq:new")],
             [InlineKeyboardButton(text="🧩 Расширенный мастер", callback_data="leader:event6:mode:constructor")],
@@ -112,7 +133,10 @@ async def event_revise(call: CallbackQuery, user: User | None, state: FSMContext
 
 @router.callback_query(F.data == "leader:event:new")
 async def event_new(call: CallbackQuery, user: User | None, state: FSMContext, settings: Settings | None = None) -> None:
-    if not await guard(call, user):
+    from app.services.authorization_service import is_full_admin
+    if settings and is_full_admin(user, settings, call.from_user.id):
+        await call.answer()
+    elif not await guard(call, user):
         return
     await state.clear()
     await call.message.answer("Как подготовить мероприятие?", reply_markup=mode_keyboard(settings, user))

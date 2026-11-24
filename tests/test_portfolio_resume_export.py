@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
 
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.methods import SendDocument
@@ -156,8 +155,9 @@ def test_resume_handler_has_loading_error_and_no_temp_file_contracts() -> None:
 def test_legacy_resume_export_does_not_run_parallel_queries() -> None:
     source = (ROOT / "app/handlers/participant/cabinet.py").read_text(encoding="utf-8")
 
-    assert "build_portfolio_data(session, user)" in source
-    assert "build_era_resume(data)" in source
+    assert "build_portfolio_data(session, user, preview_limit=None)" in source
+    assert "build_career_resume(" in source
+    assert "build_era_resume(data)" not in source
     assert "PortfolioItem.user_id == user.id,\n                PortfolioItem.status == \"verified\"" not in source
 
 

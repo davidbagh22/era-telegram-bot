@@ -53,6 +53,7 @@ class PortfolioEntryOut(BaseModel):
     category: str = ""
     file_id: str | None = None
     url: str | None = None
+    include_in_resume: bool = True
 
 
 class ProfileOut(BaseModel):
@@ -78,6 +79,7 @@ class ProfileOut(BaseModel):
     stats: dict[str, int]
     projects: list[PortfolioEntryOut]
     events: list[PortfolioEntryOut]
+    registrations: list[PortfolioEntryOut] = []
     tasks: list[PortfolioEntryOut]
     volunteer: list[PortfolioEntryOut]
     leadership: list[PortfolioEntryOut]
@@ -130,6 +132,7 @@ async def read_profile(
         stats=portfolio.stats,
         projects=[PortfolioEntryOut(**asdict(item)) for item in portfolio.projects],
         events=[PortfolioEntryOut(**asdict(item)) for item in portfolio.events],
+        registrations=[PortfolioEntryOut(**asdict(item)) for item in portfolio.registrations],
         tasks=[PortfolioEntryOut(**asdict(item)) for item in portfolio.tasks],
         volunteer=[PortfolioEntryOut(**asdict(item)) for item in portfolio.volunteer],
         leadership=[PortfolioEntryOut(**asdict(item)) for item in portfolio.leadership],
@@ -145,7 +148,7 @@ async def read_profile_resume(
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     """Backward-compatible resume URL serving the new universal career CV."""
-    portfolio = await build_portfolio_data(session, user)
+    portfolio = await build_portfolio_data(session, user, preview_limit=None)
     career_profile = await career_service.get_or_create_profile(session, user.id)
     career_items = await career_service.list_items(session, user.id)
     pdf_bytes = build_career_resume(

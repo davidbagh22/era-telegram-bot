@@ -3,8 +3,10 @@ import {
   cancelProject,
   describeActionError,
   fetchProject,
+  removeProjectCover,
   submitProject,
   updateProject,
+  uploadProjectCover,
 } from "../../api/client";
 import { fetchProjectBuilderQuestions } from "../../api/projectBuilder";
 import { BottomSheet } from "../../components/BottomSheet";
@@ -13,6 +15,8 @@ import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
 import { hintForProjectQuestion } from "../../help/projectBuilderHints";
 import type { ProjectDetail as ProjectDetailType, ProjectQuestion } from "../../types/project";
+import { ProjectCover } from "./ProjectCover";
+import { displayProjectTitle } from "./displayTitle";
 import { projectStatusLabel } from "./statusLabels";
 import { ProjectWorkspace } from "./ProjectWorkspace";
 
@@ -240,12 +244,75 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
         <div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", alignItems: "flex-start" }}>
           <div style={{ minWidth: 0 }}>
             <p style={{ margin: "0 0 0.25rem", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Проект ЭРА</p>
-            <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-xl)", overflowWrap: "anywhere" }}>{project.title}</strong>
-            {project.short_description && <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)" }}>{project.short_description}</p>}
+            <strong style={{ display: "block", fontFamily: "var(--era-font-display)", fontSize: "var(--era-text-xl)", lineHeight: 1.25, overflowWrap: "break-word", textWrap: "balance" }}>{displayProjectTitle(project.title)}</strong>
+            {/* short_description только если его ещё нет среди ответов конструктора — иначе дубль */}
+            {project.short_description
+              && !Object.values(answers).some((value) => {
+                const text = (value ?? "").trim();
+                const short = project.short_description!.trim();
+                return text === short || text.startsWith(short) || short.startsWith(text);
+              })
+              && <p className="era-readable-copy" style={{ margin: "0.5rem 0 0" }}>{project.short_description}</p>}
           </div>
           <StatusBadge label={projectStatusLabel(project.status)} tone="violet" />
         </div>
       </Card>
+
+      {(project.cover_url || project.can_edit_cover) && (
+        <Card>
+          {project.cover_url && <ProjectCover key={project.cover_url} coverUrl={project.cover_url} />}
+          {project.can_edit_cover && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem", marginTop: project.cover_url ? "0.75rem" : 0 }}>
+              <label style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", minHeight: 40, border: "1px solid var(--era-border)", borderRadius: "var(--era-radius-control)", cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 }}>
+                {project.cover_url ? "Заменить обложку" : "Прикрепить обложку"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={busy}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.currentTarget.value = "";
+                    if (!file) return;
+                    setBusy(true);
+                    setActionError(null);
+                    void uploadProjectCover(projectId, file)
+                      .then((updated) => {
+                        setProject(updated);
+                        setSavedNotice("Обложка сохранена");
+                      })
+                      .catch((error) => setActionError(actionMessage(error, "Не удалось загрузить обложку.")))
+                      .finally(() => setBusy(false));
+                  }}
+                  style={{ display: "none" }}
+                />
+              </label>
+              {project.cover_url && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setBusy(true);
+                    setActionError(null);
+                    void removeProjectCover(projectId)
+                      .then((updated) => {
+                        setProject(updated);
+                        setSavedNotice("Обложка удалена");
+                      })
+                      .catch((error) => setActionError(actionMessage(error, "Не удалось удалить обложку.")))
+                      .finally(() => setBusy(false));
+                  }}
+                  style={{ color: "var(--era-error)" }}
+                >
+                  Убрать обложку
+                </button>
+              )}
+              <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>
+                Картинка показывается целиком, без обрезки.
+              </p>
+            </div>
+          )}
+        </Card>
+      )}
 
       {actionError && <Card style={{ borderColor: "rgba(255,102,117,0.35)", background: "rgba(255,102,117,0.06)" }}><strong style={{ color: "var(--era-error)" }}>Нужно действие</strong><p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.45 }}>{actionError}</p></Card>}
       {saveError && pendingRetry && currentQuestion?.key === pendingRetry.questionKey && (
@@ -270,14 +337,14 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
           </div>
 
           <div key={currentQuestion.key} className="era-question-step" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            <Card style={{ borderColor: "rgba(99,44,255,0.22)" }}>
+            <Card style={{ borderColor: "var(--era-border-strong)" }}>
               <p style={{ margin: "0 0 0.25rem", color: "var(--era-red-bright)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>{currentQuestion.block}</p>
               <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>{currentQuestion.title}</h2>
               <p style={{ margin: "0.6rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{currentQuestion.prompt}</p>
             </Card>
 
             {currentHint && (
-              <Card style={{ background: "linear-gradient(135deg, rgba(99,44,255,.08), rgba(255,100,0,.05)), var(--era-surface)", borderColor: "rgba(99,44,255,.16)" }}>
+              <Card style={{ background: "linear-gradient(135deg, rgba(188, 33, 132,.12), rgba(255, 165, 234,.05)), var(--era-surface)", borderColor: "var(--era-border)" }}>
                 <p style={{ margin: "0 0 0.45rem", color: "var(--era-violet)", fontSize: "var(--era-text-xs)", fontWeight: 850, textTransform: "uppercase" }}>Теория шага</p>
                 <strong style={{ display: "block", lineHeight: 1.45 }}>{currentHint.what}</strong>
                 <p style={{ margin: "0.55rem 0 0", color: "var(--era-text-muted)", lineHeight: 1.55 }}>{currentHint.why}</p>
@@ -288,7 +355,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
               </Card>
             )}
 
-            <button type="button" onClick={() => setHintOpen(true)} style={{ width: "100%", textAlign: "left", padding: "0.8rem 0.9rem", borderRadius: "var(--era-radius-control)", border: "1px solid rgba(99,44,255,.22)", background: "var(--era-tint-violet)", color: "var(--era-violet)", fontWeight: 800 }}>
+            <button type="button" onClick={() => setHintOpen(true)} style={{ width: "100%", textAlign: "left", padding: "0.8rem 0.9rem", borderRadius: "var(--era-radius-control)", border: "1px solid var(--era-border-strong)", background: "var(--era-selected)", color: "var(--era-cyan)", fontWeight: 800 }}>
               Получить подсказку
             </button>
 
@@ -351,7 +418,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
         </div>
       ) : (
         <>
-          <Card style={constructorComplete ? { borderColor: "rgba(255,100,0,.28)" } : undefined}>
+          <Card style={constructorComplete ? { borderColor: "var(--era-border-strong)" } : undefined}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem" }}>
               <div>
                 <p style={{ margin: "0 0 .2rem", color: constructorComplete ? "var(--era-gold-ink)" : "var(--era-text-muted)", fontSize: ".72rem", fontWeight: 850, textTransform: "uppercase" }}>{constructorComplete ? "Финальный preview" : "Паспорт проекта"}</p>
@@ -402,7 +469,7 @@ export function ProjectDetail({ projectId, onBack, initialShowWorkspace = false 
 
 function HintBlock({ title, text, emphasis = false }: { title: string; text: string; emphasis?: boolean }) {
   return (
-    <div style={{ padding: "0.85rem", borderRadius: "var(--era-radius-md)", background: emphasis ? "var(--era-tint-violet)" : "var(--era-surface-2)", border: emphasis ? "1px solid rgba(99,44,255,.18)" : "1px solid var(--era-border)" }}>
+    <div style={{ padding: "0.85rem", borderRadius: "var(--era-radius-md)", background: emphasis ? "var(--era-selected)" : "var(--era-surface-2)", border: emphasis ? "1px solid var(--era-border-strong)" : "1px solid var(--era-border)" }}>
       <strong style={{ display: "block", marginBottom: "0.3rem" }}>{title}</strong>
       <p style={{ margin: 0, color: emphasis ? "var(--era-text)" : "var(--era-text-muted)", lineHeight: 1.5 }}>{text}</p>
     </div>

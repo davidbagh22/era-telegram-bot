@@ -196,11 +196,11 @@ async def apply_era_pro(
         await notify_admins(
             bot,
             settings,
-            "Новая заявка в ЭРА PRO\n\n"
+            "Новая заявка в «Лидеры ЭРА»\n\n"
             f"Участник: {user.first_name} {user.last_name or ''}\n"
             f"Баллы: {points}\n"
             f"Заявка: #{application.id}\n\n"
-            "Откройте админ-панель → Заявки ЭРА PRO.",
+            "Откройте админ-панель → Заявки · Лидеры ЭРА.",
         )
     return await _me_payload(session, user)
 
@@ -247,7 +247,7 @@ async def resubmit_era_pro(
         await notify_admins(
             bot,
             settings,
-            f"Заявка ЭРА PRO #{application.id} дополнена участником и снова ждёт проверки.",
+            f"Заявка «Лидеры ЭРА» #{application.id} дополнена участником и снова ждёт проверки.",
         )
     return await _me_payload(session, user)
 
@@ -326,9 +326,9 @@ async def decide_era_pro_application(
         raise HTTPException(status_code=404, detail="era_pro_user_not_found")
     if bot is not None:
         text = {
-            "approved": "Ваша заявка в ЭРА PRO одобрена. Доступ к закрытому уровню открыт в Mini App.",
-            "needs_info": f"Заявку в ЭРА PRO нужно дополнить.\n\nКомментарий: {application.admin_comment}",
-            "declined": "Рассмотрение заявки в ЭРА PRO завершено. Сейчас доступ не выдан. Вы сможете подать новую заявку позже.",
+            "approved": "Ваша заявка в «Лидеры ЭРА» одобрена. Лидерский статус открыт в Mini App и не даёт административных прав.",
+            "needs_info": f"Заявку в «Лидеры ЭРА» нужно дополнить.\n\nКомментарий: {application.admin_comment}",
+            "declined": "Рассмотрение заявки в «Лидеры ЭРА» завершено. Сейчас доступ не выдан. Вы сможете подать новую заявку позже.",
         }[payload.decision]
         try:
             await bot.send_message(applicant.telegram_id, text)

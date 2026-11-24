@@ -62,6 +62,8 @@ class Settings(BaseSettings):
     media_chat_id: int | None = None
     media_chat_url: str = "https://t.me/+f03ksvhCMKc5NDBi"
     media_manager_ids: IdList = Field(default_factory=list)
+    # Opt-in only: deployment must not add new public reminders.
+    media_deadline_3h_enabled: bool = False
     # Immutable registered account ID; never inferred from a mutable name or username.
     era_chair_user_id: int | None = Field(default=None, gt=0)
     admin_ids: IdList = Field(default_factory=list)
@@ -84,6 +86,9 @@ class Settings(BaseSettings):
     management_report_hour: int = Field(default=9, ge=0, le=23)
     management_report_minute: int = Field(default=0, ge=0, le=59)
     management_report_recipient_ids: IdList = Field(default_factory=list)
+    # Explicit event IDs only. Empty by default so a scheduler release cannot
+    # silently materialise or change existing participants' point tasks.
+    event_wizard_sync_event_ids: IdList = Field(default_factory=list)
     feature_games: str = "OFF"  # OFF until production smoke test and content review 
     feature_auctions: str = "ALL"
     feature_rewards: str = "ALL"

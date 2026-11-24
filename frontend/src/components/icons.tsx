@@ -26,6 +26,14 @@ export function HomeIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
+export function OrbitIcon(props: SVGProps<SVGSVGElement>) {
+  return <svg {...baseProps(props)}><circle cx="12" cy="12" r="2" /><ellipse cx="12" cy="12" rx="10" ry="4.5" transform="rotate(-35 12 12)" /><ellipse cx="12" cy="12" rx="4.5" ry="10" transform="rotate(-35 12 12)" /></svg>;
+}
+
+export function IdeaIcon(props: SVGProps<SVGSVGElement>) {
+  return <svg {...baseProps(props)}><path d="M8 15c0-2-3-3-3-7a7 7 0 0 1 14 0c0 4-3 5-3 7l-1 3H9Z" /><path d="M9 21h6M9 18h6" /></svg>;
+}
+
 export function ActivityIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg {...baseProps(props)}>

@@ -13,13 +13,16 @@ import { DevelopmentScreen, type DevelopmentRoute } from "../screens/Development
 import { EraProScreen } from "../screens/EraProScreen";
 import { EventsScreen } from "../screens/EventsScreen";
 import { HomeScreen } from "../screens/HomeScreen";
+import { IdeasScreen } from "../screens/IdeasScreen";
 import { LeaderScreen } from "../screens/LeaderScreen";
 import { ObjectUnavailableScreen } from "../screens/ObjectUnavailableScreen";
 import { PendingScreen } from "../screens/PendingScreen";
+import { PeopleScreen } from "../screens/PeopleScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { ProgressScreen } from "../screens/ProgressScreen";
 import { ProjectsScreen } from "../screens/ProjectsScreen";
 import { TasksScreen } from "../screens/TasksScreen";
+import { TeamsScreen } from "../screens/TeamsScreen";
 import { UserPublicProfileScreen } from "../screens/UserPublicProfileScreen";
 import { VectorHomeScreen } from "../screens/VectorHomeScreen";
 import { AdminEventsScreen } from "../screens/admin/AdminEventsScreen";
@@ -28,11 +31,13 @@ import type { MiniAppUserSummary } from "../types/auth";
 type LegacyActivitySection = "events" | "tasks" | "calendar" | "history";
 type WorkspaceKind = "admin" | "leader";
 type SpecialScreen = "progress" | "development" | "era-pro";
+type OrbitCatalog = "people" | "teams" | "ideas";
 
 interface DeepLink {
   tab: TabKey;
   projectId: number | null;
   activitySection: LegacyActivitySection | null;
+  eventScope: "mine" | null;
   communitySection: CommunitySection | null;
   itemId: number | null;
   workspace: WorkspaceKind | null;
@@ -41,14 +46,15 @@ interface DeepLink {
   specialScreen: SpecialScreen | null;
   developmentRoute: DevelopmentRoute | null;
   mediaRoute: "guide" | "files" | "era" | "ksoors" | null;
+  orbitCatalog: OrbitCatalog | null;
   invalid: boolean;
 }
 
 const TAB_HASH: Record<TabKey, string> = {
   home: "#/home",
   projects: "#/projects",
-  events: "#/participation",
-  community: "#/opportunities",
+  events: "#/events",
+  community: "#/discover",
   profile: "#/profile",
 };
 
@@ -106,6 +112,7 @@ function link(overrides: Partial<DeepLink> = {}): DeepLink {
     tab: "home",
     projectId: null,
     activitySection: null,
+    eventScope: null,
     communitySection: null,
     itemId: null,
     workspace: null,
@@ -114,6 +121,7 @@ function link(overrides: Partial<DeepLink> = {}): DeepLink {
     specialScreen: null,
     developmentRoute: null,
     mediaRoute: null,
+    orbitCatalog: null,
     invalid: false,
     ...overrides,
   };
@@ -153,6 +161,7 @@ function parseDeepLink(): DeepLink | null {
     return projectId ? link({ tab: "projects", projectId }) : link({ invalid: true });
   }
   if (route === "projects") return link({ tab: "projects" });
+  if (route === "events_mine" || route === "events/mine") return link({ tab: "events", activitySection: "events", eventScope: "mine" });
   if (route === "participation") return link({ tab: "events" });
 
   const activityMatch = route.match(/^(tasks|calendar|history)(?:\/(\d+))?$/);
@@ -172,7 +181,7 @@ function parseDeepLink(): DeepLink | null {
   const userMatch = route.match(/^users\/(\d+)$/);
   if (userMatch) {
     const userId = parseOptionalId(userMatch[1]);
-    return userId ? link({ tab: "community", userId }) : link({ invalid: true });
+    return userId ? link({ tab: "home", userId }) : link({ invalid: true });
   }
 
   const communityMatch = route.match(/^(opportunities|auctions|rewards|surveys|media)(?:\/(\d+))?$/);
@@ -188,7 +197,20 @@ function parseDeepLink(): DeepLink | null {
 
   if (route === "progress") return link({ tab: "home", specialScreen: "progress" });
   if (route === "leaderboard") return link({ tab: "community", communitySection: "leaderboard" });
-  if (route === "community") return link({ tab: "community" });
+  if (route === "people") return link({ tab: "home", orbitCatalog: "people" });
+  if (route === "teams") return link({ tab: "home", orbitCatalog: "teams" });
+  if (route === "ideas") return link({ tab: "home", orbitCatalog: "ideas" });
+  if (route === "discover") return link({ tab: "community" });
+  if (route === "discover/leisure") return link({ tab: "community", communitySection: "leisure" });
+  if (route === "discover/points") return link({ tab: "community", communitySection: "points" });
+  const readingMatch = route.match(/^literature(?:\/(\d+))?$/);
+  if (readingMatch) {
+    const itemId = parseOptionalId(readingMatch[1]);
+    if (readingMatch[1] && itemId === null) return link({ invalid: true });
+    return link({ tab: "community", communitySection: "literature", itemId });
+  }
+  if (route === "games") return link({ tab: "community", communitySection: "games" });
+  if (route === "community") return link({ tab: "community", communitySection: "opportunities" });
   if (route === "profile") return link({ tab: "profile" });
   if (route === "admin") return link({ tab: "profile", workspace: "admin" });
   if (route === "leader") return link({ tab: "profile", workspace: "leader" });
@@ -216,11 +238,11 @@ function renderTab(
   user: MiniAppUserSummary,
   initialProjectId: number | null,
   initialActivitySection: LegacyActivitySection | null,
+  initialEventScope: "mine" | null,
   initialCommunitySection: CommunitySection | null,
   initialItemId: number | null,
   initialMediaRoute: "guide" | "files" | "era" | "ksoors" | null,
   isDeepLinkedTab: boolean,
-  onTabChange: (tab: TabKey) => void,
 ) {
   if (tab === "home") {
     if (isDeepLinkedTab && initialActivitySection === "tasks") {
@@ -233,21 +255,31 @@ function renderTab(
         onOpenProfile={() => navigateToRoute("profile")}
         onOpenProgress={() => navigateToRoute("progress")}
         onOpenDevelopment={() => navigateToRoute("development")}
-        onOpenEvents={() => onTabChange("events")}
+        onOpenAssessments={() => navigateToRoute("development/assessments")}
+        onOpenEvents={() => navigateToRoute("events")}
         onOpenEvent={(id) => navigateToRoute(`events/${id}`)}
         onOpenProject={(id) => navigateToRoute(`projects/${id}`)}
         onOpenTask={(id) => navigateToRoute(`tasks/${id}`)}
         onOpenTasks={() => navigateToRoute("tasks")}
         onOpenCommunity={() => navigateToRoute("opportunities")}
         onOpenOpportunity={(id) => navigateToRoute(`opportunities/${id}`)}
+        onOpenProjects={() => navigateToRoute("projects")}
       />
     );
   }
   if (tab === "projects") return <ProjectsScreen initialProjectId={initialProjectId} />;
   if (tab === "events") {
-    return isDeepLinkedTab && (initialItemId || initialActivitySection === "events")
-      ? <EventsScreen initialItemId={initialItemId} />
-      : <ActivityScreen />;
+    if (isDeepLinkedTab && initialActivitySection && initialActivitySection !== "events") {
+      return <ActivityScreen initialSection={initialActivitySection} initialItemId={initialItemId} />;
+    }
+    return (
+      <EventsScreen
+        canEdit={user.is_admin || user.permissions?.includes("events.manage")}
+        key={initialEventScope ?? "all"}
+        initialItemId={isDeepLinkedTab ? initialItemId : null}
+        initialScope={initialEventScope ?? undefined}
+      />
+    );
   }
   if (tab === "community") return <CommunityScreen initialSection={isDeepLinkedTab ? initialCommunitySection : null} initialItemId={isDeepLinkedTab ? initialItemId : null} initialMediaRoute={isDeepLinkedTab ? initialMediaRoute : null} />;
   return <ProfileScreen onOpenDevelopment={() => navigateToRoute("development")} />;
@@ -284,7 +316,7 @@ export function App() {
   };
   const initialProjectId = deepLink?.projectId ?? null;
 
-  if (auth.status === "loading") return null;
+  if (auth.status === "loading") return <div className="era-page era-discover-page" role="status">Загрузка ЭРА…</div>;
   if (auth.status === "error") return <AuthErrorScreen code={auth.code} detail={auth.detail} onRetry={auth.refresh} />;
 
   const { user } = auth;
@@ -301,14 +333,52 @@ export function App() {
         {activeTab === "home" ? (
           <PendingScreen status={user.application_status} onRefresh={auth.refresh} />
         ) : (
-          renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null, deepLink?.communitySection ?? null, deepLink?.itemId ?? null, deepLink?.mediaRoute ?? null, deepLink?.tab === activeTab, handleTabChange)
+          renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null, deepLink?.eventScope ?? null, deepLink?.communitySection ?? null, deepLink?.itemId ?? null, deepLink?.mediaRoute ?? null, deepLink?.tab === activeTab)
         )}
       </UserLayout>
     );
   }
 
   if (deepLink?.userId) {
-    return <UserLayout activeTab="community" onTabChange={handleTabChange}><UserPublicProfileScreen userId={deepLink.userId} onBack={() => window.history.length > 1 ? window.history.back() : navigateToRoute("opportunities")} /></UserLayout>;
+    return (
+      <UserLayout activeTab="home" onTabChange={handleTabChange}>
+        <UserPublicProfileScreen
+          userId={deepLink.userId}
+          onBack={() => (window.history.length > 1 ? window.history.back() : navigateToRoute("people"))}
+        />
+      </UserLayout>
+    );
+  }
+
+  if (deepLink?.orbitCatalog === "people") {
+    return (
+      <UserLayout activeTab="home" onTabChange={handleTabChange}>
+        <PeopleScreen
+          onBack={() => navigateToTab("home")}
+          onOpenUser={(id) => navigateToRoute(`users/${id}`)}
+        />
+      </UserLayout>
+    );
+  }
+  if (deepLink?.orbitCatalog === "teams") {
+    return (
+      <UserLayout activeTab="home" onTabChange={handleTabChange}>
+        <TeamsScreen
+          onBack={() => navigateToTab("home")}
+          onOpenProject={(id) => navigateToRoute(`projects/${id}`)}
+        />
+      </UserLayout>
+    );
+  }
+  if (deepLink?.orbitCatalog === "ideas") {
+    return (
+      <UserLayout activeTab="home" onTabChange={handleTabChange}>
+        <IdeasScreen
+          onBack={() => navigateToTab("home")}
+          onOpenProject={(id) => navigateToRoute(`projects/${id}`)}
+        />
+      </UserLayout>
+    );
   }
 
   if (deepLink?.specialScreen === "progress") {
@@ -371,7 +441,7 @@ export function App() {
           onEnterWorkspace={user.is_admin || user.is_leader ? () => setInWorkspace(true) : undefined}
           onOpenDevelopment={() => navigateToRoute("development")}
         />
-      ) : renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null, deepLink?.communitySection ?? null, deepLink?.itemId ?? null, deepLink?.mediaRoute ?? null, deepLink?.tab === activeTab, handleTabChange)}
+      ) : renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null, deepLink?.eventScope ?? null, deepLink?.communitySection ?? null, deepLink?.itemId ?? null, deepLink?.mediaRoute ?? null, deepLink?.tab === activeTab)}
     </UserLayout>
   );
 }

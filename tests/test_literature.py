@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch  # AsyncMock used by send_today / reflections
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -12,6 +12,7 @@ from app.content.literature_issues import ISSUES, get_issue, render_issue, valid
 from app.database.base import Base
 from app.database.models import AppSetting, User
 from app.handlers.book_club import change_subscription, navigate
+from app.services import book_club_service as club
 from app.services.book_club_service import daily_job, mark_progress, progress, start
 from app.utils.constants import ApplicationStatus
 
@@ -49,10 +50,41 @@ class LiteratureTests(IsolatedAsyncioTestCase):
     def callback(self, data):
         return SimpleNamespace(data=data, answer=AsyncMock(), message=SimpleNamespace(answer=AsyncMock()))
 
+    async def approve_today(self):
+        async with self.sessions() as session:
+            await club.approve_series_issue(
+                session,
+                on_date=date(2026, 10, 10),
+                chat_id=self.settings.general_chat_id,
+                number=1,
+                actor_id=1,
+            )
+            await session.commit()
+
     async def send_today(self):
-        with patch('app.services.book_club_service.datetime') as clock, patch('app.services.notification_service._session_factory', return_value=self.sessions):
+        # Exact approval is stored in AppSetting (editor path) — no code redeploy.
+        await self.approve_today()
+        with patch('app.services.book_club_service.datetime') as clock, patch(
+            'app.services.notification_service._session_factory', return_value=self.sessions
+        ), patch('app.services.book_club_service.send_general_topic', new=AsyncMock(return_value=True)):
             clock.now.return_value = datetime(2026, 10, 10, 19, tzinfo=ZoneInfo('Asia/Yerevan'))
             await daily_job(self.bot, self.settings, self.sessions)
+
+    async def test_unapproved_daily_issue_never_publishes_or_initializes_program(self):
+        with patch('app.services.book_club_service.datetime') as clock:
+            clock.now.return_value = datetime(2026, 10, 10, 19, tzinfo=ZoneInfo('Asia/Yerevan'))
+            await daily_job(self.bot, self.settings, self.sessions)
+        self.bot.send_message.assert_not_awaited()
+        async with self.sessions() as session:
+            assert await session.scalar(select(AppSetting).where(
+                AppSetting.key == 'book_club_start_date'
+            )) is None
+
+    def test_issue_approval_binds_day_chat_text_and_topic(self):
+        key = club.scheduled_literature_issue_approval_key(date(2026, 10, 10), -100123, 1)
+        assert key != club.scheduled_literature_issue_approval_key(date(2026, 10, 11), -100123, 1)
+        assert key != club.scheduled_literature_issue_approval_key(date(2026, 10, 10), -100124, 1)
+        assert key != club.scheduled_literature_issue_approval_key(date(2026, 10, 10), -100123, 2)
 
     async def test_delivery_only_eligible_opted_in_no_group_and_no_duplicates(self):
         await self.send_today()
@@ -113,6 +145,61 @@ class LiteratureTests(IsolatedAsyncioTestCase):
         with patch('app.services.book_club_service.datetime') as clock:
             clock.now.return_value = datetime(2026, 11, 27, 19, tzinfo=ZoneInfo('Asia/Yerevan'))
             await daily_job(self.bot, self.settings, self.sessions)
+        self.bot.send_message.assert_not_awaited()
+
+    async def test_revoke_blocks_send_and_missed_days_are_not_caught_up(self):
+        await self.approve_today()
+        async with self.sessions() as session:
+            await club.revoke_series_issue(
+                session, on_date=date(2026, 10, 10),
+                chat_id=self.settings.general_chat_id, actor_id=1,
+            )
+            await session.commit()
+        with patch('app.services.book_club_service.datetime') as clock, patch(
+            'app.services.book_club_service.send_general_topic', new=AsyncMock()
+        ) as topic:
+            clock.now.return_value = datetime(2026, 10, 10, 19, tzinfo=ZoneInfo('Asia/Yerevan'))
+            await daily_job(self.bot, self.settings, self.sessions)
+        topic.assert_not_awaited()
+        self.bot.send_message.assert_not_awaited()
+        # Approving only day 1 must not publish day 2 after downtime.
+        async with self.sessions() as session:
+            await club.approve_series_issue(
+                session, on_date=date(2026, 10, 10),
+                chat_id=self.settings.general_chat_id, number=1, actor_id=1,
+            )
+            await session.commit()
+        with patch('app.services.book_club_service.datetime') as clock, patch(
+            'app.services.book_club_service.send_general_topic', new=AsyncMock()
+        ) as topic:
+            clock.now.return_value = datetime(2026, 10, 12, 19, tzinfo=ZoneInfo('Asia/Yerevan'))
+            await daily_job(self.bot, self.settings, self.sessions)
+        topic.assert_not_awaited()
+
+    async def test_series_status_warns_when_editorial_queue_blocks_delivery(self):
+        """Enabled editorial queue skips series in daily_job — status must not say «Запланирован»."""
+        await self.approve_today()
+        async with self.sessions() as session:
+            status = await club.series_status(
+                session, self.settings, on_date=date(2026, 10, 10),
+            )
+            assert status['label'] == 'Запланирован'
+            assert status['editorial_blocks_series'] is False
+            await club.save_editorial_settings(session, actor_id=1, enabled=True, paused=True)
+            await session.commit()
+            status = await club.series_status(
+                session, self.settings, on_date=date(2026, 10, 10),
+            )
+            assert status['label'] == 'Нужна проверка'
+            assert status['editorial_blocks_series'] is True
+            assert 'редакцион' in status['reason'].lower()
+            assert status['action'] == 'revoke'
+        with patch('app.services.book_club_service.datetime') as clock, patch(
+            'app.services.book_club_service.send_general_topic', new=AsyncMock()
+        ) as topic:
+            clock.now.return_value = datetime(2026, 10, 10, 19, tzinfo=ZoneInfo('Asia/Yerevan'))
+            await daily_job(self.bot, self.settings, self.sessions)
+        topic.assert_not_awaited()
         self.bot.send_message.assert_not_awaited()
 
 class ReflectionTests(LiteratureTests):

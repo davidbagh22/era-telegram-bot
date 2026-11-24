@@ -73,11 +73,16 @@ def _card(room: dict) -> tuple[str, InlineKeyboardMarkup | None]:
     )
     if room.get("status") == "finished":
         return room.get("result", "Раунд завершён."), None
-    heading = "<b>🕵 Шпион</b>\n\n"
+    from app.services.game_room_presenter import GAME_CARDS
+    spy_meta = GAME_CARDS.get("spyfall", {})
+    heading = (
+        "<b>🕵 Шпион</b>\n"
+        f"{spy_meta.get('players', '3–8')} игроков · ~{spy_meta.get('minutes', '8–15')} мин\n\n"
+    )
     if room.get("status") == "lobby":
         ready = len(room.get("private_ready", []))
         text = (
-            heading + "Найди шпиона по вопросам о месте.\n"
+            heading + f"{spy_meta.get('rules', 'Найди шпиона по вопросам о месте.')}\n"
             f"Игроки: {len(room.get('participants', []))}/{MAX_PLAYERS}\n"
             f"Личные сообщения: {ready}/{len(room.get('participants', []))}\n\n"
             f"{members}\n\n"
@@ -107,7 +112,8 @@ def _card(room: dict) -> tuple[str, InlineKeyboardMarkup | None]:
         text = (
             heading + f"Локация известна {len(room['participants']) - 1} игрокам.\n\n"
             "Обсуждайте и задавайте друг другу вопросы. "
-            "Шпиону нужно догадаться, где вы."
+            "Шпиону нужно догадаться, где вы.\n"
+            f"Раунд ~{spy_meta.get('minutes', '8–15')} мин."
         )
         return text, InlineKeyboardMarkup(
             inline_keyboard=[

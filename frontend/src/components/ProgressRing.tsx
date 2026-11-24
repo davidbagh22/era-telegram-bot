@@ -45,9 +45,9 @@ export function ProgressRing({ percent, size = 92, trackColor, animationKey = "s
       ctx.stroke();
 
       const gradient = ctx.createLinearGradient(0, 0, size, size);
-      gradient.addColorStop(0, "#632cff");
-      gradient.addColorStop(0.55, "#d71978");
-      gradient.addColorStop(1, "#ff6400");
+      gradient.addColorStop(0, "#512074");
+      gradient.addColorStop(0.55, "#bc2184");
+      gradient.addColorStop(1, "#ffa5ea");
       ctx.strokeStyle = gradient;
       const start = -Math.PI / 2;
       const end = start + Math.PI * 2 * p;

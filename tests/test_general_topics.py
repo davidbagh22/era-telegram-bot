@@ -101,11 +101,22 @@ class GeneralTopicsTests(IsolatedAsyncioTestCase):
         self.bot.create_forum_topic.assert_not_awaited()
 
     async def test_daily_content_only_targets_channel(self):
+        # A configured channel and scheduled slot alone never authorize publication.
+        # Preserve the original channel-only routing assertion when exact approval exists.
+        import hashlib
+        from app.services.daily_public_content_service import text_for_day
+
+        day = "2026-10-09"
+        digest = hashlib.sha256(text_for_day(day, "channel_post").encode("utf-8")).hexdigest()
         with patch("app.services.daily_public_content_service.datetime") as clock, patch("app.services.daily_public_content_service.scheduled_minute", return_value=540), patch("app.services.daily_public_content_service._deliver_once", new=AsyncMock()) as deliver:
             clock.now.return_value = datetime(2026, 10, 9, 21, 55)
             await run_daily_public_content(self.bot, self.settings, self.sessions)
-            self.assertEqual(deliver.await_count, 1)
+            deliver.assert_not_awaited()
+            with patch("app.services.daily_public_content_service.APPROVED_CHANNEL_PUBLICATIONS", frozenset({(day, "-100456", digest)})):
+                await run_daily_public_content(self.bot, self.settings, self.sessions)
+            deliver.assert_awaited_once()
             self.assertEqual(deliver.call_args.kwargs["chat_id"], -100456)
+            self.assertNotEqual(deliver.call_args.kwargs["chat_id"], -100123)
 
     async def test_legacy_manual_and_scheduled_quotes_are_disabled(self):
         planned = SimpleNamespace(item=SimpleNamespace(content_type="morning_quote", content_id="q1"))

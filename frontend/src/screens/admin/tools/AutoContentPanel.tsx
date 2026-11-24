@@ -246,7 +246,7 @@ function MessageEditor({
       {previewing ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
           <div style={{ display: "flex", gap: "0.35rem", flexWrap: "wrap" }}>
-            <StatusBadge label="Telegram · HTML" tone="violet" />
+            <StatusBadge label="Предпросмотр сообщения" tone="violet" />
             {previewMeta ? <StatusBadge label={`${previewMeta.characters} символов · ${previewMeta.lines} строк`} /> : null}
           </div>
           <TelegramPreviewText text={text} />
@@ -275,7 +275,7 @@ function ScheduleCard({
             {entry.planned ? TYPE_LABELS[entry.planned.content_type] ?? entry.planned.content_type : "Нет активного сообщения"}
           </p>
         </div>
-        <StatusBadge label={STATUS_LABELS[entry.status] ?? entry.status} tone={statusTone(entry.status)} />
+        <StatusBadge label={STATUS_LABELS[entry.status] ?? "Статус обновлён"} tone={statusTone(entry.status)} />
       </div>
       {entry.error_code ? (
         <p style={{ margin: "0.5rem 0 0", color: "var(--era-error)", fontSize: "0.8125rem" }}>
@@ -545,7 +545,7 @@ export function AutoContentPanel() {
                         {timeLabel(entry.slot)} · {entry.planned ? TYPE_LABELS[entry.planned.content_type] : "—"}
                       </span>
                       <span style={{ color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
-                        {STATUS_LABELS[entry.status] ?? entry.status}
+                        {STATUS_LABELS[entry.status] ?? "Статус обновлён"}
                       </span>
                     </div>
                   ))}
@@ -578,7 +578,7 @@ export function AutoContentPanel() {
                       {entry.is_manual ? " · вручную" : ""}
                     </p>
                   </div>
-                  <StatusBadge label={STATUS_LABELS[entry.status] ?? entry.status} tone={statusTone(entry.status)} />
+                  <StatusBadge label={STATUS_LABELS[entry.status] ?? "Статус обновлён"} tone={statusTone(entry.status)} />
                 </div>
                 {entry.error_code ? (
                   <p style={{ margin: "0.5rem 0 0", color: "var(--era-error)", fontSize: "0.8125rem" }}>

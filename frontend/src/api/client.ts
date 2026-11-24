@@ -1,7 +1,8 @@
 import type {
+  AnniversaryRegistrationFields,
   CalendarItem,
   EventActivity,
-  EventItem,
+  EventItem, EventSignup,
   EventScope,
   HistoryEntry,
   MissionTemplate,
@@ -97,6 +98,22 @@ import type {
 // when the Mini App is hosted separately from the FastAPI backend.
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
+export function fetchLiterature() {
+  return authorizedGet<import("../types/leisure").LiteratureCatalog>("/api/v1/literature");
+}
+export function fetchLiteratureIssue(number: number) {
+  return authorizedGet<import("../types/leisure").LiteratureIssue>("/api/v1/literature/" + number);
+}
+export function setLiteratureSubscription(subscribed: boolean) {
+  return authorizedPatch<{ subscribed: boolean }>("/api/v1/literature-subscription", { subscribed });
+}
+export function fetchGamesCatalog() {
+  return authorizedGet<import("../types/leisure").GamesCatalog>("/api/v1/leisure/games");
+}
+export function fetchTeams(scope: "mine" | "open") {
+  return authorizedGet<ProjectSummary[]>("/api/v1/teams?scope=" + scope);
+}
+
 // Kept in memory only. Telegram re-supplies fresh initData on every Mini
 // App open, so there is no need for a long-lived token in localStorage.
 let sessionToken: string | null = null;
@@ -122,6 +139,8 @@ const ACTION_ERROR_MESSAGES: Record<string, string> = {
   poster_invalid_image: "Файл не похож на изображение. Выберите другое фото.",
   poster_too_large: "Фото должно быть не больше 5 МБ.",
   event_not_publishable: "Это мероприятие уже завершено или отменено.",
+  external_registration_only: "Запись на это мероприятие проходит по внешней ссылке организаторов.",
+  registration_url_invalid: "Ссылка регистрации должна начинаться с https:// и не содержать пробелов.",
 
   user_not_found: "Пользователь не найден — возможно, запись уже изменилась.",
   already_approved: "Заявка уже была одобрена ранее.",
@@ -150,6 +169,11 @@ const ACTION_ERROR_MESSAGES: Record<string, string> = {
   registration_not_found: "Регистрация не найдена — возможно, вы уже отменили её.",
   cannot_change_plans: "Отменить регистрацию уже нельзя — до мероприятия слишком мало времени.",
   closed: "Регистрация на это мероприятие закрыта.",
+  anniversary_registration_closed: "Регистрация на годовщину закрыта.",
+  anniversary_waitlisted: "Вы в листе ожидания на годовщину.",
+  anniversary_profile_incomplete: "Заполните имя, фамилию и организацию.",
+  anniversary_invalid_fields: "Проверьте имя, фамилию и организацию. Имя и фамилию укажите буквами.",
+  anniversary_registration_required: "Используйте кнопку регистрации на карточке годовщины.",
   already: "Вы уже зарегистрированы на это мероприятие.",
   full: "Свободных мест на это мероприятие больше нет.",
   assignee_not_found: "Участник не найден.",
@@ -180,10 +204,28 @@ export function describeActionError(error: unknown): string {
 
 async function parseErrorDetail(response: Response): Promise<string> {
   try {
+    // FastAPI returns validation failures as an array of field issues. Never
+    // turn that object into "[object Object]" in an error toast.
     const body = (await response.json()) as ApiErrorBody;
-    return body.detail ?? response.statusText;
+    const detail: unknown = body.detail;
+    if (typeof detail === "string") return detail || response.statusText;
+    if (Array.isArray(detail)) {
+      const issues = detail.filter((item): item is { loc?: unknown; msg?: unknown } =>
+        Boolean(item) && typeof item === "object");
+      const touches = (field: string) => issues.some((issue) =>
+        Array.isArray(issue.loc) && issue.loc.includes(field));
+      if (touches("full_name"))
+        return "Укажите фамилию, имя и отчество полностью (не менее трёх слов).";
+      if (touches("phone"))
+        return "Проверьте номер телефона: не менее семи цифр.";
+      if (touches("organization"))
+        return "Укажите полное название вуза или организации.";
+      return "Проверьте заполненные поля и попробуйте ещё раз.";
+    }
+    if (detail && typeof detail === "object") return "Проверьте введённые данные и повторите действие.";
+    return response.statusText || "Не удалось выполнить действие.";
   } catch {
-    return response.statusText;
+    return response.statusText || "Не удалось выполнить действие.";
   }
 }
 
@@ -286,8 +328,15 @@ export function fetchEvents(scope: EventScope): Promise<EventItem[]> {
   return authorizedGet<EventItem[]>(`/api/v1/events?scope=${scope}`);
 }
 
-export function registerForEvent(eventId: number): Promise<EventItem> {
-  return authorizedPost<EventItem>(`/api/v1/events/${eventId}/register`);
+export function registerForEvent(eventId: number, fields?: EventSignup): Promise<EventItem> {
+  return authorizedPost<EventItem>(`/api/v1/events/${eventId}/register`, fields);
+}
+
+export function registerForAnniversary(
+  eventId: number,
+  fields: Partial<AnniversaryRegistrationFields> = {},
+): Promise<EventItem> {
+  return authorizedPost<EventItem>(`/api/v1/events/${eventId}/anniversary-rsvp`, fields);
 }
 
 export function cancelEventRegistration(eventId: number): Promise<EventItem> {
@@ -361,6 +410,32 @@ export function fetchProjectQuestions(): Promise<ProjectQuestion[]> {
 
 export function fetchProject(projectId: number): Promise<ProjectDetail> {
   return authorizedGet<ProjectDetail>(`/api/v1/projects/${projectId}`);
+}
+
+export async function uploadProjectCover(projectId: number, file: File): Promise<ProjectDetail> {
+  if (!sessionToken) throw new ApiError(401, "missing_token");
+  const body = new FormData();
+  body.append("upload", file);
+  const response = await fetch(`${API_BASE_URL}/api/v1/projects/${projectId}/cover`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${sessionToken}` },
+    body,
+  });
+  if (!response.ok) throw new ApiError(response.status, await parseErrorDetail(response));
+  return (await response.json()) as ProjectDetail;
+}
+
+export function removeProjectCover(projectId: number): Promise<ProjectDetail> {
+  return authorizedPost<ProjectDetail>(`/api/v1/projects/${projectId}/cover/remove`);
+}
+
+export async function fetchProjectCoverObjectUrl(coverUrl: string): Promise<string> {
+  if (!sessionToken) throw new ApiError(401, "missing_token");
+  const response = await fetch(`${API_BASE_URL}${coverUrl}`, {
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  if (!response.ok) throw new ApiError(response.status, await parseErrorDetail(response));
+  return URL.createObjectURL(await response.blob());
 }
 
 export function createProject(idea: string): Promise<ProjectDetail> {
@@ -1106,8 +1181,30 @@ export function fetchAdminOffices(): Promise<Office[]> {
   return authorizedGet<Office[]>("/api/v1/admin/offices");
 }
 
-export function createOffice(title: string, description: string): Promise<Office> {
-  return authorizedPost<Office>("/api/v1/admin/offices", { title, description });
+export function createOffice(
+  title: string,
+  description: string,
+  permissionTemplate: string[] = [],
+): Promise<Office> {
+  return authorizedPost<Office>("/api/v1/admin/offices", {
+    title,
+    description,
+    permission_template: permissionTemplate,
+  });
+}
+
+export function updateOffice(
+  officeId: number,
+  payload: { title?: string; description?: string; permission_template?: string[] },
+): Promise<Office> {
+  return authorizedPost<Office>(`/api/v1/admin/offices/${officeId}/update`, payload);
+}
+
+export function nominateLeader(nomineeUserId: number, reason: string): Promise<{ ok: boolean }> {
+  return authorizedPost<{ ok: boolean }>("/api/v1/leadership/nominations", {
+    nominee_user_id: nomineeUserId,
+    reason,
+  });
 }
 
 export function deleteOffice(officeId: number): Promise<Office> {
@@ -1192,6 +1289,22 @@ export async function downloadEventCalendar(eventId: number): Promise<Blob> {
   });
   if (!response.ok) throw new ApiError(response.status, await parseErrorDetail(response));
   return response.blob();
+}
+
+/** Authenticated poster bytes — required for CANCELLED history (public /event-posters 404). */
+export async function downloadEventPoster(eventId: number): Promise<Blob> {
+  if (!sessionToken) throw new ApiError(401, "missing_token");
+  const response = await fetch(`${API_BASE_URL}/api/v1/events/${eventId}/poster`, {
+    cache: "no-store",
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  if (!response.ok) throw new ApiError(response.status, await parseErrorDetail(response));
+  return response.blob();
+}
+
+/** iPhone Telegram fallback: send private .ics to the same user's bot chat. */
+export function sendEventCalendarToChat(eventId: number): Promise<{ sent: boolean }> {
+  return authorizedPost<{ sent: boolean }>(`/api/v1/events/${eventId}/calendar/send`);
 }
 
 // Self-service data rights — see app/services/data_rights_service.py and

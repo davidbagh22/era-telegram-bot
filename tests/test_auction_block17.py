@@ -15,7 +15,12 @@ class AuctionFlowContractTests(unittest.TestCase):
         self.assertIn("Баллы пока не списаны", source)
         self.assertIn("Последняя ставка", source)
         self.assertIn("Лидер:", source)
-        self.assertIn('callback_data="auctions:list"', (ROOT / "app/handlers/participant/navigation.py").read_text(encoding="utf-8"))
+        # Auction entry lives on the shared opportunities hub (not a direct nav callback).
+        self.assertIn(
+            'callback_data="auctions:list"',
+            (ROOT / "app/keyboards/participant.py").read_text(encoding="utf-8"),
+        )
+        self.assertIn("opportunities_hub_keyboard", (ROOT / "app/handlers/participant/navigation.py").read_text(encoding="utf-8"))
 
     def test_admin_confirms_winner_only_after_time_and_then_transfers(self) -> None:
         source = (ROOT / "app/handlers/admin/auction_block17.py").read_text(encoding="utf-8")

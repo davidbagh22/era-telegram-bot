@@ -52,7 +52,7 @@ async def _send_projects_menu(message: Message, user: User | None) -> None:
 def _question_markup(index: int):
     # The bot mirrors the theory-only constructor. No action here can generate,
     # shorten or rewrite a participant's answer.
-    return project_question_keyboard(index, False)
+    return project_question_keyboard(index)
 
 
 async def _ask_question(

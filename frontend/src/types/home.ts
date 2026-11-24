@@ -34,6 +34,9 @@ export interface ProjectSummary {
   id: number;
   title: string;
   status: string;
+  proposed_date?: string | null;
+  proposed_time?: string | null;
+  date_is_tentative?: boolean;
 }
 
 export interface OpportunitySummary {
@@ -91,6 +94,7 @@ export interface HomeSnapshot {
   activity: ActivityStats;
   next_step: NextStep | null;
   nearest_event: EventSummary | null;
+  featured_event?: EventItem | null;
   active_task: TaskSummary | null;
   active_project: ProjectSummary | null;
   opportunities: OpportunitySummary[];
@@ -107,3 +111,4 @@ export interface DailyQuote {
   date: string;
   text: string;
 }
+import type { EventItem } from "./activity";

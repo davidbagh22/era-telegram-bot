@@ -31,13 +31,25 @@ async def guard(call: CallbackQuery, user: User | None) -> bool:
     return True
 
 
+_ACTIVITY_STATUS_LABELS = {
+    "pending": "на проверке",
+    "leader_approved": "подтверждено лидером, ждёт финальной проверки",
+    "approved": "принято",
+    "rejected": "отклонено",
+}
+
+
 async def send_card(call: CallbackQuery, session: AsyncSession, sub: EventActivitySubmission) -> None:
     activity = await session.get(EventActivity, sub.activity_id)
     target = await session.get(User, sub.user_id)
     if not activity or not target:
         return
+    status_label = _ACTIVITY_STATUS_LABELS.get(sub.status, "статус уточняется")
     await call.message.answer(
-        f"✨ Активность #{sub.id}\n\n{activity.title}\nУчастник: {target.first_name} {target.last_name or ''}\nСтатус: {sub.status}\nБаллы: {activity.points}\n\n{sub.text or 'материал прикреплён файлом'}",
+        f"✨ Активность на проверку\n\n{activity.title}\n"
+        f"Участник: {target.first_name} {target.last_name or ''}\n"
+        f"Статус: {status_label}\nБаллы: {activity.points}\n\n"
+        f"{sub.text or 'материал прикреплён файлом'}",
         reply_markup=review_buttons(sub.id),
     )
     if sub.file_id:

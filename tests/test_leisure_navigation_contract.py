@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock, patch
 
 from app.config import Settings
 from app.handlers.book_club import _keyboard as literature_keyboard
@@ -22,7 +23,9 @@ def test_main_menu_has_one_leisure_entry_and_no_flat_literature():
             assert not any(button.callback_data == "bookclub:home" for button in buttons(compatibility_menu(admin=admin, miniapp_url=url)))
             reply = main_reply_keyboard(url, admin=admin)
             assert reply.is_persistent and reply.one_time_keyboard is False
-            assert ("📊 Статистика" in {button.text for button in buttons(reply)}) == admin
+            labels = {button.text for button in buttons(reply)}
+            assert ("⚙️ Админ" in labels) == admin
+            assert "📊 Статистика" not in labels
 
 
 class LeisureNavigationTests(IsolatedAsyncioTestCase):
@@ -34,3 +37,15 @@ class LeisureNavigationTests(IsolatedAsyncioTestCase):
         assert "leisure:home" in {button.callback_data for button in buttons(literature_keyboard())}
         assert "leisure:home" in {button.callback_data for button in buttons(menu_markup())}
         assert not any(button.callback_data == "leisure:home" for button in buttons(menu_markup(public=True)))
+
+    async def test_disabled_games_copy_has_no_soon_teaser(self):
+        from app.handlers.era_leisure import show_leisure
+
+        message = SimpleNamespace(answer=AsyncMock(), bot=SimpleNamespace())
+        settings = Settings(bot_token="1234567890:test-token", feature_games="OFF")
+        with patch("app.handlers.era_leisure._markup", new=AsyncMock(return_value=None)):
+            await show_leisure(message, settings, telegram_id=11)
+        text = message.answer.await_args.args[0]
+        self.assertIn("Литература", text)
+        self.assertNotIn("скоро", text.lower())
+        self.assertNotIn("Интерактив", text)

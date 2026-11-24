@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 
+from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
 
@@ -15,6 +16,28 @@ TOPICS = {
     "pulse": ("📊 Пульс", "Здесь собираем итоги недели. Ответы и личные напоминания доступны участникам чата ЛИДЕРЫ. В чате показываем общий прогресс; личные ответы доступны только автору и администрации."),
     "important": ("📢 Важно", "Здесь размещаем важные объявления и решения для команды. Обсуждения остаются в общей теме, поручения — в Задачах, итоги недели — в Пульсе."),
 }
+
+
+async def _try_pin_panel(bot, chat_id: int, message_id: int) -> bool:
+    """Pin a Leaders panel once; treat already-pinned as success.
+
+    Explicit Telegram rejections/rate limits return False so setup can stay
+    ready and retry later without wiping topic receipts. Uncertain network
+    errors still propagate to the outer fail-closed handler.
+    """
+    try:
+        await bot.pin_chat_message(chat_id, message_id, disable_notification=True)
+        return True
+    except TelegramBadRequest as exc:
+        from app.utils.telegram_pin import telegram_already_pinned
+
+        if telegram_already_pinned(exc):
+            return True
+        logger.warning("Leaders panel pin rejected chat_id=%s", chat_id)
+        return False
+    except TelegramRetryAfter:
+        logger.warning("Leaders panel pin rate-limited chat_id=%s", chat_id)
+        return False
 
 
 def _topic_data(row) -> dict:
@@ -263,9 +286,9 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                     if row is None: session.add(AppSetting(key=f'leaders_forum:{chat_id}:{key}',value=json.dumps({'mode':'plain','thread_id':None})))
                 await session.commit()
                 if getattr(member,'can_pin_messages',False) and not data.get('pinned'):
-                    await bot.pin_chat_message(chat_id,data['message_id'],disable_notification=True)
-                    existing.value=json.dumps({**data,'pinned':True})
-                    await session.commit()
+                    if await _try_pin_panel(bot, chat_id, data['message_id']):
+                        existing.value=json.dumps({**data,'pinned':True})
+                        await session.commit()
                 return {'status':'ready_plain','chat_id':chat_id}
             if not getattr(member, 'can_manage_topics', False):
                 return {'status': 'missing_manage_topics', 'chat_id': chat_id}
@@ -378,10 +401,10 @@ async def setup_leaders_topics(bot, settings, session_factory) -> dict:
                     row.value = json.dumps(data)
                     await session.commit()
                 if not data.get("pinned") and getattr(member, "can_pin_messages", False):
-                    await bot.pin_chat_message(chat_id, data["message_id"], disable_notification=True)
-                    data["pinned"] = True
-                    row.value = json.dumps(data)
-                    await session.commit()
+                    if await _try_pin_panel(bot, chat_id, data["message_id"]):
+                        data["pinned"] = True
+                        row.value = json.dumps(data)
+                        await session.commit()
                 result[key] = data
             return {"status": "ready", "chat_id": chat_id, "topics": result}
         except Exception as exc:
