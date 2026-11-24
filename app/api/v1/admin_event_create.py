@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 from typing import Any, Literal
 
 from aiogram import Bot
@@ -18,6 +18,7 @@ from app.database.models import Event, EventRegistration, User
 from app.services.audit_service import audit
 from app.services.authorization_service import can_manage_events
 from app.services.event_poster_security import normalized_event_poster_mime
+from app.services.event_topic_lifecycle import utc_aware
 from app.services.notification_service import broadcast_detailed
 from app.services.event_publication_service import public_event_keyboard, publish_event_announcement, record_announcement_status
 from app.services.general_topics_service import send_general_topic
@@ -176,6 +177,7 @@ class EventDraftPatch(BaseModel):
     registration_required: bool | None = None
     participant_limit: int | None = Field(default=None, ge=1, le=5000)
     registration_close_at: datetime | None = None
+    topic_close_at: datetime | None = None
     waitlist_enabled: bool | None = None
     registration_audience: str | None = Field(default=None, max_length=64)
 
@@ -218,6 +220,9 @@ class EventDraftOut(BaseModel):
     registration_required: bool
     participant_limit: int | None
     registration_close_at: str | None
+    topic_close_at: str | None = None
+    topic_closed_at: str | None = None
+    topic_close_state: str = "open"
     waitlist_enabled: bool
     registration_audience: str
     chat_url: str | None
@@ -287,6 +292,9 @@ async def _draft_out(session: AsyncSession, event: Event, experience: EventExper
         registration_required=experience.registration_required,
         participant_limit=event.participant_limit,
         registration_close_at=(experience.registration_close_at.isoformat() if experience.registration_close_at else None),
+        topic_close_at=(experience.topic_close_at.isoformat() if experience.topic_close_at else None),
+        topic_closed_at=(experience.topic_closed_at.isoformat() if experience.topic_closed_at else None),
+        topic_close_state=experience.topic_close_state or "open",
         waitlist_enabled=experience.waitlist_enabled,
         registration_audience=experience.registration_audience,
         chat_url=experience.chat_url,
@@ -428,7 +436,16 @@ async def save_event_draft_step(
     bot: Bot | None = Depends(get_bot),
 ) -> EventDraftOut:
     event = await _managed_event(session, event_id)
-    experience = await _experience(session, event)
+    # Serialize schedule edits with the topic-closing worker, and refresh any
+    # previously loaded experience before checking its current close state.
+    experience = await session.scalar(
+        select(EventExperience)
+        .where(EventExperience.event_id == event_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if experience is None:
+        experience = await _experience(session, event)
     was_public = event.status != EventStatus.DRAFT
     changes: list[str] = []
 
@@ -472,6 +489,18 @@ async def save_event_draft_step(
         event.participant_limit = payload.participant_limit
     if "registration_close_at" in payload.model_fields_set:
         experience.registration_close_at = payload.registration_close_at
+    if "topic_close_at" in payload.model_fields_set:
+        if payload.topic_close_at is not None:
+            closing_at = utc_aware(payload.topic_close_at)
+            if closing_at <= datetime.now(timezone.utc) and (
+                experience.topic_close_at is None or utc_aware(experience.topic_close_at) != closing_at
+            ):
+                raise HTTPException(status_code=422, detail="topic_close_time_must_be_future")
+            if experience.topic_close_state == "closed":
+                raise HTTPException(status_code=409, detail="topic_already_closed_reopen_first")
+            experience.topic_close_at = closing_at
+        else:
+            experience.topic_close_at = None
     if payload.waitlist_enabled is not None:
         experience.waitlist_enabled = payload.waitlist_enabled
     if payload.registration_audience is not None:
