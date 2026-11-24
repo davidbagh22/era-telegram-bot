@@ -61,6 +61,7 @@ async def update_topic_status(bot, settings, session, event_id: int, action: str
         return exp
     if action == "reopen" and exp.topic_close_state == "open":
         return exp
+    # Attention rows still need a real Telegram reopen/close against the owned thread.
     thread = await _managed_thread(session, settings, event_id)
     if bot is None:
         raise TopicActionError("bot_unavailable")
@@ -93,6 +94,33 @@ async def update_topic_status(bot, settings, session, event_id: int, action: str
     return exp
 
 
+# Permanent scheduler failures must leave the due-queue so later events still close.
+_PERMANENT_SCHEDULE_FAILURES = frozenset({
+    "event_forum_not_configured",
+    "event_topic_not_owned",
+    "event_topic_not_configured",
+    "event_not_found",
+})
+
+
+async def _mark_schedule_attention(session_factory, event_id: int, reason: str) -> None:
+    """Clear a permanently failing schedule so it cannot starve later due rows."""
+    async with session_factory() as session:
+        exp = await session.scalar(select(EventExperience).where(
+            EventExperience.event_id == event_id
+        ).with_for_update())
+        if exp is None or exp.topic_close_state != "open":
+            return
+        exp.topic_close_state = "attention"
+        exp.topic_close_at = None
+        await session.commit()
+        logger.warning(
+            "Event topic schedule moved to attention: event_id=%s reason=%s",
+            event_id,
+            reason,
+        )
+
+
 async def close_due_event_topics(bot, settings, session_factory) -> None:
     """One-minute recovery job: lock records; never close arbitrary forum topics."""
     if bot is None or not getattr(settings, "general_chat_id", None):
@@ -122,6 +150,8 @@ async def close_due_event_topics(bot, settings, session_factory) -> None:
                 # or close the shared "Мероприятия" topic instead.
                 logger.warning("Scheduled event topic closing not completed: event_id=%s reason=%s",
                                event_id, exc.code)
+                if exc.code in _PERMANENT_SCHEDULE_FAILURES:
+                    await _mark_schedule_attention(session_factory, event_id, exc.code)
             except Exception:
                 await session.rollback()
                 logger.exception("Scheduled event topic closing failed: event_id=%s", event_id)

@@ -100,3 +100,39 @@ class EventTopicLifecycleTests(IsolatedAsyncioTestCase):
         )
         self.assertEqual(exp.topic_close_state, "closed")
         update_session.commit.assert_awaited_once()
+
+    async def test_permanent_schedule_failure_moves_to_attention_and_clears_due(self):
+        """Broken targets leave the due queue so later events are not starved."""
+        old = datetime.now(timezone.utc) - timedelta(minutes=1)
+        exp = SimpleNamespace(topic_close_state="open", topic_close_at=old, topic_closed_at=None)
+        list_session = SimpleNamespace(
+            scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [42])),
+        )
+        failing_session = SimpleNamespace(
+            get=AsyncMock(return_value=SimpleNamespace(id=42)),
+            scalar=AsyncMock(side_effect=[
+                # due-worker lock, update_topic_status lock, owned-thread lookup
+                exp, exp, SimpleNamespace(value={"thread": 1}),
+            ]),
+            commit=AsyncMock(), rollback=AsyncMock(),
+        )
+        attention_session = SimpleNamespace(
+            scalar=AsyncMock(return_value=exp),
+            commit=AsyncMock(), rollback=AsyncMock(),
+        )
+
+        class Context:
+            def __init__(self, value):
+                self.value = value
+            async def __aenter__(self):
+                return self.value
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        sessions = iter([list_session, failing_session, attention_session])
+        factory = lambda: Context(next(sessions))
+        await topics.close_due_event_topics(self.bot, self.settings, factory)
+        self.bot.close_forum_topic.assert_not_awaited()
+        self.assertEqual(exp.topic_close_state, "attention")
+        self.assertIsNone(exp.topic_close_at)
+        attention_session.commit.assert_awaited_once()

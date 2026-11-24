@@ -68,8 +68,12 @@ function taskDeadlineIso(value: string): string {
   return Number.isNaN(instant.getTime()) ? value : instant.toISOString();
 }
 
-function patchFromDraft(draft: AdminEventDraft, wizardStep = draft.wizard_step): AdminEventDraftPatch {
-  return {
+function patchFromDraft(
+  draft: AdminEventDraft,
+  wizardStep = draft.wizard_step,
+  baseline: AdminEventDraft | null = null,
+): AdminEventDraftPatch {
+  const patch: AdminEventDraftPatch = {
     issue_certificate: draft.issue_certificate,
     wizard_step: wizardStep,
     creation_mode: draft.creation_mode,
@@ -87,7 +91,6 @@ function patchFromDraft(draft: AdminEventDraft, wizardStep = draft.wizard_step):
     registration_required: draft.registration_required,
     participant_limit: draft.participant_limit,
     registration_close_at: draft.registration_close_at,
-    topic_close_at: draft.topic_close_at,
     waitlist_enabled: draft.waitlist_enabled,
     registration_audience: draft.registration_audience,
     chat_url: draft.chat_url,
@@ -102,6 +105,12 @@ function patchFromDraft(draft: AdminEventDraft, wizardStep = draft.wizard_step):
     broadcast_enabled: draft.broadcast_enabled,
     broadcast_targets: draft.broadcast_targets,
   };
+  // Only resubmit the schedule when the Yerevan-local input actually changed.
+  // An unchanged expired deadline must not block wizard next/back navigation.
+  if (!baseline || topicCloseInput(draft.topic_close_at) !== topicCloseInput(baseline.topic_close_at)) {
+    patch.topic_close_at = draft.topic_close_at ? topicCloseInput(draft.topic_close_at) || null : null;
+  }
+  return patch;
 }
 
 function StepHeader({ step }: { step: number }) {
@@ -130,6 +139,7 @@ export function AdminEventCreatePanel() {
   const [posterUrl, setPosterUrl] = useState<string | null>(null);
   const [posterRevision, setPosterRevision] = useState(0);
   const versionRef = useRef(0);
+  const baselineRef = useRef<AdminEventDraft | null>(null);
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
   const projectsState = useAsync(() => fetchProjects("open"), []);
 
@@ -195,10 +205,11 @@ export function AdminEventCreatePanel() {
     setError(null);
     try {
       const pending = saveQueue.current.catch(() => undefined).then(() =>
-        saveEventDraft(draft.id, patchFromDraft(draft, targetStep ?? draft.wizard_step)));
+        saveEventDraft(draft.id, patchFromDraft(draft, targetStep ?? draft.wizard_step, baselineRef.current)));
       saveQueue.current = pending;
       const result = await pending;
       if (capturedVersion === versionRef.current) {
+        baselineRef.current = result;
         setDraft(result);
         setDirty(false);
         setSaveLabel("Сохранено ✓");
@@ -224,6 +235,7 @@ export function AdminEventCreatePanel() {
     setError(null);
     try {
       const item = await createEventDraft(mode);
+      baselineRef.current = item;
       setDraft(item);
       setSaveLabel("Черновик создан ✓");
     } catch (reason) {
@@ -269,6 +281,7 @@ export function AdminEventCreatePanel() {
         setError("Пока загружался список черновиков, появились новые изменения. Проверьте их и повторите выход.");
         return;
       }
+      baselineRef.current = null;
       setDraft(null);
       setError(null);
     } catch (reason) {
@@ -337,7 +350,7 @@ export function AdminEventCreatePanel() {
             <h3 style={{ margin: "0 0 .55rem" }}>Продолжить создание</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
               {(drafts ?? []).map((item) => (
-                <button key={item.id} type="button" onClick={() => { setDraft(item); setSaveLabel("Черновик восстановлен ✓"); }} style={{ textAlign: "left", padding: ".85rem" }}>
+                <button key={item.id} type="button" onClick={() => { baselineRef.current = item; setDraft(item); setSaveLabel("Черновик восстановлен ✓"); }} style={{ textAlign: "left", padding: ".85rem" }}>
                   <strong>{item.title || "Новое мероприятие"}</strong>
                   <span style={{ display: "block", marginTop: 3, color: "var(--era-text-muted)", fontSize: ".8rem" }}>{item.creation_mode === "quick" ? "Быстрый ввод · текст и фото" : `Шаг ${item.wizard_step} из 10 · ${STEP_TITLES[item.wizard_step - 1]}`}</span>
                 </button>
