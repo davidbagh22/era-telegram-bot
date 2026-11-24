@@ -112,13 +112,98 @@ def text_for_day(day: str, kind: str) -> str:
 # A future audited approval workflow may populate exact (day, target, text SHA-256)
 # tuples only after the responsible human approves that specific publication.
 APPROVED_CHANNEL_PUBLICATIONS: frozenset[tuple[str, str, str]] = frozenset()
+CHANNEL_APPROVALS_SETTING_KEY = "era_daily_channel_approvals"
+
+
+def _publication_digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _has_explicit_channel_approval(day: str, target: int | str | None, text: str) -> bool:
     if target is None:
         return False
-    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    digest = _publication_digest(text)
     return (day, str(target), digest) in APPROVED_CHANNEL_PUBLICATIONS
+
+
+async def _stored_channel_approvals(session) -> frozenset[tuple[str, str, str]]:
+    """Durable exact approvals recorded by an authorized admin."""
+    from sqlalchemy import select
+    from app.database.models import AppSetting
+
+    row = await session.scalar(
+        select(AppSetting).where(AppSetting.key == CHANNEL_APPROVALS_SETTING_KEY)
+    )
+    if row is None or not isinstance(row.value, list):
+        return frozenset()
+    out: set[tuple[str, str, str]] = set()
+    for item in row.value:
+        if not isinstance(item, dict):
+            continue
+        day = item.get("day")
+        target = item.get("target")
+        digest = item.get("digest")
+        if (
+            isinstance(day, str)
+            and isinstance(target, str)
+            and isinstance(digest, str)
+            and len(digest) == 64
+            and all(c in "0123456789abcdef" for c in digest)
+        ):
+            out.add((day, target, digest))
+    return frozenset(out)
+
+
+async def has_channel_publication_approval(
+    session, day: str, target: int | str | None, text: str
+) -> bool:
+    """True only for exact (day, target, text SHA-256) approvals."""
+    if target is None:
+        return False
+    digest = _publication_digest(text)
+    key = (day, str(target), digest)
+    if key in APPROVED_CHANNEL_PUBLICATIONS:
+        return True
+    if session is None:
+        return False
+    return key in await _stored_channel_approvals(session)
+
+
+async def approve_channel_publication(
+    session, *, day: str, target: str, text: str, actor_id: int | None
+) -> tuple[str, bool]:
+    """Record an exact approval. Returns (digest, already_present)."""
+    from sqlalchemy import select
+    from app.database.models import AppSetting
+
+    digest = _publication_digest(text)
+    key = {"day": day, "target": str(target), "digest": digest}
+    row = await session.scalar(
+        select(AppSetting).where(AppSetting.key == CHANNEL_APPROVALS_SETTING_KEY)
+    )
+    items = list(row.value) if row is not None and isinstance(row.value, list) else []
+    for item in items:
+        if (
+            isinstance(item, dict)
+            and item.get("day") == key["day"]
+            and item.get("target") == key["target"]
+            and item.get("digest") == key["digest"]
+        ):
+            return digest, True
+    items.append(key)
+    if row is None:
+        session.add(
+            AppSetting(
+                key=CHANNEL_APPROVALS_SETTING_KEY,
+                value=items,
+                updated_by=actor_id,
+            )
+        )
+    else:
+        row.value = items
+        row.updated_by = actor_id
+    await session.flush()
+    return digest, False
 
 
 def _channel_target(settings: Settings) -> int | str | None:
@@ -229,7 +314,17 @@ async def run_daily_public_content(bot: Bot, settings: Settings, session_factory
         # No implicit consent from a recurring schedule or a previously sent day.
         # The empty default allowlist prevents unapproved future publications.
         content = text_for_day(day, kind)
-        if not _has_explicit_channel_approval(day, target, content):
+        approved = False
+        if session_factory is not None:
+            async with session_factory() as session:
+                approved = await has_channel_publication_approval(
+                    session, day, target, content
+                )
+        else:
+            approved = await has_channel_publication_approval(
+                None, day, target, content
+            )
+        if not approved:
             continue
         await _deliver_once(
             bot,
