@@ -13,6 +13,7 @@ from app.database.models import (
     PortfolioItem,
     Project,
     Task,
+    TaskSubmission,
     User,
 )
 from app.database.development_models import UserVectorProfile
@@ -78,6 +79,104 @@ class HomeServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(snapshot.active_task)
             self.assertEqual(snapshot.active_task.id, task.id)
             self.assertIsNone(snapshot.nearest_event)
+
+    async def test_returned_task_surfaces_as_now_block(self) -> None:
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            task = Task(
+                title="Fix poster",
+                description="d",
+                assignee_id=user.id,
+                creator_id=user.id,
+                deadline=None,
+                points=40,
+                status=TaskStatus.IN_PROGRESS,
+            )
+            session.add(task)
+            await session.flush()
+            session.add(
+                TaskSubmission(
+                    task_id=task.id,
+                    user_id=user.id,
+                    text="draft",
+                    status="needs_revision",
+                    admin_comment="Add logo",
+                )
+            )
+            await session.flush()
+
+            snapshot = await build_home_snapshot(session, user)
+
+            self.assertEqual(snapshot.next_step.kind, "task")
+            self.assertEqual(snapshot.next_step.entity_id, task.id)
+            self.assertTrue(snapshot.next_step.title.startswith("Доработать:"))
+            self.assertIn("замечан", snapshot.next_step.description.lower())
+
+    async def test_resubmitted_task_does_not_keep_revision_prompt(self) -> None:
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            other = Task(
+                title="Dated work",
+                description="d",
+                assignee_id=user.id,
+                creator_id=user.id,
+                deadline=datetime.now(timezone.utc) + timedelta(days=2),
+                points=10,
+                status=TaskStatus.IN_PROGRESS,
+            )
+            task = Task(
+                title="Fix poster",
+                description="d",
+                assignee_id=user.id,
+                creator_id=user.id,
+                deadline=None,
+                points=40,
+                status=TaskStatus.IN_PROGRESS,
+            )
+            session.add_all([other, task])
+            await session.flush()
+            session.add(
+                TaskSubmission(
+                    task_id=task.id,
+                    user_id=user.id,
+                    text="draft",
+                    status="needs_revision",
+                    admin_comment="Add logo",
+                )
+            )
+            await session.flush()
+            session.add(
+                TaskSubmission(
+                    task_id=task.id,
+                    user_id=user.id,
+                    text="fixed",
+                    status="pending",
+                )
+            )
+            await session.flush()
+
+            snapshot = await build_home_snapshot(session, user)
+
+            self.assertEqual(snapshot.next_step.kind, "task")
+            self.assertEqual(snapshot.next_step.entity_id, other.id)
+            self.assertFalse(snapshot.next_step.title.startswith("Доработать:"))
+
+    async def test_undated_task_copy_avoids_deadline_wording(self) -> None:
+        async with self.session_factory() as session:
+            user = await self._make_user(session)
+            task = Task(
+                title="Activity photo",
+                description="d",
+                assignee_id=user.id,
+                creator_id=user.id,
+                deadline=None,
+                points=40,
+                status=TaskStatus.IN_PROGRESS,
+            )
+            session.add(task)
+            await session.flush()
+            snapshot = await build_home_snapshot(session, user)
+            self.assertIn("Без жёсткого срока", snapshot.next_step.description)
 
     async def test_nearest_registered_event_when_no_active_task(self) -> None:
         async with self.session_factory() as session:
