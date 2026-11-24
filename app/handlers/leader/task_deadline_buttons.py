@@ -27,6 +27,7 @@ DEADLINE_PARSE_ERROR = """Не получилось распознать дед�
 def _deadline_day_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="♾ Без срока", callback_data="task:deadline:none")],
             [
                 InlineKeyboardButton(text="⚡ Сегодня", callback_data="task:deadline:day:0"),
                 InlineKeyboardButton(text="🌅 Завтра", callback_data="task:deadline:day:1"),
@@ -89,7 +90,25 @@ async def task_description_with_deadline_buttons(
         return
     await state.update_data(task_description=value)
     await state.set_state(TaskStates.deadline)
-    await message.answer("Выберите дедлайн задачи:", reply_markup=_deadline_day_keyboard())
+    await message.answer(
+        "Срок задачи?\n\nДля задач на активность обычно выбирают «Без срока».",
+        reply_markup=_deadline_day_keyboard(),
+    )
+
+
+@router.callback_query(TaskStates.deadline, F.data == "task:deadline:none")
+async def task_deadline_none(call: CallbackQuery, state: FSMContext) -> None:
+    await call.answer()
+    await state.update_data(
+        task_deadline=None,
+        task_deadline_candidate=None,
+        task_deadline_date=None,
+        task_deadline_manual_mode=None,
+    )
+    await state.set_state(TaskStates.points)
+    await call.message.answer(
+        "Срок не задан.\n\nУкажите количество баллов после подтверждения задачи."
+    )
 
 
 @router.callback_query(TaskStates.deadline, F.data.startswith("task:deadline:day:"))
@@ -155,7 +174,10 @@ async def task_deadline_restart(call: CallbackQuery, state: FSMContext) -> None:
         task_deadline_candidate=None,
         task_deadline_manual_mode=None,
     )
-    await call.message.answer("Выберите дедлайн задачи:", reply_markup=_deadline_day_keyboard())
+    await call.message.answer(
+        "Срок задачи?\n\nДля задач на активность обычно выбирают «Без срока».",
+        reply_markup=_deadline_day_keyboard(),
+    )
 
 
 @router.callback_query(TaskStates.deadline, F.data == "task:deadline:confirm")
@@ -164,7 +186,10 @@ async def task_deadline_confirm(call: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     raw_deadline = data.get("task_deadline_candidate")
     if not raw_deadline:
-        await call.message.answer("Сначала выберите дату и время дедлайна.", reply_markup=_deadline_day_keyboard())
+        await call.message.answer(
+            "Сначала выберите срок или «Без срока».",
+            reply_markup=_deadline_day_keyboard(),
+        )
         return
     await state.update_data(task_deadline=raw_deadline)
     await state.set_state(TaskStates.points)
