@@ -92,10 +92,10 @@
 | A05 | Buttons, typography and logo | В РАЗРАБОТКЕ | Mobile visual review against agreed design |
 | A06 | iPhone and Android Mini App | В РАЗРАБОТКЕ | #620 iOS ICS calendar import, real Telegram iPhone/Android clients, not only Playwright |
 | B01 | Event create/publish/edit | ВЫПУЩЕНО | #620 calendar export UX; real authorized scenario, no test announcement |
-| B02 | Edit published event poster | В РАЗРАБОТКЕ | Wizard supports poster changes; published entry flow unconfirmed |
-| B03 | Hide/remove events from general poster listing | В РАЗРАБОТКЕ | Draft #589 exists; high-risk visibility policy, PostgreSQL and human acceptance not confirmed; do not release |
-| B04 | Publication latency and duplicate prevention | В РАЗРАБОТКЕ | #447 shipped; legacy #467/#491, uncertain receipts |
-| B05 | Registration, waitlist, capacity and deadlines | IN PROGRESS | Capacity #663, commit-before-notice #507, and policy parity #514 are deployed. Durable recovery #497/#666 shipped. Waitlist UX clarity on `cursor/events-ux-waitlist-clarity-37e0` (bot afisha status/leave + native cancel promote + Mini App dock copy). Waitlist scoring #513 and real Telegram acceptance remain. |
+| B02 | Edit published event poster | ВЫПУЩЕНО | #587 published poster editor from admin participants panel; real admin acceptance open |
+| B03 | Hide/remove events from general poster listing | ВЫПУЩЕНО | #589 public listing visibility + hide; device/admin acceptance still open |
+| B04 | Publication latency and duplicate prevention | ВЫПУЩЕНО | #447 + #467 durable legacy broadcast + #491 incomplete receipts; uncertain receipts stay manual |
+| B05 | Registration, waitlist, capacity and deadlines | IN PROGRESS | Capacity #663, commit-before-notice #507, policy parity #514, waitlist UX #704 deployed. Real Telegram acceptance and any remaining scoring policy remain. |
 | B06 | QR attendance | ВЫПУЩЕНО | Real scoped confirmation and repeated-scan acceptance |
 | B07 | Event points | ВЫПУЩЕНО | Actual attendance-to-ledger evidence, no test balance edits |
 | B08 | Actual production event list | В РАЗРАБОТКЕ | Authenticated read unavailable; do not invent the list |
@@ -121,7 +121,7 @@
 | E08 | My Vector | В РАЗРАБОТКЕ | Methods/check-ins/goals/history/privacy and earlier backlog |
 | E09 | Daily quotes | В РАЗРАБОТКЕ | Historical Nov 1–2 channel posts and Mini App quote API are evidenced, but future channel publications now require explicit approval for the exact text/day/target; approval UI and real authorized workflow are pending. No unapproved auto-posts permitted. |
 | E10 | Broadcasts and notifications | В РАЗРАБОТКЕ | #491 incomplete receipts; no uncertain replay |
-| E11 | Security and data protection | IN PROGRESS | Webhook #662 + admin boundary #542 + #691 CANCELLED detail/poster privacy shipped; follow-up `cursor/security-ecc-hardening-bd19` closes register/cancel/activities existence oracles. Anniversary/referral/portfolio downloads reviewed OK. |
+| E11 | Security and data protection | IN PROGRESS | Webhook #662 + admin boundary #542 + #691/#705 CANCELLED existence oracles shipped. Feedback forged-callback eligibility (#585) in flight. Anniversary/referral/portfolio downloads reviewed OK. |
 | E12 | Backup and restore | ПРОВЕРЕНО | 2026-11-02 scheduled backup run 41407674271 SUCCESS: real production OIDC snapshot, isolated PostgreSQL 18 restore and migrations, encrypted/checksum round-trip, stored private artifact 13123694669 (expires 2026-11-09). External S3 copy optional and not configured; retention improvement remains advisable. |
 | E13 | Legal/content organizational acceptance | В РАЗРАБОТКЕ | Draft #364 requires responsible human approval |
 | E14 | Final multi-role production acceptance | НЕ НАЧАТО | All required scenarios, no known blockers, observation |
@@ -160,7 +160,7 @@
 Один существенный суточный отчёт 09:00–19:00 Asia/Yerevan; вне окна только критический блокер. Последняя подтверждённая реальная приёмка: 3/40. CI и LIVE не равны приёмке. Не создавать отдельный PR только для отчёта.
 
 ## Owner addition — anniversary RSVP (2026-11-13)
-- New mandatory requirement F01: direct bot guest registration for 12 December 2026, 17:30, cinema hall, name/surname/organization and private organizer list. IN PROGRESS; branch feat/anniversary-2026-rsvp.
-- Register denominator is now 41; prior evidenced acceptance remains 3/41 (7.3%). F01 needs exact production deployment and real guest/admin acceptance before VERIFIED.
+- New mandatory requirement F01: direct bot guest registration for 12 December 2026, 17:30, cinema hall, name/surname/organization and private organizer list. CODE COMPLETE via #670 (dormant campaign + Mini App RSVP); runtime switch OFF until owner activation.
+- Register denominator is now 41; prior evidenced acceptance remains 3/41 (7.3%). F01 needs owner activation + real guest/admin acceptance before VERIFIED.
 
-- #669 anniversary publication: IN PROGRESS. Exact-date channel/topic campaign, original poster, guest CTA and single-roster guard implemented. Runtime switch defaults off; publication requires verified release and actual event/receipt evidence in #669.
+- #669/#670 anniversary publication: CODE COMPLETE / DEPLOYED dormant. Exact-date channel/topic campaign, original poster, guest CTA and single-roster guard on main; runtime switch defaults off until verified activation.

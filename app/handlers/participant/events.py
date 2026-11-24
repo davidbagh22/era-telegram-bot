@@ -4,6 +4,7 @@ from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -25,6 +26,10 @@ from app.utils.validators import clean_text
 
 router = Router(name="events_supplemental")
 
+_FEEDBACK_INELIGIBLE = (
+    "Отзыв доступен после подтверждённого участия в этом мероприятии."
+)
+
 
 def _approved(user: User | None) -> bool:
     return bool(
@@ -33,6 +38,20 @@ def _approved(user: User | None) -> bool:
         and not user.is_blocked
         and not user.is_archived
     )
+
+
+async def _has_approved_attendance_proof(
+    session: AsyncSession, *, event_id: int, user_id: int
+) -> bool:
+    """Feedback CTA is issued only after attendance-proof approval."""
+    proof = await session.scalar(
+        select(AttendanceProof.id).where(
+            AttendanceProof.event_id == event_id,
+            AttendanceProof.user_id == user_id,
+            AttendanceProof.status == "approved",
+        )
+    )
+    return proof is not None
 
 
 def _activity_expired(deadline: datetime | None) -> bool:
@@ -187,7 +206,10 @@ async def selfie_not_photo(
 
 @router.callback_query(F.data.startswith("feedback:start:"))
 async def feedback_start(
-    call: CallbackQuery, state: FSMContext, user: User | None
+    call: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    user: User | None,
 ) -> None:
     await call.answer()
     if not _approved(user):
@@ -196,6 +218,13 @@ async def feedback_start(
     event_id = positive_pg_int_callback(call.data, "feedback:start:")
     if event_id is None:
         await call.message.answer("Мероприятие не найдено. Откройте отзыв заново.")
+        return
+    # Forged/stale buttons must not open feedback for unrelated event ids.
+    if not await _has_approved_attendance_proof(
+        session, event_id=event_id, user_id=user.id
+    ):
+        await state.clear()
+        await call.message.answer(_FEEDBACK_INELIGIBLE)
         return
     await state.set_state(FeedbackStates.rating)
     await state.update_data(feedback_event_id=event_id)
@@ -300,6 +329,13 @@ async def feedback_finish(
         await state.clear()
         await call.message.answer("Отзыв устарел. Откройте мероприятие и начните заново.")
         return
+    # Re-check eligibility at submit time; do not trust FSM alone.
+    if not await _has_approved_attendance_proof(
+        session, event_id=event_id, user_id=user.id
+    ):
+        await state.clear()
+        await call.message.answer(_FEEDBACK_INELIGIBLE)
+        return
     existing = await session.scalar(
         select(Feedback).where(
             Feedback.event_id == event_id, Feedback.user_id == user.id
@@ -315,7 +351,25 @@ async def feedback_finish(
         for key, value in values.items():
             setattr(existing, key, value)
     else:
-        session.add(Feedback(event_id=event_id, user_id=user.id, **values))
+        try:
+            async with session.begin_nested():
+                session.add(Feedback(event_id=event_id, user_id=user.id, **values))
+                await session.flush()
+        except IntegrityError:
+            # Concurrent first submissions share the unique (event_id, user_id).
+            raced = await session.scalar(
+                select(Feedback).where(
+                    Feedback.event_id == event_id, Feedback.user_id == user.id
+                )
+            )
+            if raced is None:
+                await state.clear()
+                await call.message.answer(
+                    "Не удалось сохранить отзыв. Откройте мероприятие и попробуйте снова."
+                )
+                return
+            for key, value in values.items():
+                setattr(raced, key, value)
     await state.clear()
     await call.message.answer(texts.FEEDBACK_DONE)
 
