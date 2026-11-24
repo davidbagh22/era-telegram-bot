@@ -36,6 +36,11 @@ class EventExperience(Base):
     # Separate link for a partner's own registration; never mistaken for ERA RSVP.
     registration_url: Mapped[str | None] = mapped_column(String(500))
 
+    # Telegram forum topic lifecycle (independent of registration deadline).
+    topic_close_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    topic_closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    topic_close_state: Mapped[str] = mapped_column(String(24), default="open", server_default="open")
+
     registration_required: Mapped[bool] = mapped_column(Boolean, default=True)
     registration_close_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     waitlist_enabled: Mapped[bool] = mapped_column(Boolean, default=False)

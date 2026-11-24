@@ -84,6 +84,7 @@ class EventOut(BaseModel):
     waitlist_enabled: bool = False
     registration_required: bool = True
     registration_close_at: str | None = None
+    registration_url: str | None = None
     can_register: bool = False
     program: list[dict[str, Any]]
     participant_tasks: list[dict[str, Any]]

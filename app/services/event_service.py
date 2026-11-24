@@ -182,6 +182,8 @@ async def promote_waitlist(session: AsyncSession, event: Event) -> EventRegistra
     if locked_event is None or locked_event.participant_limit is None:
         return None
     event = locked_event
+    if anniversary.is_public_anniversary(event):
+        return None
     if int(await available_places(session, event)) <= 0:
         return None
     waiting = await session.scalar(

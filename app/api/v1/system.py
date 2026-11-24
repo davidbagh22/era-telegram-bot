@@ -284,3 +284,62 @@ async def report_backup(
         },
     )
     return {"ok": True, "backup_key": payload.backup_key, "status": payload.status}
+
+
+# Narrow release-gated operator action for the explicit owner request #669.
+# A separate scoped secret grants no user/guest/DB access and is disabled by default.
+async def require_anniversary_operator(
+    authorization: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    import hmac
+    expected = settings.anniversary_2026_activation_token
+    supplied = (authorization or "").removeprefix("Bearer ")
+    if len(expected) < 32 or not hmac.compare_digest(supplied, expected):
+        raise HTTPException(status_code=401, detail="anniversary_operator_required")
+
+
+class AnniversaryActivationIn(BaseModel):
+    release_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
+
+
+@router.get("/internal/anniversary2026/status")
+async def anniversary_publication_status(
+    request: Request,
+    _operator: None = Depends(require_anniversary_operator),
+) -> dict:
+    from app.services.anniversary_campaign_service import campaign_snapshot
+    return await campaign_snapshot(request.app.state.session_factory)
+
+
+@router.post("/internal/anniversary2026/activate")
+async def activate_anniversary_publication(
+    payload: AnniversaryActivationIn,
+    request: Request,
+    _operator: None = Depends(require_anniversary_operator),
+    settings: Settings = Depends(get_settings),
+    bot: Bot | None = Depends(get_bot),
+) -> dict:
+    from app.database.models import AppSetting
+    from app.services.anniversary_campaign_service import ACTIVE_KEY, STOP, TZ, prepare_campaign, campaign_snapshot
+    if bot is None or payload.release_sha != current_commit_sha():
+        raise HTTPException(status_code=409, detail="anniversary_release_mismatch")
+    if datetime.now(TZ) >= STOP:
+        raise HTTPException(status_code=409, detail="anniversary_campaign_expired")
+    factory = request.app.state.session_factory
+    try:
+        await prepare_campaign(bot, settings, factory)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    async with factory() as session:
+        # Serialize repeated operator calls using the same lock as preparation.
+        if session.bind.dialect.name == "postgresql":
+            from sqlalchemy import text
+            await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": 66920261212})
+        row = await session.scalar(select(AppSetting).where(AppSetting.key == ACTIVE_KEY))
+        if row is None:
+            session.add(AppSetting(key=ACTIVE_KEY, value={"mode": "publish", "release_sha": payload.release_sha,
+                                                        "activated_at": datetime.now(TZ).isoformat()}))
+        await session.commit()
+    # The existing scheduler owns delivery; no HTTP timeout can cause a replay.
+    return await campaign_snapshot(factory)
