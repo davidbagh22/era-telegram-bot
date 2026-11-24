@@ -57,7 +57,6 @@ export interface EventItem {
   waitlist_enabled: boolean;
   registration_required: boolean;
   registration_close_at: string | null;
-  registration_url?: string | null;
   can_register: boolean;
   program: EventProgramItem[];
   participant_tasks: EventParticipantTask[];

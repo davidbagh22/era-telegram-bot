@@ -18,7 +18,7 @@ from app.services.event_registration_notice_service import (
     enqueue_registration_notice,
 )
 from app.services.event_registration_policy import registration_is_closed
-from app.services.notification_service import safe_answer_document, safe_answer_photo
+from app.services.notification_service import safe_answer_document
 from app.services.event_registration_service import registration_stats
 from app.services.event_service import (
     PUBLIC_EVENT_STATUSES,
