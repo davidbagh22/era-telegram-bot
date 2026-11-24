@@ -17,6 +17,13 @@ class EventActivitiesBlock15Tests(unittest.TestCase):
         self.assertIn('submission.status = "pending"', source)
         self.assertIn("notify_admins", source)
         self.assertIn("safe_send_video", source)
+        # #529: durable commit must precede admin Telegram notice.
+        self.assertIn("await _commit_submission(session)", source)
+        flush_idx = source.find("await session.flush()")
+        commit_idx = source.find("await _commit_submission(session)")
+        notify_idx = source.find("await _notify_proof(")
+        self.assertGreater(commit_idx, flush_idx)
+        self.assertGreater(notify_idx, commit_idx)
 
     def test_admin_review_uses_canonical_verified_scoring_gateway(self) -> None:
         source = Path("app/handlers/admin/event_activities_block7.py").read_text(encoding="utf-8")

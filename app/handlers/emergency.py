@@ -246,6 +246,8 @@ async def _try_start_activity_submission_from_deep_link(
     if proof_type == "manual":
         submission = await event_activity_service.submit_manual(session, activity, user)
         event = await session.get(Event, activity.event_id)
+        # Commit before Telegram I/O so a notice never outruns a durable row (#529).
+        await session.commit()
         await notify_activity_proof(bot, settings, submission, activity, event, user)
         await message.answer("Заявка отправлена на проверку.")
         return True
