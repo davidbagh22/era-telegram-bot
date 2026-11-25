@@ -22,6 +22,7 @@ from app.services.event_custom_reminder_service import send_configured_event_rem
 from app.services.event_topic_lifecycle import close_due_event_topics
 from app.services.certificate_service import deliver_requested_certificates
 from app.services.event_publication_service import deliver_pending_event_announcements
+from app.services.google_calendar_sync_service import process_pending_calendar_syncs
 from app.services.event_registration_notice_service import recover_event_registration_notices
 from app.services.event_wizard_sync_service import sync_event_wizard_tasks_job
 from app.services.leadership_weekly_service import check_weekly_pulses_job, open_weekly_pulses_job
@@ -106,6 +107,8 @@ def add_system_jobs(
     scheduler.add_job(deliver_attendance_notifications, "interval", minutes=1, args=(bot, settings, session_factory), id="event-lifecycle-notifications", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(deliver_requested_certificates, "interval", minutes=1, args=(bot, settings, session_factory), id="event-certificates", max_instances=1, coalesce=True, replace_existing=True)
     scheduler.add_job(deliver_pending_event_announcements, "interval", minutes=1, args=(bot, settings, session_factory), id="event-announcement-recovery", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
+    # #664 OFF until credentials exist; pending AppSetting rows wait safely.
+    scheduler.add_job(process_pending_calendar_syncs, "interval", minutes=2, args=(settings, session_factory), id="google-calendar-sync", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(
         recover_event_registration_notices, "interval", minutes=1, args=(bot, settings, session_factory),
         id="event-registration-notice-recovery", replace_existing=True, max_instances=1, coalesce=True,

@@ -171,6 +171,26 @@ class MediaWorkspaceTests(IsolatedAsyncioTestCase):
             with self.assertRaises(PermissionError):
                 await workspace.update_entry(session, leader, settings, "era", item.id, {"status": "ready"}, 0)
 
+    async def test_582_shared_read_matrix_cross_area_and_unknown_area(self):
+        """#582 owner-approved: hub members read ERA+KSOORS; writes stay area-scoped."""
+        async with self.factory() as session:
+            settings, _, leader, member, outsider, _ = await self.seed(session)
+            await self.create(session, leader, settings, "era", "era-item")
+            await self.create(session, leader, settings, "ksoors", "ksoors-item")
+            # Shared read: member may open both areas (area arg validated).
+            await workspace.require_access(session, member, settings, area="era")
+            await workspace.require_access(session, member, settings, area="ksoors")
+            self.assertEqual(len(await workspace.calendar(session, "era")), 1)
+            self.assertEqual(len(await workspace.calendar(session, "ksoors")), 1)
+            # Unknown area fails closed even for managers.
+            with self.assertRaises(PermissionError):
+                await workspace.require_access(session, leader, settings, area="other")
+            # Outsider still denied; member still cannot write either area.
+            with self.assertRaises(PermissionError):
+                await workspace.require_access(session, outsider, settings, area="era")
+            with self.assertRaises(PermissionError):
+                await workspace.require_access(session, member, settings, write=True, area="ksoors")
+
     async def test_publication_requires_approval_valid_link_and_audit_revision(self):
         async with self.factory() as session:
             settings, _, leader, _, _, _ = await self.seed(session)

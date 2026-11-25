@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     render_git_commit: str = ""
     anniversary_2026_campaign: str = "off"
     anniversary_2026_activation_token: str = ""
+    # #664 Google Calendar — OFF until Render holds a writer service account.
+    google_calendar_sync_enabled: bool = False
+    google_calendar_id: str = ""
+    google_calendar_service_account_json: str = ""
     dev_auth_enabled: bool = False
     init_data_max_age_seconds: int = 3600
     miniapp_url: str = ""

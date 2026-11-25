@@ -27,8 +27,16 @@ TELEGRAM_RESERVED_PATHS = {"joinchat", "share", "boost", "addstickers", "addemoj
 
 
 async def require_access(session, user, settings, *, write=False, area=None):
+    """Media calendar access (#582 owner-approved matrix).
+
+    Read: any approved media-hub member may read both ERA and KSOORS calendars
+    (shared-read). Write: area-scoped via can_edit_calendar (manager or editor).
+    Anonymous / non-hub / blocked paths fail closed. Unknown area fails closed.
+    """
     # A missing identity must fail closed before any row locks or DB reads.
     if user is None:
+        raise PermissionError("Доступ к календарю медиаотдела закрыт. Проверьте полномочия и обновите страницу.")
+    if area is not None and area not in AREAS:
         raise PermissionError("Доступ к календарю медиаотдела закрыт. Проверьте полномочия и обновите страницу.")
     if write:
         # Match membership/assignment's User -> Direction ordering. NO KEY

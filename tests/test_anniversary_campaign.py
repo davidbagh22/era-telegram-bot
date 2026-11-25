@@ -166,3 +166,26 @@ class CampaignTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.bot.send_photo.await_count, 2)
         snapshot = await campaign.campaign_snapshot(self.factory)
         self.assertTrue(all(':initial' in r['key'] for r in snapshot['receipts']))
+        self.assertEqual((snapshot.get('active') or {}).get('mode'), 'publish')
+
+    async def test_owner_render_activate_writes_active_key_once(self):
+        self.settings.anniversary_2026_campaign = 'off'
+        sha = 'ab' * 20
+        with patch.dict('os.environ', {'RENDER': 'true', 'RENDER_GIT_COMMIT': sha}, clear=False), \
+             patch.object(notification_service, '_session_factory', return_value=self.factory):
+            await campaign.run_campaign(self.bot, self.settings, self.factory, now=datetime.now(campaign.TZ))
+            await campaign.run_campaign(self.bot, self.settings, self.factory, now=datetime.now(campaign.TZ))
+        snapshot = await campaign.campaign_snapshot(self.factory)
+        self.assertTrue(snapshot['prepared'])
+        self.assertEqual(snapshot['active']['mode'], 'publish')
+        self.assertEqual(snapshot['active']['release_sha'], sha)
+        # Initial channel + announcements only once despite two scheduler ticks.
+        self.assertEqual(self.bot.send_photo.await_count, 2)
+
+    async def test_owner_render_activate_skipped_without_render(self):
+        self.settings.anniversary_2026_campaign = 'off'
+        with patch.dict('os.environ', {'RENDER': '', 'RENDER_SERVICE_ID': ''}, clear=False):
+            await campaign.run_campaign(self.bot, self.settings, self.factory, now=datetime.now(campaign.TZ))
+        snapshot = await campaign.campaign_snapshot(self.factory)
+        self.assertFalse(snapshot.get('prepared'))
+        self.bot.send_photo.assert_not_awaited()

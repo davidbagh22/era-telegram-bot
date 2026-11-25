@@ -1,7 +1,8 @@
 # ERA bot and Mini App handoff
 
-- 24 November ship wave: #725 feedback eligibility LIVE (`f61a6ce`); #726 activity proof commit-before-notice on main (`632841c`) — await Render LIVE.
-- Open PR: #727 waitlist digital points only after confirmed seat (#513). Campaign and media DM stay OFF. Device VERIFIED / E14 owner-only. #364 legal; #580 stale docs.
-- Already fixed on main (issues may still be open): #516 waitlist promote, #509 native register parity, #577 topic claim, #581 wizard lock, #585 feedback, #529 proof notice order.
-- Credential/policy blockers: #582 ERA/KSOORS read scope, #664 Google Calendar adapter, #616 expert platform, E09 channel approval UI (empty allowlist).
-- Event management: published cards open a role-gated details editor. Home orbit opens assessments.
+- LIVE tip before this wave: `2d20fe7` (#728 E09 channel approval). Activation wave on `cursor/activation-wave-37e0`.
+- #669 anniversary: owner-authorized Render auto-activate (`OWNER_RENDER_ACTIVATE`) writes `ACTIVE_KEY` on first scheduler tick after deploy; also `/activate_anniversary2026` + `/anniversary2026_status` for full admins. Past reminder slots skipped; initial + future dates send once.
+- #664 Google Calendar adapter: CODE COMPLETE, default OFF (`GOOGLE_CALENDAR_SYNC_ENABLED`). Needs Render service-account writer + calendar id; no invites. Payload-only #665 remains.
+- #582 ERA/KSOORS: owner-approved shared-read for media-hub members; writes stay area-scoped. Documented + regression tests.
+- Still blocked for full VERIFIED: E14 device evidence, #364 legal human, #616 expert platform, GCal credentials on Render. Do not invent legal acceptance.
+- Campaign/media DM flags remain off unless separately enabled.

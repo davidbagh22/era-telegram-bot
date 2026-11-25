@@ -224,6 +224,9 @@ async def deliver_event_announcement(bot, settings, session_factory, event_id) -
                 return
             delivered = await publish_event_announcement(bot, settings, session, event, experience)
             await record_announcement_status(session, event_id, delivered)
+            # Calendar outbox is independent of Telegram announcement success.
+            from app.services.google_calendar_sync_service import enqueue_calendar_sync
+            await enqueue_calendar_sync(session, event_id)
             await session.commit()
         except Exception:
             await session.rollback()
