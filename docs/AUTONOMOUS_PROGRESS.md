@@ -163,4 +163,4 @@
 - New mandatory requirement F01: direct bot guest registration for 12 December 2026, 17:30, cinema hall, name/surname/organization and private organizer list. CODE COMPLETE via #670 (dormant campaign + Mini App RSVP); runtime switch OFF until owner activation.
 - Register denominator is now 41; prior evidenced acceptance remains 3/41 (7.3%). F01 needs owner activation + real guest/admin acceptance before VERIFIED.
 
-- #669/#670 anniversary publication: CODE COMPLETE → activating. Exact-date channel/topic campaign on main; owner 2026-11-25 authorized Render one-shot `ACTIVE_KEY` publish + admin `/activate_anniversary2026`. VERIFIED only after LIVE receipts on @era_leaders1.
+- #669/#670 anniversary publication: DEPLOYED on LIVE `af43751` (OWNER_RENDER_ACTIVATE). VERIFIED only after confirmed receipts on @era_leaders1 / announcements topic.
