@@ -586,6 +586,8 @@ async def save_event_draft_step(
     await session.flush()
     result = await _draft_out(session, event, experience)
     if was_public and changes:
+        from app.services.google_calendar_sync_service import enqueue_calendar_sync
+        await enqueue_calendar_sync(session, event.id)
         # Never announce details that have not been committed to the database.
         # A repeated identical PATCH will have an empty changes list.
         await session.commit()
@@ -759,6 +761,8 @@ async def publish_event(
         entity_id=event.id,
         new_value={"status": str(event.status)},
     )
+    from app.services.google_calendar_sync_service import enqueue_calendar_sync
+    await enqueue_calendar_sync(session, event.id)
     # The outbox and event become durable before contacting Telegram.
     await session.commit()
     await _dispatch_publication(bot, settings, session, event, experience, background_tasks)
@@ -787,6 +791,9 @@ async def cancel_event(
         entity_type="event",
         entity_id=event.id,
     )
+    if was_public:
+        from app.services.google_calendar_sync_service import enqueue_calendar_sync
+        await enqueue_calendar_sync(session, event.id)
     result = await _draft_out(session, event, experience)
     await session.commit()
     if was_public:

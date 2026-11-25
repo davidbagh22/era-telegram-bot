@@ -1,7 +1,9 @@
 """Google Calendar sync for published ERA events (#664).
 
 Disabled until credentials exist. Never invents attendees or sends invites.
-Idempotent via AppSetting `google_calendar:event:{id}` + private era_event_id.
+Durable per-event AppSetting outbox (`google_calendar:event:{id}`) so edits,
+cancellations and transient API failures retry independently of Telegram
+announcement delivery.
 """
 from __future__ import annotations
 
@@ -15,7 +17,8 @@ import httpx
 import jwt
 from sqlalchemy import select
 
-from app.database.models import AppSetting
+from app.database.event_experience import EventExperience
+from app.database.models import AppSetting, Event
 from app.services.google_calendar_payload import build_calendar_payload
 from app.utils.constants import EventStatus
 
@@ -24,6 +27,8 @@ SETTING_PREFIX = "google_calendar:event:"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 SCOPE = "https://www.googleapis.com/auth/calendar"
 API = "https://www.googleapis.com/calendar/v3"
+SYNCABLE = {EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN, EventStatus.CANCELLED}
+MAX_ATTEMPTS = 8
 
 
 def sync_enabled(settings) -> bool:
@@ -89,23 +94,49 @@ def _payload_for(event, experience) -> dict[str, Any] | None:
     return body
 
 
+async def enqueue_calendar_sync(session, event_id: int) -> None:
+    """Mark an event for calendar sync. Safe when sync is still OFF (later recovery)."""
+    if not isinstance(event_id, int) or isinstance(event_id, bool) or event_id <= 0:
+        return
+    key = _setting_key(event_id)
+    row = await session.scalar(select(AppSetting).where(AppSetting.key == key))
+    value = dict(row.value) if row is not None and isinstance(row.value, dict) else {}
+    value.update({
+        "era_event_id": event_id,
+        "sync_status": "pending",
+        "queued_at": datetime.now(timezone.utc).isoformat(),
+    })
+    value.pop("last_error", None)
+    if row is None:
+        session.add(AppSetting(key=key, value=value))
+    else:
+        row.value = value
+    await session.flush()
+
+
 async def sync_published_event(session, settings, event, experience) -> str | None:
-    """Insert or patch one calendar entry. No-op when sync is OFF. Returns Google id."""
+    """Insert or patch one calendar entry. Raises on transport/API failure for retry."""
     if not sync_enabled(settings) or event is None:
         return None
-    if event.status not in {EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN, EventStatus.CANCELLED}:
+    if event.status not in SYNCABLE:
         return None
     body = _payload_for(event, experience)
     if body is None:
+        # Missing end_time is not a transient failure — leave pending for a later edit.
         return None
     calendar_id = str(settings.google_calendar_id).strip()
     key = _setting_key(event.id)
     row = await session.scalar(select(AppSetting).where(AppSetting.key == key))
     existing_id = None
+    attempts = 0
     if isinstance(getattr(row, "value", None), dict):
         existing_id = row.value.get("google_event_id")
         if not isinstance(existing_id, str) or not existing_id:
             existing_id = None
+        try:
+            attempts = int(row.value.get("attempts") or 0)
+        except (TypeError, ValueError):
+            attempts = 0
     async with httpx.AsyncClient() as client:
         token = await _access_token(settings, client)
         headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -134,6 +165,8 @@ async def sync_published_event(session, settings, event, experience) -> str | No
         "calendar_id": calendar_id,
         "synced_at": datetime.now(timezone.utc).isoformat(),
         "era_event_id": event.id,
+        "sync_status": "synced",
+        "attempts": attempts,
     }
     if row is None:
         session.add(AppSetting(key=key, value=payload))
@@ -143,9 +176,59 @@ async def sync_published_event(session, settings, event, experience) -> str | No
     return google_id
 
 
-async def sync_event_safe(session, settings, event, experience) -> None:
-    """Never raise into publication delivery; log and continue."""
+async def _mark_failure(session, event_id: int, error: Exception) -> None:
+    key = _setting_key(event_id)
+    row = await session.scalar(select(AppSetting).where(AppSetting.key == key))
+    value = dict(row.value) if row is not None and isinstance(row.value, dict) else {"era_event_id": event_id}
     try:
-        await sync_published_event(session, settings, event, experience)
-    except Exception:
-        logger.exception("GOOGLE_CALENDAR_664 sync failed event_id=%s", getattr(event, "id", None))
+        attempts = int(value.get("attempts") or 0) + 1
+    except (TypeError, ValueError):
+        attempts = 1
+    value.update({
+        "sync_status": "failed" if attempts >= MAX_ATTEMPTS else "pending",
+        "attempts": attempts,
+        "last_error": str(error)[:300],
+        "failed_at": datetime.now(timezone.utc).isoformat(),
+    })
+    if row is None:
+        session.add(AppSetting(key=key, value=value))
+    else:
+        row.value = value
+    await session.flush()
+
+
+async def process_pending_calendar_syncs(settings, session_factory) -> None:
+    """Independent of Telegram announcements: retry pending calendar exports."""
+    if not sync_enabled(settings):
+        return
+    async with session_factory() as session:
+        rows = list((await session.scalars(
+            select(AppSetting).where(AppSetting.key.like(f"{SETTING_PREFIX}%"))
+        )).all())
+        pending_ids: list[int] = []
+        for row in rows:
+            if not isinstance(row.value, dict) or row.value.get("sync_status") != "pending":
+                continue
+            try:
+                event_id = int(row.value.get("era_event_id") or row.key.rsplit(":", 1)[-1])
+            except (TypeError, ValueError):
+                continue
+            if event_id > 0:
+                pending_ids.append(event_id)
+        for event_id in pending_ids[:40]:
+            event = await session.get(Event, event_id)
+            experience = await session.get(EventExperience, event_id)
+            if event is None or event.status not in SYNCABLE:
+                continue
+            try:
+                await sync_published_event(session, settings, event, experience)
+                await session.commit()
+            except Exception as exc:
+                await session.rollback()
+                try:
+                    async with session_factory() as fail_session:
+                        await _mark_failure(fail_session, event_id, exc)
+                        await fail_session.commit()
+                except Exception:
+                    logger.exception("GOOGLE_CALENDAR_664 failure ledger failed event_id=%s", event_id)
+                logger.exception("GOOGLE_CALENDAR_664 sync failed event_id=%s", event_id)

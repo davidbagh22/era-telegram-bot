@@ -1,14 +1,21 @@
-"""#664 Google Calendar adapter — OFF by default; idempotent when enabled."""
+"""#664 Google Calendar adapter — OFF by default; durable outbox; idempotent sync."""
 from __future__ import annotations
 
 import json
+import tempfile
 from datetime import date, time
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from app.database.base import Base
+from app.database.event_experience import EventExperience
+from app.database.models import AppSetting, Event, User
 from app.services import google_calendar_sync_service as sync
-from app.utils.constants import EventStatus
+from app.utils.constants import ApplicationStatus, EventStatus, Role
 
 
 def settings(**overrides):
@@ -99,7 +106,7 @@ class GoogleCalendarSyncTests(IsolatedAsyncioTestCase):
         self.assertEqual(google_id, "gcal-1")
         session.add.assert_called_once()
 
-        row = SimpleNamespace(value={"google_event_id": "gcal-1"})
+        row = SimpleNamespace(value={"google_event_id": "gcal-1", "sync_status": "synced", "attempts": 0})
         session.scalar = AsyncMock(return_value=row)
         patch_resp = MagicMock()
         patch_resp.raise_for_status = MagicMock()
@@ -114,3 +121,82 @@ class GoogleCalendarSyncTests(IsolatedAsyncioTestCase):
             )
         client.patch.assert_awaited()
         self.assertEqual(client.patch.await_args.kwargs["params"], {"sendUpdates": "none"})
+        self.assertEqual(row.value["sync_status"], "synced")
+
+
+class GoogleCalendarOutboxTests(IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        url = "sqlite+aiosqlite:///" + str(Path(self.tmp.name) / "gcal.db")
+        self.engine = create_async_engine(url)
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        self.factory = async_sessionmaker(self.engine, expire_on_commit=False)
+
+    async def asyncTearDown(self):
+        await self.engine.dispose()
+        self.tmp.cleanup()
+
+    async def test_enqueue_survives_disabled_sync_and_worker_noops(self):
+        async with self.factory() as session:
+            user = User(
+                telegram_id=1,
+                first_name="A",
+                role=Role.ADMIN,
+                application_status=ApplicationStatus.APPROVED,
+            )
+            session.add(user)
+            await session.flush()
+            ev = Event(
+                title="ЭРА",
+                description="d",
+                event_date=date(2026, 12, 12),
+                event_time=time(18, 0),
+                location="Ереван",
+                format="Очно",
+                access_type="all",
+                points_for_visit=0,
+                selfie_required=False,
+                created_by=user.id,
+                status=EventStatus.REGISTRATION_OPEN,
+            )
+            session.add(ev)
+            await session.flush()
+            session.add(
+                EventExperience(
+                    event_id=ev.id,
+                    short_description="d",
+                    full_description="d",
+                    end_time=time(20, 0),
+                    is_complete=True,
+                )
+            )
+            await sync.enqueue_calendar_sync(session, ev.id)
+            await session.commit()
+            event_id = ev.id
+        async with self.factory() as session:
+            row = await session.get(AppSetting, sync._setting_key(event_id))
+            # AppSetting PK may be key string — use scalar
+            from sqlalchemy import select
+            row = await session.scalar(
+                select(AppSetting).where(AppSetting.key == sync._setting_key(event_id))
+            )
+            self.assertEqual(row.value["sync_status"], "pending")
+        await sync.process_pending_calendar_syncs(settings(), self.factory)
+        async with self.factory() as session:
+            from sqlalchemy import select
+            row = await session.scalar(
+                select(AppSetting).where(AppSetting.key == sync._setting_key(event_id))
+            )
+            self.assertEqual(row.value["sync_status"], "pending")
+
+    async def test_enqueue_on_cancel_keeps_pending_for_patch(self):
+        async with self.factory() as session:
+            await sync.enqueue_calendar_sync(session, 42)
+            await sync.enqueue_calendar_sync(session, 42)
+            from sqlalchemy import select
+            row = await session.scalar(
+                select(AppSetting).where(AppSetting.key == sync._setting_key(42))
+            )
+            self.assertEqual(row.value["sync_status"], "pending")
+            self.assertEqual(row.value["era_event_id"], 42)
