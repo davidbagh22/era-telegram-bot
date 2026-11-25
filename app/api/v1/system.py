@@ -320,26 +320,14 @@ async def activate_anniversary_publication(
     settings: Settings = Depends(get_settings),
     bot: Bot | None = Depends(get_bot),
 ) -> dict:
-    from app.database.models import AppSetting
-    from app.services.anniversary_campaign_service import ACTIVE_KEY, STOP, TZ, prepare_campaign, campaign_snapshot
-    if bot is None or payload.release_sha != current_commit_sha():
+    from app.services.anniversary_campaign_service import activate_publication
+    live = (current_commit_sha() or "").strip().lower()
+    if bot is None or payload.release_sha != live[:40] or len(live) < 40:
         raise HTTPException(status_code=409, detail="anniversary_release_mismatch")
-    if datetime.now(TZ) >= STOP:
-        raise HTTPException(status_code=409, detail="anniversary_campaign_expired")
-    factory = request.app.state.session_factory
     try:
-        await prepare_campaign(bot, settings, factory)
+        # Scheduler owns Telegram delivery; this only prepares + ACTIVE_KEY.
+        return await activate_publication(
+            bot, settings, request.app.state.session_factory, payload.release_sha
+        )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    async with factory() as session:
-        # Serialize repeated operator calls using the same lock as preparation.
-        if session.bind.dialect.name == "postgresql":
-            from sqlalchemy import text
-            await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": 66920261212})
-        row = await session.scalar(select(AppSetting).where(AppSetting.key == ACTIVE_KEY))
-        if row is None:
-            session.add(AppSetting(key=ACTIVE_KEY, value={"mode": "publish", "release_sha": payload.release_sha,
-                                                        "activated_at": datetime.now(TZ).isoformat()}))
-        await session.commit()
-    # The existing scheduler owns delivery; no HTTP timeout can cause a replay.
-    return await campaign_snapshot(factory)

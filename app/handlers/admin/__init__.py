@@ -2,6 +2,7 @@ from aiogram import F, Router
 
 from app.handlers.admin import (
     analytics_filters,
+    anniversary_activation,
     commands_ready,
     version_command,
     dashboard_block_a,
@@ -56,6 +57,7 @@ router.include_router(version_command.router)
 router.include_router(dashboard_block_a.router)
 router.include_router(campaign_control.router)
 router.include_router(channel_approval.router)
+router.include_router(anniversary_activation.router)
 router.include_router(media_native.router)
 router.include_router(broadcast_native.router)
 router.include_router(task_review_block2.router)

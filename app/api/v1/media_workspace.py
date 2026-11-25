@@ -83,7 +83,8 @@ async def calendar(area: Area, before_id: int | None = Query(default=None, gt=0,
                    user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session),
                    settings: Settings = Depends(get_settings)):
     try:
-        await service.require_access(session, user, settings)
+        # #582: pass area for validation; shared-read still allows cross-area hub reads.
+        await service.require_access(session, user, settings, area=area)
     except PermissionError as error:
         raise _error(error) from error
     include_legacy = await service.media_service.can_manage_media(session, user, settings)

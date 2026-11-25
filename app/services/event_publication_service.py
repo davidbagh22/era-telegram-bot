@@ -224,6 +224,9 @@ async def deliver_event_announcement(bot, settings, session_factory, event_id) -
                 return
             delivered = await publish_event_announcement(bot, settings, session, event, experience)
             await record_announcement_status(session, event_id, delivered)
+            if delivered:
+                from app.services.google_calendar_sync_service import sync_event_safe
+                await sync_event_safe(session, settings, event, experience)
             await session.commit()
         except Exception:
             await session.rollback()

@@ -8,6 +8,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
+import re
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -38,6 +40,11 @@ DATES = tuple(datetime(2026, month, day, 18, tzinfo=TZ).isoformat()
               for month, day in ((11, 14), (11, 21), (11, 28), (12, 5), (12, 8), (12, 9), (12, 10), (12, 11)))
 STOP = datetime(2026, 12, 12, 18, tzinfo=TZ)
 COPY = f"{TITLE}\n\n{DESCRIPTION}\n\n12 декабря 2026\nСбор гостей — 17:30 · Начало — 18:00 (Ереван)\n{LOCATION}\n\nОрганизатор: {ORGANIZER}"
+# David 2026-11-25 «Все разрешаю»: on Render, write ACTIVE_KEY once without a
+# separate activation token. Local/tests stay off (no RENDER*). prepare() still
+# verifies @ERA_1bot + @era_leaders1 + poster before any send.
+OWNER_RENDER_ACTIVATE = True
+_SHA40 = re.compile(r"^[0-9a-f]{40}$")
 
 
 def is_anniversary(event) -> bool:
@@ -134,6 +141,7 @@ async def campaign_snapshot(factory):
         receipts = list((await session.scalars(select(NotificationDelivery).where(
             NotificationDelivery.delivery_key.in_([d["key"] for d in value["deliveries"]])
         ))).all())
+        active = await session.scalar(select(AppSetting.value).where(AppSetting.key == ACTIVE_KEY))
         return {"prepared": True, "event_id": event.id, "status": event.status,
                 "bot_visible": bot_visible, "miniapp_visible": miniapp_visible,
                 "registration_url": value.get("registration_url") or URL,
@@ -142,19 +150,73 @@ async def campaign_snapshot(factory):
                 "guest_registration": is_anniversary(event), "dates": value["dates"], "targets": value["targets"],
                 "poster_sha256": hashlib.sha256(exp.poster_bytes).hexdigest(),
                 "deliveries_saved": len(value["deliveries"]),
+                "active": active if isinstance(active, dict) else None,
                 "receipts": [{"key": r.delivery_key, "status": r.status, "message_id": r.message_id,
                               "chat_id": r.chat_id} for r in receipts]}
 
 
+def _release_sha() -> str | None:
+    from app.services.system_health_service import current_commit_sha
+    raw = (current_commit_sha() or os.environ.get("RENDER_GIT_COMMIT") or "").strip().lower()
+    if _SHA40.fullmatch(raw):
+        return raw
+    if len(raw) >= 40 and _SHA40.fullmatch(raw[:40]):
+        return raw[:40]
+    return None
+
+
+async def activate_publication(bot, settings, factory, release_sha: str, *, now=None) -> dict:
+    """Prepare destinations and durable ACTIVE_KEY publish. Idempotent."""
+    now = (now or datetime.now(TZ)).astimezone(TZ)
+    if now >= STOP:
+        raise ValueError("anniversary_campaign_expired")
+    if not _SHA40.fullmatch(release_sha):
+        raise ValueError("anniversary_release_sha_invalid")
+    await prepare_campaign(bot, settings, factory, now=now)
+    async with factory() as session:
+        if session.bind.dialect.name == "postgresql":
+            await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": 66920261212})
+        row = await session.scalar(select(AppSetting).where(AppSetting.key == ACTIVE_KEY))
+        if row is None:
+            session.add(AppSetting(
+                key=ACTIVE_KEY,
+                value={
+                    "mode": "publish",
+                    "release_sha": release_sha,
+                    "activated_at": now.isoformat(),
+                },
+            ))
+        await session.commit()
+    return await campaign_snapshot(factory)
+
+
 async def run_campaign(bot, settings, factory, *, now=None):
     mode = getattr(settings, "anniversary_2026_campaign", "off")
+    now = now or datetime.now(TZ)
     if mode not in {"prepare", "publish"}:
         async with factory() as session:
             active = await session.scalar(select(AppSetting.value).where(AppSetting.key == ACTIVE_KEY))
-        if not isinstance(active, dict) or active.get("mode") != "publish":
+        if isinstance(active, dict) and active.get("mode") == "publish":
+            mode = "publish"
+        elif (
+            OWNER_RENDER_ACTIVATE
+            and str(mode).lower() == "off"
+            and bool(os.environ.get("RENDER") or os.environ.get("RENDER_SERVICE_ID"))
+        ):
+            if now >= STOP:
+                return
+            sha = _release_sha()
+            if sha is None:
+                logger.warning("ANNIVERSARY_669 owner activate skipped: no release sha")
+                return
+            try:
+                await activate_publication(bot, settings, factory, sha, now=now)
+            except Exception:
+                logger.exception("ANNIVERSARY_669 owner activate blocked")
+                return
+            mode = "publish"
+        else:
             return
-        mode = "publish"
-    now = now or datetime.now(TZ)
     try:
         if now >= STOP:
             return
