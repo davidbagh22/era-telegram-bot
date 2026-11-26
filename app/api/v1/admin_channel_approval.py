@@ -43,6 +43,7 @@ class ChannelApprovalPreviewOut(BaseModel):
 
 class ChannelApprovalIn(BaseModel):
     day: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    target: str = Field(min_length=1, max_length=128)
     digest: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
 
 
@@ -94,6 +95,8 @@ async def channel_approval_confirm(
     target = _channel_target(settings)
     if target is None:
         raise HTTPException(status_code=409, detail="channel_not_configured")
+    if str(target) != payload.target:
+        raise HTTPException(status_code=409, detail="channel_approval_target_changed")
     content = text_for_day(payload.day, "channel_post")
     digest = _publication_digest(content)
     if digest != payload.digest:

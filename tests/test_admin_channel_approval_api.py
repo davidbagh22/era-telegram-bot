@@ -31,7 +31,7 @@ class AdminChannelApprovalApiTests(IsolatedAsyncioTestCase):
             self.assertEqual(preview.target, "@era_leaders1")
             self.assertFalse(preview.approved)
             result = await api.channel_approval_confirm(
-                api.ChannelApprovalIn(day=day, digest=preview.digest),
+                api.ChannelApprovalIn(day=day, target="@era_leaders1", digest=preview.digest),
                 admin,
                 session,
                 settings,
@@ -40,13 +40,13 @@ class AdminChannelApprovalApiTests(IsolatedAsyncioTestCase):
             self.assertFalse(result.already)
             approve.assert_awaited()
 
-    async def test_rejects_stale_day_and_changed_text(self):
+    async def test_rejects_stale_day_target_and_changed_text(self):
         settings = SimpleNamespace(era_channel_id="@era_leaders1", era_channel_username="era_leaders1")
         admin = SimpleNamespace(id=7, telegram_id=100)
         session = AsyncMock()
         with self.assertRaises(HTTPException) as stale:
             await api.channel_approval_confirm(
-                api.ChannelApprovalIn(day="2020-01-01", digest="a" * 64),
+                api.ChannelApprovalIn(day="2020-01-01", target="@era_leaders1", digest="a" * 64),
                 admin,
                 session,
                 settings,
@@ -54,14 +54,27 @@ class AdminChannelApprovalApiTests(IsolatedAsyncioTestCase):
         self.assertEqual(stale.exception.status_code, 409)
 
         day = datetime.now(daily.MOSCOW).date().isoformat()
-        with patch.object(api, "text_for_day", return_value="Живой текст"), self.assertRaises(
-            HTTPException
-        ) as changed:
-            await api.channel_approval_confirm(
-                api.ChannelApprovalIn(day=day, digest="b" * 64),
-                admin,
-                session,
-                settings,
-            )
-        self.assertEqual(changed.exception.status_code, 409)
-        self.assertEqual(changed.exception.detail, "channel_approval_text_changed")
+        with patch.object(api, "text_for_day", return_value="Живой текст"):
+            with self.assertRaises(HTTPException) as target_changed:
+                await api.channel_approval_confirm(
+                    api.ChannelApprovalIn(
+                        day=day,
+                        target="@other_channel",
+                        digest=daily._publication_digest("Живой текст"),
+                    ),
+                    admin,
+                    session,
+                    settings,
+                )
+            self.assertEqual(target_changed.exception.status_code, 409)
+            self.assertEqual(target_changed.exception.detail, "channel_approval_target_changed")
+
+            with self.assertRaises(HTTPException) as changed:
+                await api.channel_approval_confirm(
+                    api.ChannelApprovalIn(day=day, target="@era_leaders1", digest="b" * 64),
+                    admin,
+                    session,
+                    settings,
+                )
+            self.assertEqual(changed.exception.status_code, 409)
+            self.assertEqual(changed.exception.detail, "channel_approval_text_changed")

@@ -32,7 +32,11 @@ export function ChannelApprovalPanel() {
     setError("");
     setNotice("");
     try {
-      const result = await approveChannelPublicationToday(preview.day, preview.digest);
+      const result = await approveChannelPublicationToday(
+        preview.day,
+        preview.target,
+        preview.digest,
+      );
       setNotice(
         result.already
           ? "Этот точный текст на сегодня уже был согласован."

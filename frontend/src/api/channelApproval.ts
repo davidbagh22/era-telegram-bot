@@ -72,10 +72,11 @@ export function fetchChannelApprovalToday(): Promise<ChannelApprovalPreview> {
 
 export function approveChannelPublicationToday(
   day: string,
+  target: string,
   digest: string,
 ): Promise<ChannelApprovalResult> {
   return request<ChannelApprovalResult>("/api/v1/admin/channel-approval/approve", {
     method: "POST",
-    body: JSON.stringify({ day, digest }),
+    body: JSON.stringify({ day, target, digest }),
   });
 }
