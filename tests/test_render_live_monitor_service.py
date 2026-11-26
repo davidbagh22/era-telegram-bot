@@ -208,8 +208,7 @@ class SchedulerEntryTests(unittest.IsolatedAsyncioTestCase):
             is_render_deployment=False,
             feature_render_live_stale_alerts="OFF",
         )
-        with patch.object(monitor, "current_commit_sha", return_value=MAIN):
-            result = await monitor.run_render_live_monitor(AsyncMock(), settings)
+        result = await monitor.run_render_live_monitor(AsyncMock(), settings)
         self.assertEqual(result["status"], "UNVERIFIED")
         self.assertEqual(result["reason"], "not_render_deployment")
 
