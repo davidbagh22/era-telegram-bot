@@ -1,0 +1,40 @@
+name: Render LIVE stale monitor
+
+# Independent ops monitor for #565. Do NOT trigger on push or workflow_run:
+# Render autoDeploy=checksPass must never wait on this advisory job.
+# Warning-only: stale LIVE emits annotations/summary but exits successfully.
+on:
+  schedule:
+    # Offset from production-readonly-smoke (7/22/37/52) to spread load.
+    - cron: "12,42 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: era-render-live-stale-monitor-main
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    if: ${{ github.repository == 'davidbagh22/era-telegram-bot' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Classify exact main CI versus Render LIVE (warning-only)
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+          # Optional: without RENDER_API_KEY the job reports UNVERIFIED and exits 0.
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        shell: bash
+        run: |
+          python scripts/render_live_stale_monitor.py --max-lag-minutes 45 --warning-only

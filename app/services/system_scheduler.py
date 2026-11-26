@@ -40,6 +40,7 @@ from app.services.participation_mode_notification_service import (
 )
 from app.services.project_scoring_reconciliation_service import reconcile_project_scoring_job
 from app.services.system_health_service import run_system_diagnostics, send_daily_system_summary
+from app.services.render_live_monitor_service import run_render_live_monitor
 from app.services.vacancy_reconciliation_service import reconcile_vacancies_job
 from app.services.admin_broadcast_service import resume_broadcasts
 from app.services.book_club_service import daily_job as book_club_daily_job
@@ -94,6 +95,19 @@ def add_system_jobs(
 
     scheduler.add_job(run_system_diagnostics, "interval", minutes=15, args=(bot, settings, session_factory), kwargs={"run_type": "heartbeat"}, id="system-heartbeat", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)
     scheduler.add_job(run_system_diagnostics, "interval", hours=4, args=(bot, settings, session_factory), kwargs={"run_type": "full"}, id="system-full-diagnostic", replace_existing=True, max_instances=1, coalesce=True)
+    # #565: advisory LIVE-vs-main lag. Admin DMs stay gated by feature_render_live_stale_alerts.
+    scheduler.add_job(
+        run_render_live_monitor,
+        "interval",
+        minutes=15,
+        args=(bot, settings, session_factory),
+        id="render-live-stale-monitor",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+        next_run_time=now,
+        misfire_grace_time=300,
+    )
     if getattr(settings, "feature_management_reports", "OFF") != "OFF":
         scheduler.add_job(send_daily_system_summary, "cron", hour=settings.management_report_hour, minute=settings.management_report_minute, timezone="Europe/Moscow", args=(bot, settings, session_factory), id="system-daily-summary", replace_existing=True, max_instances=1, coalesce=True)
         scheduler.add_job(send_daily_system_summary, "interval", minutes=5, args=(bot, settings, session_factory), id="system-summary-recovery", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)

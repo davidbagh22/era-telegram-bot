@@ -81,6 +81,8 @@ class Settings(BaseSettings):
     # inferred from administrator privileges.
     games_rewards_enabled: bool = False  # Enable only after ledger QA
     feature_management_reports: str = "OFF"
+    # #565 ops-only admin DM when green main CI is LIVE-stale beyond SLO. Default OFF.
+    feature_render_live_stale_alerts: str = "OFF"
     feature_quick_registration: str = "OFF"
     quick_registration_tester_ids: IdList = Field(default_factory=list)
     feature_review_reminders: str = "OFF"
@@ -142,7 +144,16 @@ class Settings(BaseSettings):
             raise ValueError("feature flag mode must be OFF, TESTERS or ALL")
         return mode
 
-    @field_validator("feature_management_reports", "feature_quick_registration", "feature_review_reminders", "feature_support_threads", "feature_attendance_qr", "feature_native_event_composer", mode="before")
+    @field_validator(
+        "feature_management_reports",
+        "feature_render_live_stale_alerts",
+        "feature_quick_registration",
+        "feature_review_reminders",
+        "feature_support_threads",
+        "feature_attendance_qr",
+        "feature_native_event_composer",
+        mode="before",
+    )
     @classmethod
     def normalize_new_feature_mode(cls, value: object) -> str:
         return cls.normalize_feature_mode(value or "OFF")
