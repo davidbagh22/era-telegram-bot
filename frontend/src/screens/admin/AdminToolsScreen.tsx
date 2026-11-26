@@ -3,13 +3,14 @@ import { ActionCell } from "../../components/ActionCell";
 import { Card } from "../../components/Card";
 import { AutoContentPanel } from "./tools/AutoContentPanel";
 import { BroadcastPanel } from "./tools/BroadcastPanel";
+import { ChannelApprovalPanel } from "./tools/ChannelApprovalPanel";
 import { ChatsPanel } from "./tools/ChatsPanel";
 import { ContactsPanel } from "./tools/ContactsPanel";
 import { GoalsPanel } from "./tools/GoalsPanel";
 import { GreetingsPanel } from "./tools/GreetingsPanel";
 import { StructurePanel } from "./tools/StructurePanel";
 
-type ToolsSection = "goals" | "contacts" | "structure" | "chats" | "greetings" | "broadcast" | "autocontent";
+type ToolsSection = "goals" | "contacts" | "structure" | "chats" | "greetings" | "broadcast" | "channel" | "autocontent";
 type ToolGroup = "team" | "communication";
 
 const SECTIONS: { value: ToolsSection; group: ToolGroup; label: string; description: string; icon: string }[] = [
@@ -19,6 +20,7 @@ const SECTIONS: { value: ToolsSection; group: ToolGroup; label: string; descript
   { value: "chats", group: "communication", label: "Чаты", description: "Привязка, доступ, вопросы и ответы, состояние системы", icon: "#" },
   { value: "greetings", group: "communication", label: "Приветствия", description: "Как ЭРА встречает новых участников в рабочих чатах", icon: "✦" },
   { value: "broadcast", group: "communication", label: "Рассылки", description: "Личные сообщения и выбранные организационные чаты", icon: "↗" },
+  { value: "channel", group: "communication", label: "Канал ЭРА", description: "Согласование точного текста дневной публикации (E09)", icon: "▣" },
   { value: "autocontent", group: "communication", label: "Автоконтент", description: "09:00, 18:00, вызовы недели, темы месяца и праздники", icon: "◉" },
 ];
 
@@ -76,6 +78,7 @@ export function AdminToolsScreen() {
       {section === "chats" && <ChatsPanel />}
       {section === "greetings" && <GreetingsPanel />}
       {section === "broadcast" && <BroadcastPanel />}
+      {section === "channel" && <ChannelApprovalPanel />}
       {section === "autocontent" && <AutoContentPanel />}
     </div>
   );
