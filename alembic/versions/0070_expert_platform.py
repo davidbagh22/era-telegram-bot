@@ -28,7 +28,7 @@ def upgrade() -> None:
             sa.Column("organization", sa.String(length=200), nullable=True),
             sa.Column("bio_short", sa.String(length=500), nullable=True),
             sa.Column("topics", sa.Text(), nullable=True),
-            sa.Column("claimed_telegram_id", sa.Integer(), nullable=True),
+            sa.Column("claimed_telegram_id", sa.BigInteger(), nullable=True),
             sa.Column("user_id", sa.Integer(), sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True),
             sa.Column(
                 "created_by_admin_id",
@@ -161,7 +161,7 @@ def upgrade() -> None:
             sa.Column("sent_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column("opened_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column("claimed_at", sa.DateTime(timezone=True), nullable=True),
-            sa.Column("claimed_telegram_id", sa.Integer(), nullable=True),
+            sa.Column("claimed_telegram_id", sa.BigInteger(), nullable=True),
             sa.Column("revoked_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column(
                 "revoked_by_admin_id",

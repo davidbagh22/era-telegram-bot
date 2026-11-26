@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -73,7 +74,7 @@ class ExpertProfile(TimestampMixin, Base):
     organization: Mapped[str | None] = mapped_column(String(200), nullable=True)
     bio_short: Mapped[str | None] = mapped_column(String(500), nullable=True)
     topics: Mapped[str | None] = mapped_column(Text, nullable=True)
-    claimed_telegram_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    claimed_telegram_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -121,7 +122,7 @@ class ExpertInvite(TimestampMixin, Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    claimed_telegram_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    claimed_telegram_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True, index=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_by_admin_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True

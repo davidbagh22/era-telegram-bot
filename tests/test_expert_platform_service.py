@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import asyncio
+import os
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import BigInteger, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database.base import Base
 from app.database.expert_models import (
+    ExpertInvite,
     ExpertInviteState,
+    ExpertProfile,
     ExpertProfileStatus,
     ExpertSuggestion,
 )
@@ -80,6 +86,101 @@ class ExpertPlatformServiceTests(unittest.IsolatedAsyncioTestCase):
                 await experts.claim_invite(
                     session, token=created.token, telegram_id=99999999
                 )
+
+    async def test_claimed_telegram_id_columns_are_bigint_and_hold_64_bit_ids(self) -> None:
+        self.assertIsInstance(ExpertProfile.__table__.c.claimed_telegram_id.type, BigInteger)
+        self.assertIsInstance(ExpertInvite.__table__.c.claimed_telegram_id.type, BigInteger)
+        big_id = 5_000_000_001
+        async with self.session_factory() as session:
+            admin = await self._user(session, 900010, role="admin")
+            created = await experts.create_invite(session, admin=admin, display_name="Большой ID")
+            invite, profile = await experts.claim_invite(
+                session, token=created.token, telegram_id=big_id
+            )
+            await session.commit()
+            self.assertEqual(invite.claimed_telegram_id, big_id)
+            self.assertEqual(profile.claimed_telegram_id, big_id)
+        async with self.session_factory() as session:
+            stored = await session.scalar(
+                select(ExpertProfile.claimed_telegram_id).where(ExpertProfile.id == profile.id)
+            )
+            self.assertEqual(stored, big_id)
+
+    async def test_second_claimant_cannot_overwrite_first_even_with_stale_read(self) -> None:
+        async with self.session_factory() as session:
+            admin = await self._user(session, 900011, role="admin")
+            created = await experts.create_invite(session, admin=admin, display_name="Гонка")
+            await session.commit()
+            stale = await session.get(ExpertInvite, created.invite.id)
+            stale_state = stale.state
+            token = created.token
+            profile_id = created.profile.id
+
+        async with self.session_factory() as first:
+            await experts.claim_invite(first, token=token, telegram_id=1001)
+            await first.commit()
+
+        async with self.session_factory() as second:
+            # `stale` above was read while the invite was still CREATED; the
+            # conditional UPDATE must still reject this second claimant.
+            with self.assertRaisesRegex(ExpertPlatformError, "invite_unavailable"):
+                await experts.claim_invite(second, token=token, telegram_id=2002)
+            await second.rollback()
+
+        self.assertEqual(stale_state, ExpertInviteState.CREATED)
+        async with self.session_factory() as session:
+            invite = await session.scalar(select(ExpertInvite).where(ExpertInvite.id == created.invite.id))
+            profile = await session.get(ExpertProfile, profile_id)
+            self.assertEqual(invite.state, ExpertInviteState.CLAIMED)
+            self.assertEqual(invite.claimed_telegram_id, 1001)
+            self.assertEqual(profile.claimed_telegram_id, 1001)
+
+    async def test_concurrent_claims_have_exactly_one_winner(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            url = "sqlite+aiosqlite:///" + os.path.join(tmp, "experts.db")
+            engine = create_async_engine(url)
+            try:
+                async with engine.begin() as conn:
+                    await conn.run_sync(Base.metadata.create_all)
+                factory = async_sessionmaker(engine, expire_on_commit=False)
+                async with factory() as session:
+                    admin = await self._user(session, 900012, role="admin")
+                    created = await experts.create_invite(session, admin=admin, display_name="Параллель")
+                    await session.commit()
+                    token, invite_id, profile_id = created.token, created.invite.id, created.profile.id
+
+                async def attempt(tg_id: int):
+                    async with factory() as session:
+                        try:
+                            await experts.claim_invite(session, token=token, telegram_id=tg_id)
+                            await session.commit()
+                            return tg_id
+                        except ExpertPlatformError as exc:
+                            await session.rollback()
+                            return str(exc)
+
+                results = await asyncio.gather(*(attempt(t) for t in (3001, 3002, 3003)))
+                winners = [r for r in results if isinstance(r, int)]
+                self.assertEqual(len(winners), 1)
+                self.assertEqual(results.count("invite_unavailable"), 2)
+
+                async with factory() as session:
+                    invite = await session.get(ExpertInvite, invite_id)
+                    profile = await session.get(ExpertProfile, profile_id)
+                    self.assertEqual(invite.claimed_telegram_id, winners[0])
+                    self.assertEqual(profile.claimed_telegram_id, winners[0])
+            finally:
+                await engine.dispose()
+
+    async def test_revoke_after_claim_is_rejected_and_claim_is_preserved(self) -> None:
+        async with self.session_factory() as session:
+            admin = await self._user(session, 900013, role="admin")
+            created = await experts.create_invite(session, admin=admin, display_name="Claimed")
+            await experts.claim_invite(session, token=created.token, telegram_id=4004)
+            with self.assertRaisesRegex(ExpertPlatformError, "invite_already_claimed"):
+                await experts.revoke_invite(session, invite_id=created.invite.id, admin=admin)
+            self.assertEqual(created.invite.state, ExpertInviteState.CLAIMED)
+
 
     async def test_expired_and_revoked_invites_are_unavailable(self) -> None:
         async with self.session_factory() as session:

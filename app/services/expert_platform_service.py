@@ -11,7 +11,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.expert_models import (
@@ -190,7 +190,11 @@ async def claim_invite(
     token: str,
     telegram_id: int,
 ) -> tuple[ExpertInvite, ExpertProfile]:
-    """Claim start for a Telegram identity — ERA membership is not required."""
+    """Claim start for a Telegram identity — ERA membership is not required.
+
+    The state transition is a single conditional UPDATE so concurrent claims
+    with different Telegram IDs cannot both succeed or overwrite each other.
+    """
 
     if type(telegram_id) is not int or telegram_id <= 0:
         raise ExpertPlatformError("invalid_telegram_id")
@@ -198,43 +202,72 @@ async def claim_invite(
     invite = await _get_invite_by_token(session, token)
     if invite is None:
         raise ExpertPlatformError("invite_unavailable")
+    invite_id = invite.id
+    profile_id = invite.expert_profile_id
+    if profile_id is None:
+        raise ExpertPlatformError("invite_unavailable")
 
     now = _utcnow()
-    if _expire_if_needed(invite, now):
-        raise ExpertPlatformError("invite_unavailable")
-    if invite.state in {ExpertInviteState.REVOKED, ExpertInviteState.EXPIRED}:
-        raise ExpertPlatformError("invite_unavailable")
-    if invite.state == ExpertInviteState.CLAIMED:
-        # Same claimant may re-enter; other telegram ids cannot reuse the token.
-        if invite.claimed_telegram_id != telegram_id:
-            raise ExpertPlatformError("invite_unavailable")
-        profile = await session.get(ExpertProfile, invite.expert_profile_id)
-        if profile is None:
-            raise ExpertPlatformError("invite_unavailable")
-        return invite, profile
-    if invite.state not in {
+    claimable = (
         ExpertInviteState.CREATED,
         ExpertInviteState.SENT,
         ExpertInviteState.OPENED,
-    }:
-        raise ExpertPlatformError("invite_unavailable")
+    )
+    claimed = await session.execute(
+        update(ExpertInvite)
+        .where(
+            ExpertInvite.id == invite_id,
+            ExpertInvite.state.in_(claimable),
+            ExpertInvite.expires_at > now,
+            ExpertInvite.claimed_telegram_id.is_(None),
+        )
+        .values(
+            state=ExpertInviteState.CLAIMED,
+            claimed_telegram_id=telegram_id,
+            claimed_at=now,
+            opened_at=func.coalesce(ExpertInvite.opened_at, now),
+        )
+        .execution_options(synchronize_session=False)
+    )
+    won = claimed.rowcount == 1
+    await session.refresh(invite)
 
-    profile = await session.get(ExpertProfile, invite.expert_profile_id)
+    if not won:
+        if _expire_if_needed(invite, now):
+            await session.flush()
+        # Idempotent re-entry only for the original claimant.
+        if (
+            invite.state != ExpertInviteState.CLAIMED
+            or invite.claimed_telegram_id != telegram_id
+        ):
+            raise ExpertPlatformError("invite_unavailable")
+
+    profile = await session.get(ExpertProfile, profile_id)
     if profile is None:
         raise ExpertPlatformError("invite_unavailable")
 
-    invite.state = ExpertInviteState.CLAIMED
-    invite.claimed_at = now
-    invite.claimed_telegram_id = telegram_id
-    if invite.opened_at is None:
-        invite.opened_at = now
-    profile.claimed_telegram_id = telegram_id
-    # Bind to an ERA user only when one already exists; never invent membership.
-    existing = await session.scalar(
-        select(User).where(User.telegram_id == telegram_id)
+    # Never overwrite a different claimant on the profile.
+    await session.execute(
+        update(ExpertProfile)
+        .where(
+            ExpertProfile.id == profile_id,
+            (ExpertProfile.claimed_telegram_id.is_(None))
+            | (ExpertProfile.claimed_telegram_id == telegram_id),
+        )
+        .values(claimed_telegram_id=telegram_id)
+        .execution_options(synchronize_session=False)
     )
-    if existing is not None:
-        profile.user_id = existing.id
+    await session.refresh(profile)
+    if profile.claimed_telegram_id != telegram_id:
+        raise ExpertPlatformError("invite_unavailable")
+
+    # Bind to an ERA user only when one already exists; never invent membership.
+    if profile.user_id is None:
+        existing = await session.scalar(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        if existing is not None:
+            profile.user_id = existing.id
     await session.flush()
     return invite, profile
 
@@ -245,14 +278,25 @@ async def revoke_invite(
     invite = await session.get(ExpertInvite, invite_id)
     if invite is None:
         raise ExpertPlatformError("invite_not_found")
-    if invite.state == ExpertInviteState.CLAIMED:
-        raise ExpertPlatformError("invite_already_claimed")
     if invite.state == ExpertInviteState.REVOKED:
         return invite
-    invite.state = ExpertInviteState.REVOKED
-    invite.revoked_at = _utcnow()
-    invite.revoked_by_admin_id = admin.id
-    await session.flush()
+    # Conditional so a concurrent claim cannot be silently revoked afterwards.
+    result = await session.execute(
+        update(ExpertInvite)
+        .where(
+            ExpertInvite.id == invite_id,
+            ExpertInvite.state != ExpertInviteState.CLAIMED,
+        )
+        .values(
+            state=ExpertInviteState.REVOKED,
+            revoked_at=_utcnow(),
+            revoked_by_admin_id=admin.id,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    await session.refresh(invite)
+    if result.rowcount != 1:
+        raise ExpertPlatformError("invite_already_claimed")
     return invite
 
 
