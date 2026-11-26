@@ -10,7 +10,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_bot, get_current_user, get_session, get_settings
+from app.api.deps import get_bot, get_current_user, get_session, get_settings, require_approved_user
 from app.config import Settings
 from app.database.models import Event, Project, ProjectMember, ProjectMilestone, ProjectRole, Task, User
 from app.services import project_workflow_service, project_workspace_service
@@ -586,6 +586,7 @@ async def apply_to_project_role(
     settings: Settings = Depends(get_settings),
     bot: Bot | None = Depends(get_bot),
 ) -> ProjectMemberOut:
+    require_approved_user(user)
     project = await _workspace_project(session, project_id, user, settings)
     try:
         member = await project_workspace_service.apply_to_role(
@@ -881,6 +882,7 @@ async def create_project(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> ProjectDetailOut:
+    require_approved_user(user)
     project = await project_workflow_service.create_draft(session, user, payload.idea)
     await _commit_if_possible(session)
     return _to_detail(project, viewer=user)
@@ -911,6 +913,7 @@ async def submit_project(
     settings: Settings = Depends(get_settings),
     bot: Bot | None = Depends(get_bot),
 ) -> ProjectDetailOut:
+    require_approved_user(user)
     project = await session.get(Project, project_id)
     if project is None or project.author_id != user.id:
         raise HTTPException(status_code=404, detail="project_not_found")

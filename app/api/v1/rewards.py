@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_session
+from app.api.deps import get_current_user, get_session, require_approved_user
 from app.database.models import RewardItem, User
 from app.services import redemption_service
 
@@ -53,6 +53,7 @@ async def redeem_reward(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> RewardOut:
+    require_approved_user(user)
     reward = await session.get(RewardItem, reward_id)
     if reward is None:
         raise HTTPException(status_code=404, detail="reward_not_found")

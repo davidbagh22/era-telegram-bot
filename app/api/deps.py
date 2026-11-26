@@ -13,6 +13,7 @@ from app.config import get_settings as get_app_settings
 from app.database.models import User
 from app.repositories.users import get_user_by_telegram_id
 from app.services.digital_engagement_service import award_daily_open
+from app.utils.constants import ApplicationStatus
 
 logger = logging.getLogger(__name__)
 
@@ -93,3 +94,13 @@ async def get_current_user(
     except Exception:
         logger.exception("digital engagement award_daily_open failed for user %s", user.id)
     return user
+
+
+def require_approved_user(user: User) -> None:
+    app_status = getattr(user, "application_status", None)
+    if (
+        getattr(user, "is_blocked", False)
+        or getattr(user, "is_archived", False)
+        or (app_status is not None and app_status != ApplicationStatus.APPROVED)
+    ):
+        raise HTTPException(status_code=403, detail="approved_membership_required")
