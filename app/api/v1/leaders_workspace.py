@@ -70,6 +70,17 @@ async def book_analytics(admin:User=Depends(require_admin),session=Depends(get_s
     return {'subscribers': subscribed, 'responses': len(keys), 'respondents': len({k.split(':')[1] for k in keys})}
 
 
+@router.get('/book-club/laws48-preview')
+async def laws48_preview(
+    admin: User = Depends(require_admin),
+    session=Depends(get_session),
+    settings=Depends(get_settings),
+):
+    """Admin Mini App read path: next unpublished #321 analysis. Never posts."""
+    from app.services.literature_48_laws_service import admin_preview_payload
+    return await admin_preview_payload(session, settings)
+
+
 async def output(session,task,settings):
     delivery=await session.scalar(select(TaskDelivery).where(TaskDelivery.task_id==task.id,TaskDelivery.chat_key=='leaders'))
     user=await session.get(User,task.assignee_id) if task.assignee_id else None

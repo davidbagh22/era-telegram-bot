@@ -29,6 +29,7 @@ from app.services.book_club_service import (
     series_status,
     yerevan_today,
 )
+from app.services.literature_48_laws_service import admin_preview_payload
 from app.utils import texts
 
 router = Router(name='literature_editor')
@@ -62,9 +63,45 @@ def _series_keyboard(status: dict) -> InlineKeyboardMarkup:
             text='🗑 Снять с публикации',
             callback_data=f"admin:literature:series_revoke:{status['date']}",
         )])
+    rows.append([InlineKeyboardButton(
+        text='👁 Предпросмотр следующего',
+        callback_data='admin:literature:preview48',
+    )])
     rows.append([InlineKeyboardButton(text='🔄 Обновить статус', callback_data='admin:literature:series')])
     rows.append([InlineKeyboardButton(text='← Редакция', callback_data='admin:literature:home')])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _show_laws48_preview(message: Message, session: AsyncSession, settings: Settings) -> None:
+    """Admin-only private preview of next unpublished analysis — never posts publicly."""
+    payload = await admin_preview_payload(session, settings)
+    progress = payload['content_progress']
+    nxt = payload.get('next_unpublished')
+    header = (
+        '📚 Предпросмотр «48 законов» (#321)\n'
+        f"Контент: <b>{progress['complete_count']}/{progress['target_count']}</b>"
+        f"{' · полный набор' if progress['is_complete'] else ''}\n"
+        f"Флаг публикации: <b>{'ON' if payload['publish_flag_enabled'] else 'OFF'}</b>\n"
+        f"Календарь сегодня: №{payload.get('calendar_number') or '—'}"
+        f"{' · согласован' if payload.get('calendar_approved') else ' · без согласования'}\n"
+        f"Публичная отправка сейчас: "
+        f"<b>{'да' if payload['would_public_send'] else 'нет'}</b>\n"
+    )
+    if nxt:
+        header += f"Следующий непубликованный: №{nxt['law_number']} — {nxt['title']}\n"
+        header += f"Аудио: {nxt['audio_url'] or 'нет (null)'}\n"
+    else:
+        header += 'Непубликованных выпусков нет (или контент неполный).\n'
+    header += '\n<i>Этот экран ничего не отправляет в канал/чат.</i>\n————\n'
+    body = header + (payload.get('preview_html') or '')[:3200]
+    await message.answer(
+        body,
+        parse_mode='HTML',
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text='📅 Статус серии', callback_data='admin:literature:series')],
+            [InlineKeyboardButton(text='← Редакция', callback_data='admin:literature:home')],
+        ]),
+    )
 
 
 async def _show_series(message: Message, session: AsyncSession, settings: Settings) -> None:
@@ -105,6 +142,10 @@ async def _queue(message, session, page=0, *, manage_settings=True, settings: Se
     if navigation:
         rows.append(navigation)
     rows.append([InlineKeyboardButton(text='📅 Серия 48 законов', callback_data='admin:literature:series')])
+    rows.append([InlineKeyboardButton(
+        text='👁 Предпросмотр 48 законов',
+        callback_data='admin:literature:preview48',
+    )])
     rows.append([InlineKeyboardButton(text='➕ Новый материал', callback_data='admin:literature:new')])
     if manage_settings:
         rows.extend([
@@ -154,8 +195,17 @@ async def editorial_command(message: Message, user: User | None, settings: Setti
         )
 
 
+@router.message(Command('literature_48_preview'))
+async def literature_48_preview_command(
+    message: Message, user: User | None, settings: Settings, session: AsyncSession,
+):
+    """Private admin preview of next unpublished #321 item — no public send."""
+    if await _guard(message, user, settings, session):
+        await _show_laws48_preview(message, session, settings)
+
+
 @router.callback_query(F.data.regexp(
-    r'^admin:literature:(?:home|new|time|series|series_approve:\d{4}-\d{2}-\d{2}:\d{1,2}|'
+    r'^admin:literature:(?:home|new|time|series|preview48|series_approve:\d{4}-\d{2}-\d{2}:\d{1,2}|'
     r'series_revoke:\d{4}-\d{2}-\d{2}|page:\d{1,5}|enabled:[01]|paused:[01]|'
     r'item:\d+|edit:\d+|approve:\d+:[0-9a-f]{12}|send:\d+:[0-9a-f]{12})$'
 ))
@@ -179,6 +229,9 @@ async def editorial_action(
         return
     if action == 'series':
         await _show_series(call.message, session, settings)
+        return
+    if action == 'preview48':
+        await _show_laws48_preview(call.message, session, settings)
         return
     if action == 'series_approve':
         on_date = __import__('datetime').date.fromisoformat(parts[3])
