@@ -159,3 +159,29 @@ class TasksAndWorkcenterBatchingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(by_id[100]["history"][0]["action"], "task.created")
         self.assertEqual(by_id[101]["assignee_name"], "Участник Тест")
         self.assertLessEqual(len(queries), 15)
+
+    async def test_workcenter_history_is_bounded_per_task_in_database(self) -> None:
+        async with self.sessions() as session:
+            session.add_all([
+                AuditLog(actor_id=self.admin.id, action=f"task.update.{i}", entity_type="task", entity_id=101)
+                for i in range(35)
+            ])
+            await session.commit()
+
+        client = self._client(self.admin)
+        queries: list[str] = []
+
+        @sa_event.listens_for(self.engine.sync_engine, "before_cursor_execute")
+        def _count(_conn, _cursor, statement, *_args):
+            queries.append(statement)
+
+        try:
+            response = client.get("/api/v1/workcenter/tasks")
+        finally:
+            sa_event.remove(self.engine.sync_engine, "before_cursor_execute", _count)
+
+        self.assertEqual(response.status_code, 200)
+        by_id = {item["id"]: item for item in response.json()}
+        self.assertEqual(len(by_id[101]["history"]), 30)
+        self.assertEqual(by_id[101]["history"][0]["action"], "task.update.34")
+        self.assertTrue(any("row_number" in q.lower() for q in queries))

@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from app.api.deps import get_session, get_settings, get_bot, get_current_user
 from app.api.v1.admin_executive_export import require_admin
 from app.api.v1.leader import enforce_leader_action_rate_limit
@@ -117,11 +117,13 @@ async def tasks(admin:User=Depends(require_workcenter),session=Depends(get_sessi
         subs_by_task:dict[int,list[TaskSubmission]]={tid:[] for tid in task_ids}
         for sub in (await session.scalars(select(TaskSubmission).where(TaskSubmission.task_id.in_(task_ids)).order_by(TaskSubmission.id.desc()))).all():
             subs_by_task[sub.task_id].append(sub)
+        ranked_logs=select(AuditLog.id.label('id'),func.row_number().over(
+            partition_by=AuditLog.entity_id,order_by=AuditLog.id.desc()).label('rn')).where(
+            AuditLog.entity_type=='task',AuditLog.entity_id.in_(task_ids)).subquery()
         logs_by_task:dict[int,list[AuditLog]]={tid:[] for tid in task_ids}
-        for log in (await session.scalars(select(AuditLog).where(
-            AuditLog.entity_type=='task',AuditLog.entity_id.in_(task_ids)).order_by(AuditLog.id.desc()))).all():
-            if len(logs_by_task[log.entity_id])<30:
-                logs_by_task[log.entity_id].append(log)
+        for log in (await session.scalars(select(AuditLog).join(ranked_logs,ranked_logs.c.id==AuditLog.id).where(
+            ranked_logs.c.rn<=30).order_by(AuditLog.id.desc()))).all():
+            logs_by_task[log.entity_id].append(log)
         return [await output(session,t,settings,delivery=deliveries.get(t.id),
             assignee=assignees.get(t.assignee_id) if t.assignee_id else None,
             submissions=subs_by_task[t.id],history=logs_by_task[t.id]) for t in visible]
