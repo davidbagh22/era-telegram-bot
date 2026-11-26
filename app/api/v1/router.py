@@ -12,6 +12,7 @@ from app.api.v1 import (
     admin_application_decisions,
     admin_applications,
     admin_autocontent,
+    admin_channel_approval,
     admin_career,
     admin_development,
     admin_drilldown,
@@ -101,6 +102,7 @@ api_router.include_router(surveys.router, dependencies=[Depends(require_feature(
 api_router.include_router(admin_applications.router)
 api_router.include_router(admin_application_decisions.router)
 api_router.include_router(admin_autocontent.router)
+api_router.include_router(admin_channel_approval.router)
 api_router.include_router(admin_career.router)
 api_router.include_router(admin_development.router)
 api_router.include_router(admin_analytics_details.router)
