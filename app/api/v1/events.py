@@ -8,7 +8,7 @@ from typing import Any
 from aiogram import Bot
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
@@ -130,17 +130,35 @@ def _display_status(
     return "Скоро"
 
 
+_UNSET = object()
+
+
 async def _to_event_out(
-    session: AsyncSession, event: Event, registration: EventRegistration | None, user: User
+    session: AsyncSession,
+    event: Event,
+    registration: EventRegistration | None,
+    user: User,
+    *,
+    experience: Any = _UNSET,
+    reg_count: int | None = None,
+    creator: Any = _UNSET,
 ) -> EventOut:
-    experience = await session.get(EventExperience, event.id)
+    if experience is _UNSET:
+        experience = await session.get(EventExperience, event.id)
     guest_event = (
         anniversary.is_public_anniversary(event) and event.status in anniversary.DISPLAY_STATUSES
     )
-    count = await anniversary.attendee_count(session, event) if guest_event else await registered_count(session, event.id)
-    places = await available_places(session, event)
-    if guest_event and event.participant_limit is not None:
-        places = str(max(0, event.participant_limit - count))
+    if guest_event:
+        count = await anniversary.attendee_count(session, event)
+        places = await available_places(session, event)
+        if event.participant_limit is not None:
+            places = str(max(0, event.participant_limit - count))
+    elif reg_count is not None:
+        count = reg_count
+        places = "без ограничений" if event.participant_limit is None else str(max(0, event.participant_limit - count))
+    else:
+        count = await registered_count(session, event.id)
+        places = await available_places(session, event)
     remaining = None if event.participant_limit is None else max(0, event.participant_limit - count)
 
     organizer = experience.organizer if experience else None
@@ -151,7 +169,8 @@ async def _to_event_out(
     # For events hosted by other organizers, the ERA admin who shared the
     # listing is not necessarily its organizer.
     if not organizer and not external_signup:
-        creator = await session.get(User, event.created_by)
+        if creator is _UNSET:
+            creator = await session.get(User, event.created_by)
         if creator is not None:
             organizer = f"{creator.first_name} {creator.last_name or ''}".strip()
 
@@ -294,6 +313,54 @@ async def read_events(
         ):
             rows.append((event, None))
             rows.sort(key=lambda row: (row[0].event_date, row[0].event_time), reverse=scope == "past")
+    if len(rows) > 1 and hasattr(session, "scalars") and hasattr(session, "execute"):
+        event_ids = [event.id for event, _ in rows]
+        experiences = {
+            exp.event_id: exp
+            for exp in (await session.scalars(select(EventExperience).where(EventExperience.event_id.in_(event_ids)))).all()
+        }
+        counts = {
+            event_id: int(total or 0)
+            for event_id, total in (
+                await session.execute(
+                    select(EventRegistration.event_id, func.count())
+                    .where(
+                        EventRegistration.event_id.in_(event_ids),
+                        EventRegistration.status.in_([
+                            RegistrationStatus.REGISTERED,
+                            RegistrationStatus.WILL_COME,
+                            RegistrationStatus.ATTENDED,
+                        ]),
+                    )
+                    .group_by(EventRegistration.event_id)
+                )
+            ).all()
+        }
+        creator_ids = {
+            event.created_by
+            for event, _ in rows
+            if event.created_by and not (experiences.get(event.id) and experiences[event.id].organizer)
+        }
+        creators = (
+            {
+                u.id: u
+                for u in (await session.scalars(select(User).where(User.id.in_(creator_ids)))).all()
+            }
+            if creator_ids
+            else {}
+        )
+        return [
+            await _to_event_out(
+                session,
+                event,
+                registration,
+                user,
+                experience=experiences.get(event.id),
+                reg_count=counts.get(event.id, 0),
+                creator=creators.get(event.created_by) if event.created_by else None,
+            )
+            for event, registration in rows
+        ]
     return [await _to_event_out(session, event, registration, user) for event, registration in rows]
 
 
