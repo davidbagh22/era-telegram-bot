@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from app.api.deps import get_session, get_settings, get_bot, get_current_user
 from app.api.v1.admin_executive_export import require_admin
 from app.api.v1.leader import enforce_leader_action_rate_limit
@@ -70,11 +70,20 @@ async def book_analytics(admin:User=Depends(require_admin),session=Depends(get_s
     return {'subscribers': subscribed, 'responses': len(keys), 'respondents': len({k.split(':')[1] for k in keys})}
 
 
-async def output(session,task,settings):
-    delivery=await session.scalar(select(TaskDelivery).where(TaskDelivery.task_id==task.id,TaskDelivery.chat_key=='leaders'))
-    user=await session.get(User,task.assignee_id) if task.assignee_id else None
-    submissions=(await session.scalars(select(TaskSubmission).where(TaskSubmission.task_id==task.id).order_by(TaskSubmission.id.desc()))).all()
-    history=(await session.scalars(select(AuditLog).where(AuditLog.entity_type=='task',AuditLog.entity_id==task.id).order_by(AuditLog.id.desc()).limit(30))).all()
+_UNSET=object()
+
+
+async def output(session,task,settings,*,delivery=_UNSET,assignee=_UNSET,submissions=None,history=None):
+    if delivery is _UNSET:
+        delivery=await session.scalar(select(TaskDelivery).where(TaskDelivery.task_id==task.id,TaskDelivery.chat_key=='leaders'))
+    if assignee is _UNSET:
+        user=await session.get(User,task.assignee_id) if task.assignee_id else None
+    else:
+        user=assignee
+    if submissions is None:
+        submissions=(await session.scalars(select(TaskSubmission).where(TaskSubmission.task_id==task.id).order_by(TaskSubmission.id.desc()))).all()
+    if history is None:
+        history=(await session.scalars(select(AuditLog).where(AuditLog.entity_type=='task',AuditLog.entity_id==task.id).order_by(AuditLog.id.desc()).limit(30))).all()
     url=None
     if delivery and delivery.telegram_message_id and str(delivery.chat_id).startswith('-100'):
         url=f'https://t.me/c/{str(delivery.chat_id)[4:]}/{delivery.telegram_message_id}'
@@ -97,8 +106,28 @@ async def roster(admin:User=Depends(require_workcenter),session=Depends(get_sess
 async def tasks(admin:User=Depends(require_workcenter),session=Depends(get_session),settings=Depends(get_settings)):
     rows=(await session.scalars(select(Task).join(TaskDelivery,TaskDelivery.task_id==Task.id).where(
         TaskDelivery.chat_key=='leaders',TaskDelivery.chat_id==settings.leaders_chat_id).order_by(Task.id.desc()).limit(300))).unique().all()
-    return [await output(session,t,settings) for t in rows if access.in_scope(admin,t.department_id,t.direction_id)
-            or admin.id in {t.creator_id,t.assignee_id} or await service.can_manage_task(session,t,admin,settings)]
+    visible=[t for t in rows if access.in_scope(admin,t.department_id,t.direction_id)
+             or admin.id in {t.creator_id,t.assignee_id} or await service.can_manage_task(session,t,admin,settings)]
+    if len(visible)>1 and hasattr(session,'scalars'):
+        task_ids=[t.id for t in visible]
+        deliveries={d.task_id:d for d in (await session.scalars(select(TaskDelivery).where(
+            TaskDelivery.task_id.in_(task_ids),TaskDelivery.chat_key=='leaders',TaskDelivery.chat_id==settings.leaders_chat_id))).all()}
+        assignee_ids={t.assignee_id for t in visible if t.assignee_id}
+        assignees={u.id:u for u in (await session.scalars(select(User).where(User.id.in_(assignee_ids)))).all()} if assignee_ids else {}
+        subs_by_task:dict[int,list[TaskSubmission]]={tid:[] for tid in task_ids}
+        for sub in (await session.scalars(select(TaskSubmission).where(TaskSubmission.task_id.in_(task_ids)).order_by(TaskSubmission.id.desc()))).all():
+            subs_by_task[sub.task_id].append(sub)
+        ranked_logs=select(AuditLog.id.label('id'),func.row_number().over(
+            partition_by=AuditLog.entity_id,order_by=AuditLog.id.desc()).label('rn')).where(
+            AuditLog.entity_type=='task',AuditLog.entity_id.in_(task_ids)).subquery()
+        logs_by_task:dict[int,list[AuditLog]]={tid:[] for tid in task_ids}
+        for log in (await session.scalars(select(AuditLog).join(ranked_logs,ranked_logs.c.id==AuditLog.id).where(
+            ranked_logs.c.rn<=30).order_by(AuditLog.id.desc()))).all():
+            logs_by_task[log.entity_id].append(log)
+        return [await output(session,t,settings,delivery=deliveries.get(t.id),
+            assignee=assignees.get(t.assignee_id) if t.assignee_id else None,
+            submissions=subs_by_task[t.id],history=logs_by_task[t.id]) for t in visible]
+    return [await output(session,t,settings) for t in visible]
 
 
 class CreateTask(BaseModel):
