@@ -81,7 +81,9 @@
 - Автозадача 6adcbd42ede08191a5c0a946e4147b52 содержит полное ТЗ; расписание сохранено.
 - Нужно от владельца: пакетная реальная приёмка ролей и мобильных клиентов; CI и LIVE не равны ПРОВЕРЕНО.
 
-## Реестр готовности (3/40 = 7,5%)
+## Реестр готовности (приёмка 3/41 ≈ 7,3%)
+
+Evidenced VERIFIED/ПРОВЕРЕНО remains **3** (C01, C02, E12). Denominator **41** = A01–E14 + F01. Many rows are CODE COMPLETE/DEPLOYED/ВЫПУЩЕНО — that is **not** acceptance; do not raise the 3/41 figure without new real-evidence receipts. LIVE tip `d2a8112` / prior tip `af43751`.
 
 | ID | Requirement | Status | Remaining evidence / action |
 |---|---|---|---|
@@ -95,7 +97,7 @@
 | B02 | Edit published event poster | ВЫПУЩЕНО | #587 published poster editor from admin participants panel; real admin acceptance open |
 | B03 | Hide/remove events from general poster listing | ВЫПУЩЕНО | #589 public listing visibility + hide; device/admin acceptance still open |
 | B04 | Publication latency and duplicate prevention | ВЫПУЩЕНО | #447 + #467 durable legacy broadcast + #491 incomplete receipts; uncertain receipts stay manual |
-| B05 | Registration, waitlist, capacity and deadlines | IN PROGRESS | Capacity #663, commit-before-notice #507, policy parity #514, waitlist UX #704 deployed. Real Telegram acceptance and any remaining scoring policy remain. |
+| B05 | Registration, waitlist, capacity and deadlines | DEPLOYED | Capacity #663, commit-before-notice #507/#726 (#529), policy parity #514, waitlist UX #704, waitlist/registration points #727 (#513) on LIVE tip chain. Real Telegram acceptance still open — not VERIFIED. |
 | B06 | QR attendance | ВЫПУЩЕНО | Real scoped confirmation and repeated-scan acceptance |
 | B07 | Event points | ВЫПУЩЕНО | Actual attendance-to-ledger evidence, no test balance edits |
 | B08 | Actual production event list | В РАЗРАБОТКЕ | Authenticated read unavailable; do not invent the list |
@@ -119,12 +121,12 @@
 | E06 | Literature club | ВЫПУЩЕНО | Real issue, subscription, discussion and reporting |
 | E07 | FAQ and support | ВЫПУЩЕНО | Scoped handling, replies and privacy acceptance |
 | E08 | My Vector | В РАЗРАБОТКЕ | Methods/check-ins/goals/history/privacy and earlier backlog |
-| E09 | Daily quotes | В РАЗРАБОТКЕ | Historical Nov 1–2 channel posts and Mini App quote API are evidenced, but future channel publications now require explicit approval for the exact text/day/target; approval UI and real authorized workflow are pending. No unapproved auto-posts permitted. |
+| E09 | Daily quotes | DEPLOYED | #728 durable admin approval UI/commands for exact text/day/target shipped on LIVE tip chain. Historical Nov 1–2 channel posts and Mini App quote API evidenced earlier. Real authorized approval→publish workflow acceptance still open — **not VERIFIED**. No unapproved auto-posts permitted. |
 | E10 | Broadcasts and notifications | В РАЗРАБОТКЕ | #491 incomplete receipts; no uncertain replay |
-| E11 | Security and data protection | IN PROGRESS | Webhook #662 + admin boundary #542 + #691/#705 CANCELLED existence oracles shipped. Feedback forged-callback eligibility (#585) in flight. Anniversary/referral/portfolio downloads reviewed OK. |
+| E11 | Security and data protection | DEPLOYED | Webhook #662 + admin boundary #542 + #691/#705 CANCELLED existence oracles + #725 feedback eligibility (#585) shipped on LIVE tip chain. Anniversary/referral/portfolio downloads reviewed OK. Real device/role security acceptance remains under E14 — not VERIFIED. |
 | E12 | Backup and restore | ПРОВЕРЕНО | 2026-11-02 scheduled backup run 41407674271 SUCCESS: real production OIDC snapshot, isolated PostgreSQL 18 restore and migrations, encrypted/checksum round-trip, stored private artifact 13123694669 (expires 2026-11-09). External S3 copy optional and not configured; retention improvement remains advisable. |
-| E13 | Legal/content organizational acceptance | В РАЗРАБОТКЕ | Draft #364 requires responsible human approval |
-| E14 | Final multi-role production acceptance | НЕ НАЧАТО | All required scenarios, no known blockers, observation |
+| E13 | Legal/content organizational acceptance | BLOCKED | #364 draft requires responsible human legal approval — do not invent acceptance. |
+| E14 | Final multi-role production acceptance | NOT STARTED | BLOCKED without authenticated Telegram/Mini App device sessions and distinct real roles. Do not invent VERIFIED. |
 
 ## Human blockers and non-negotiable constraints
 
@@ -157,10 +159,18 @@
 - Старые подробности доступны в git-истории этого файла; не перечитывать без конкретной причины.
 
 ## Отчётность
-Один существенный суточный отчёт 09:00–19:00 Asia/Yerevan; вне окна только критический блокер. Последняя подтверждённая реальная приёмка: 3/40. CI и LIVE не равны приёмке. Не создавать отдельный PR только для отчёта.
+Один существенный суточный отчёт 09:00–19:00 Asia/Yerevan; вне окна только критический блокер. Последняя подтверждённая реальная приёмка: **3/41 ≈ 7,3%** (C01, C02, E12). CODE COMPLETE/DEPLOYED counts are higher and are tracked per-row — they do **not** raise acceptance. CI и LIVE не равны приёмке.
 
 ## Owner addition — anniversary RSVP (2026-11-13)
-- New mandatory requirement F01: direct bot guest registration for 12 December 2026, 17:30, cinema hall, name/surname/organization and private organizer list. CODE COMPLETE via #670 (dormant campaign + Mini App RSVP); runtime switch OFF until owner activation.
-- Register denominator is now 41; prior evidenced acceptance remains 3/41 (7.3%). F01 needs owner activation + real guest/admin acceptance before VERIFIED.
+- Mandatory requirement F01: direct bot guest registration for 12 December 2026, 17:30, cinema hall, name/surname/organization and private organizer list. Shipped via #670 + activated by #729 (OWNER_RENDER_ACTIVATE on Render `ACTIVE_KEY`).
+- Register denominator is **41**; evidenced acceptance remains **3/41 (≈7.3%)**. F01 / #669 is **DEPLOYED** on LIVE tip `d2a8112` / prior tip `af43751` — **not VERIFIED** until confirmed channel receipts on @era_leaders1 / announcements topic and real guest/admin acceptance.
+- #664 GCal adapter remains DEPLOYED default OFF; #582 shared-read docs shipped with #729.
 
-- #669/#670 anniversary publication: DEPLOYED on LIVE `af43751` (OWNER_RENDER_ACTIVATE). VERIFIED only after confirmed receipts on @era_leaders1 / announcements topic.
+## Registry sync — shipped wave #725–#729 (2026-11-26)
+- Docs-only: align registry/handoff with LIVE tip `d2a8112` / prior `af43751`.
+- #725 (#585) feedback eligibility → E11 DEPLOYED (not VERIFIED).
+- #726 (#529) activity proof commit-before-notice + #727 (#513) waitlist points → B05 DEPLOYED (not VERIFIED).
+- #728 E09 approval UI/commands → E09 DEPLOYED (authorized workflow acceptance open).
+- #729 anniversary + GCal OFF + #582 docs → F01/#669 DEPLOYED (channel receipts open).
+- E13 #364 remains BLOCKED (human legal). E14 remains NOT STARTED / BLOCKED without device roles.
+- No new VERIFIED invented; acceptance stays 3/41.
