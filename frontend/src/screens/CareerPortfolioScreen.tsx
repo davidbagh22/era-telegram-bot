@@ -410,37 +410,26 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
         <h2>Сертификаты ЭРА</h2>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
           {certificates.map((cert) => (
-            <Card key={cert.id}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-                <div>
-                  <strong>{cert.title}</strong>
-                  <div style={{ fontSize: "var(--era-text-xs)", color: "var(--era-text-muted)", marginTop: "0.15rem" }}>
-                    {cert.number} • {cert.status === "revoked" ? "Отозван" : "Выдан"}
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    className="era-btn-primary"
-                    disabled={sendingCertId === cert.id}
-                    onClick={() => void sendCertificateToChat(cert)}
-                  >
-                    {sendingCertId === cert.id ? "Отправляем…" : "Отправить в Telegram"}
-                  </button>
-                  <button
-                    type="button"
-                    className="era-btn-secondary"
-                    onClick={() => {
-                      void downloadCertificate(cert.id)
-                        .then((blob) => saveBlob(blob, `${cert.number}.pdf`))
-                        .catch(() => toast.show("Не удалось скачать сертификат", "error"));
-                    }}
-                  >
-                    Скачать PDF
-                  </button>
-                </div>
-              </div>
-            </Card>
+            <div key={cert.id} style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+              <ActionCell
+                title={cert.title}
+                description={`${cert.number} • ${cert.status === "revoked" ? "Отозван" : "Выдан"}`}
+                meta="PDF"
+                onClick={() => {
+                  void downloadCertificate(cert.id)
+                    .then((blob) => saveBlob(blob, `${cert.number}.pdf`))
+                    .catch(() => toast.show("Не удалось скачать сертификат", "error"));
+                }}
+              />
+              <button
+                type="button"
+                className="era-btn-secondary"
+                disabled={sendingCertId === cert.id}
+                onClick={() => void sendCertificateToChat(cert)}
+              >
+                {sendingCertId === cert.id ? "Отправляем…" : `Отправить в Telegram · ${cert.number}`}
+              </button>
+            </div>
           ))}
         </div>
       </section>}
