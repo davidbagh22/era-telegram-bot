@@ -4,7 +4,10 @@ No network, no Telegram, no production mutations.
 """
 from __future__ import annotations
 
+import asyncio
+import time
 import unittest
+import unittest.mock
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -211,6 +214,53 @@ class SchedulerEntryTests(unittest.IsolatedAsyncioTestCase):
         result = await monitor.run_render_live_monitor(AsyncMock(), settings)
         self.assertEqual(result["status"], "UNVERIFIED")
         self.assertEqual(result["reason"], "not_render_deployment")
+
+
+class EventLoopNonBlockingTests(unittest.IsolatedAsyncioTestCase):
+    def _settings(self):
+        return SimpleNamespace(
+            is_render_deployment=True,
+            feature_render_live_stale_alerts="OFF",
+        )
+
+    async def test_blocking_snapshot_builder_does_not_block_event_loop(self):
+        def blocking_builder(fetch, *, live_sha, observed_at):
+            time.sleep(0.15)
+            return _snapshot(live=live_sha, minutes=10)
+
+        beats: list[float] = []
+        started = time.monotonic()
+
+        async def heartbeat():
+            await asyncio.sleep(0.01)
+            beats.append(time.monotonic() - started)
+
+        with unittest.mock.patch.object(monitor, "current_commit_sha", return_value=OLD):
+            monitor_task = asyncio.create_task(
+                monitor.run_render_live_monitor(
+                    AsyncMock(),
+                    self._settings(),
+                    snapshot_builder=blocking_builder,
+                    now=NOW,
+                )
+            )
+            await heartbeat()
+            self.assertEqual(len(beats), 1)
+            self.assertLess(beats[0], 0.1)
+            self.assertFalse(monitor_task.done())
+            result = await monitor_task
+        self.assertGreaterEqual(time.monotonic() - started, 0.15)
+        self.assertEqual(result["status"], "DEPLOY_PENDING")
+
+    async def test_async_snapshot_builder_is_awaited(self):
+        async def async_builder(fetch, *, live_sha, observed_at):
+            return _snapshot(live=live_sha, minutes=10)
+
+        with unittest.mock.patch.object(monitor, "current_commit_sha", return_value=OLD):
+            result = await monitor.run_render_live_monitor(
+                AsyncMock(), self._settings(), snapshot_builder=async_builder, now=NOW
+            )
+        self.assertEqual(result["status"], "DEPLOY_PENDING")
 
 
 if __name__ == "__main__":

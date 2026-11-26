@@ -11,7 +11,9 @@ when enabled, delivery uses durable safe_send_once keys only (no mass broadcast)
 """
 from __future__ import annotations
 
+import asyncio
 import importlib.util
+import inspect
 import json
 import logging
 import os
@@ -264,6 +266,7 @@ async def run_render_live_monitor(
     *,
     fetch: Callable[[str], Any] | None = None,
     now: datetime | None = None,
+    snapshot_builder: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
     """Scheduler entry: classify LIVE vs main and optionally notify admins."""
     live_sha = current_commit_sha()
@@ -280,11 +283,16 @@ async def run_render_live_monitor(
         logger.warning("Render LIVE monitor skipped: process SHA unavailable")
         return payload
     try:
-        snapshot = build_live_process_snapshot(
-            fetch or _github_get,
-            live_sha=live_sha,
-            observed_at=now,
-        )
+        builder = snapshot_builder or build_live_process_snapshot
+        if inspect.iscoroutinefunction(builder):
+            snapshot = await builder(
+                fetch or _github_get, live_sha=live_sha, observed_at=now
+            )
+        else:
+            # urllib is blocking: never run it on the scheduler/webhook event loop.
+            snapshot = await asyncio.to_thread(
+                builder, fetch or _github_get, live_sha=live_sha, observed_at=now
+            )
         result = classify_snapshot(snapshot, now=now)
     except (ValueError, TypeError, KeyError, AttributeError, OSError, HTTPError, URLError, json.JSONDecodeError) as exc:
         # Never echo exception text — upstream payloads may be sensitive.
