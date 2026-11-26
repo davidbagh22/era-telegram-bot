@@ -176,6 +176,74 @@ class LiteratureTests(IsolatedAsyncioTestCase):
             await daily_job(self.bot, self.settings, self.sessions)
         topic.assert_not_awaited()
 
+    async def test_daily_job_skips_subscriber_dms_when_topic_delivery_fails(self):
+        await self.approve_today()
+        with patch('app.services.book_club_service.datetime') as clock, patch(
+            'app.services.notification_service._session_factory', return_value=self.sessions
+        ), patch('app.services.book_club_service.send_general_topic', new=AsyncMock(return_value=False)):
+            clock.now.return_value = datetime(2026, 10, 10, 19, tzinfo=ZoneInfo('Asia/Yerevan'))
+            await daily_job(self.bot, self.settings, self.sessions)
+        self.bot.send_message.assert_not_awaited()
+
+    async def test_series_status_warns_when_forum_topic_needs_reconciliation(self):
+        await self.approve_today()
+        async with self.sessions() as session:
+            session.add(AppSetting(
+                key=f'general_forum:{self.settings.general_chat_id}:literature',
+                value={'state': 'creating'},
+            ))
+            await session.commit()
+            status = await club.series_status(
+                session, self.settings, on_date=date(2026, 10, 10),
+            )
+            assert status['label'] == 'Нужна проверка'
+            assert status['topic_state'] == 'needs_reconciliation'
+            assert status['would_public_send'] is False
+            assert 'тема' in status['reason'].lower()
+
+    async def test_configured_start_date_drives_series_status_approval_and_daily_job(self):
+        custom_start = date(2026, 11, 27)
+        async with self.sessions() as session:
+            session.add(AppSetting(key='book_club_start_date', value={'date': custom_start.isoformat()}))
+            await session.commit()
+            status_before = await club.series_status(session, self.settings, on_date=custom_start)
+            assert status_before['number'] == 1
+            assert status_before['would_public_send'] is False
+            await club.approve_series_issue(
+                session, on_date=custom_start, chat_id=self.settings.general_chat_id,
+                number=1, actor_id=1,
+            )
+            await session.commit()
+            status_after = await club.series_status(session, self.settings, on_date=custom_start)
+            assert status_after['label'] == 'Запланирован'
+            assert status_after['would_public_send'] is True
+        with patch('app.services.book_club_service.datetime') as clock, patch(
+            'app.services.notification_service._session_factory', return_value=self.sessions
+        ), patch('app.services.book_club_service.send_general_topic', new=AsyncMock(return_value=True)):
+            clock.now.return_value = datetime(2026, 11, 27, 19, tzinfo=ZoneInfo('Asia/Yerevan'))
+            await daily_job(self.bot, self.settings, self.sessions)
+        self.bot.send_message.assert_awaited_once()
+        assert 'Выпуск 1/48' in self.bot.send_message.call_args.args[1]
+
+    async def test_bookclub_issue_respects_readable_window_and_rejects_future_issue(self):
+        custom_start = date(2026, 11, 27)
+        async with self.sessions() as session:
+            session.add(AppSetting(key='book_club_start_date', value={'date': custom_start.isoformat()}))
+            await session.commit()
+            user = await session.get(User, 1)
+            with patch('app.handlers.book_club.yerevan_today', return_value=custom_start):
+                ok_call = self.callback('bookclub:issue:1')
+                await navigate(ok_call, user, session)
+                ok_call.message.answer.assert_awaited_once()
+                markup = ok_call.message.answer.call_args.kwargs['reply_markup']
+                callbacks = [b.callback_data for row in markup.inline_keyboard for b in row if b.callback_data]
+                assert 'bookclub:issue:2' not in callbacks
+
+                blocked_call = self.callback('bookclub:issue:2')
+                await navigate(blocked_call, user, session)
+                assert blocked_call.answer.call_args.kwargs['show_alert'] is True
+                blocked_call.message.answer.assert_not_awaited()
+
     async def test_series_status_warns_when_editorial_queue_blocks_delivery(self):
         """Enabled editorial queue skips series in daily_job — status must not say «Запланирован»."""
         await self.approve_today()

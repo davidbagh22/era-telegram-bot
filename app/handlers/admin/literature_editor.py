@@ -71,6 +71,13 @@ async def _show_series(message: Message, session: AsyncSession, settings: Settin
     status = await series_status(session, settings)
     number = status.get('number')
     title = status.get('title') or ''
+    topic_labels = {
+        'ready': f"готова (thread_id={status.get('topic_thread_id')})",
+        'uninitialized': 'не создана (создастся автоматически при наличии прав)',
+        'needs_reconciliation': 'требует ручной привязки',
+        'no_chat': 'чат не настроен',
+    }
+    topic_line = topic_labels.get(status.get('topic_state') or '', 'неизвестно')
     header = (
         f"📚 Серия «48 законов» · {status['date']} (Ереван)\n"
         f"Статус: <b>{status['label']}</b>\n"
@@ -78,6 +85,9 @@ async def _show_series(message: Message, session: AsyncSession, settings: Settin
     if number:
         header += f"Выпуск: №{number}/48 — {title}\n"
     header += f"Чат: <code>{status.get('chat_id') or 'не задан'}</code>\n"
+    header += f"Тема форума: {topic_line}\n"
+    if 'subscribed_count' in status:
+        header += f"Подписчиков: {status['subscribed_count']}\n"
     header += f"{status['reason']}\n"
     if status.get('receipt_message_id'):
         header += f"message_id: <code>{status['receipt_message_id']}</code>\n"
@@ -181,6 +191,9 @@ async def editorial_action(
         await _show_series(call.message, session, settings)
         return
     if action == 'series_approve':
+        if not settings.general_chat_id:
+            await call.message.answer('Не настроен general_chat_id — публиковать некуда.')
+            return
         on_date = __import__('datetime').date.fromisoformat(parts[3])
         number = int(parts[4])
         try:
@@ -195,6 +208,9 @@ async def editorial_action(
         await _show_series(call.message, session, settings)
         return
     if action == 'series_revoke':
+        if not settings.general_chat_id:
+            await call.message.answer('Не настроен general_chat_id — публиковать некуда.')
+            return
         on_date = __import__('datetime').date.fromisoformat(parts[3])
         await revoke_series_issue(
             session, on_date=on_date, chat_id=settings.general_chat_id, actor_id=user.id,
@@ -205,7 +221,7 @@ async def editorial_action(
     if action in {'enabled', 'paused'}:
         await save_editorial_settings(session, actor_id=user.id, **{action: bool(int(parts[3]))})
         await session.commit()
-        await _queue(call.message, session, settings=settings)
+        await _queue(call.message, session, manage_settings=manage_settings, settings=settings)
         return
     if action == 'time':
         await state.set_state(EditorialInput.time)

@@ -10,6 +10,7 @@ from app.config import Settings
 from app.database.models import AppSetting, User
 from app.content.literature_issues import ISSUES, get_issue, render_issue
 from app.services.book_club_service import (
+    configured_start_date,
     eligible,
     format_literature_stats,
     last_readable_issue_number,
@@ -64,11 +65,11 @@ AUDIOBOOK_URL = 'https://t.me/audiobook900'
 READ_BOOK_URL = 'https://search.rsl.ru/ru/record/02000010666'
 
 
-def issue_keyboard(number: int) -> InlineKeyboardMarkup:
+def issue_keyboard(number: int, *, max_number: int = 48) -> InlineKeyboardMarkup:
     nav = []
     if number > 1:
         nav.append(button('← Предыдущий', f'bookclub:issue:{number - 1}'))
-    if number < 48:
+    if number < max_number:
         nav.append(button('Следующий →', f'bookclub:issue:{number + 1}'))
     return InlineKeyboardMarkup(inline_keyboard=[
         [button('✅ Прочитано', f'bookclub:read:{number}'), button('📝 Задание выполнено', f'bookclub:task:{number}')],
@@ -88,8 +89,9 @@ async def show_home(
     session: AsyncSession | None = None,
 ):
     today = yerevan_today()
-    today_number = publication_number(today)
-    latest = last_readable_issue_number(today)
+    start_day = await configured_start_date(session) if session is not None else None
+    today_number = publication_number(today, start_day) if start_day is not None else publication_number(today)
+    latest = last_readable_issue_number(today, start_day) if start_day is not None else last_readable_issue_number(today)
     status_line = ''
     if session is not None:
         status = await series_status(session, settings, on_date=today)
@@ -245,9 +247,13 @@ async def navigate(call: CallbackQuery, user: User | None, session: AsyncSession
             await call.answer()
             await call.message.answer(f'📖 48 законов власти · страница {number + 1}/6', reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
         elif action == 'issue':
+            start_day = await configured_start_date(session)
+            max_readable = last_readable_issue_number(yerevan_today(), start_day)
+            if not 1 <= number <= max_readable:
+                raise ValueError
             text = render_issue(number)
             await call.answer()
-            await call.message.answer(text, parse_mode='HTML', reply_markup=issue_keyboard(number))
+            await call.message.answer(text, parse_mode='HTML', reply_markup=issue_keyboard(number, max_number=max_readable))
         elif action in {'read', 'task'}:
             if not eligible(user):
                 await call.answer('Сначала завершите регистрацию.', show_alert=True)
