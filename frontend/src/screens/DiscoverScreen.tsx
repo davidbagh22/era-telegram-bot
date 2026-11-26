@@ -23,6 +23,7 @@ export function DiscoverScreen({ user, category = "offers" }: { user: MiniAppUse
     </div>
     {category === "offers" && <>
       {entry("Твоя следующая возможность", "Программы, предложения и участие в новых инициативах.", "opportunities")}
+      {user.features.experts && entry("Эксперты", "Профили специалистов, чьи знания помогают создавать проекты.", "experts")}
       {user.features.era_pro && entry("Лидеры ЭРА", "Найди направление, в котором хочешь развиваться.", "era-pro")}
       {user.features.surveys && entry("Твой голос", "Опросы и решения сообщества.", "surveys")}
     </>}

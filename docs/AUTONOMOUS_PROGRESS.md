@@ -81,9 +81,9 @@
 - Автозадача 6adcbd42ede08191a5c0a946e4147b52 содержит полное ТЗ; расписание сохранено.
 - Нужно от владельца: пакетная реальная приёмка ролей и мобильных клиентов; CI и LIVE не равны ПРОВЕРЕНО.
 
-## Реестр готовности (приёмка 3/41 ≈ 7,3%)
+## Реестр готовности (приёмка 3/42 ≈ 7,1%)
 
-Evidenced VERIFIED/ПРОВЕРЕНО remains **3** (C01, C02, E12). Denominator **41** = A01–E14 + F01. Many rows are CODE COMPLETE/DEPLOYED/ВЫПУЩЕНО — that is **not** acceptance; do not raise the 3/41 figure without new real-evidence receipts. LIVE tip `d2a8112` / prior tip `af43751`.
+Evidenced VERIFIED/ПРОВЕРЕНО remains **3** (C01, C02, E12). Denominator **42** = A01–E14 + F01 + G01. Many rows are CODE COMPLETE/DEPLOYED/ВЫПУЩЕНО — that is **not** acceptance; do not raise the 3/42 figure without new real-evidence receipts. LIVE tip `d2a8112` / prior tip `af43751`.
 
 | ID | Requirement | Status | Remaining evidence / action |
 |---|---|---|---|
@@ -127,6 +127,8 @@ Evidenced VERIFIED/ПРОВЕРЕНО remains **3** (C01, C02, E12). Denominator
 | E12 | Backup and restore | ПРОВЕРЕНО | 2026-11-02 scheduled backup run 41407674271 SUCCESS: real production OIDC snapshot, isolated PostgreSQL 18 restore and migrations, encrypted/checksum round-trip, stored private artifact 13123694669 (expires 2026-11-09). External S3 copy optional and not configured; retention improvement remains advisable. |
 | E13 | Legal/content organizational acceptance | BLOCKED | #364 draft requires responsible human legal approval — do not invent acceptance. |
 | E14 | Final multi-role production acceptance | NOT STARTED | BLOCKED without authenticated Telegram/Mini App device sessions and distinct real roles. Do not invent VERIFIED. |
+| F01 | Anniversary guest RSVP (#669/#670) | DEPLOYED | LIVE af43751; VERIFIED only with channel receipts + owner activation evidence |
+| G01 | Expert platform (#616) | CODE COMPLETE | First vertical slice: schema/invites/suggestions/published list + Mini App «Эксперты» + `experts_platform_enabled=False`. Remaining: articles library, feed cards, OTP web cabinet, auto emails, admin analytics, real multi-role acceptance. |
 
 ## Human blockers and non-negotiable constraints
 
@@ -159,11 +161,11 @@ Evidenced VERIFIED/ПРОВЕРЕНО remains **3** (C01, C02, E12). Denominator
 - Старые подробности доступны в git-истории этого файла; не перечитывать без конкретной причины.
 
 ## Отчётность
-Один существенный суточный отчёт 09:00–19:00 Asia/Yerevan; вне окна только критический блокер. Последняя подтверждённая реальная приёмка: **3/41 ≈ 7,3%** (C01, C02, E12). CODE COMPLETE/DEPLOYED counts are higher and are tracked per-row — they do **not** raise acceptance. CI и LIVE не равны приёмке.
+Один существенный суточный отчёт 09:00–19:00 Asia/Yerevan; вне окна только критический блокер. Последняя подтверждённая реальная приёмка: **3/42 ≈ 7,1%** (C01, C02, E12). CODE COMPLETE/DEPLOYED counts are higher and are tracked per-row — they do **not** raise acceptance. CI и LIVE не равны приёмке.
 
 ## Owner addition — anniversary RSVP (2026-11-13)
 - Mandatory requirement F01: direct bot guest registration for 12 December 2026, 17:30, cinema hall, name/surname/organization and private organizer list. Shipped via #670 + activated by #729 (OWNER_RENDER_ACTIVATE on Render `ACTIVE_KEY`).
-- Register denominator is **41**; evidenced acceptance remains **3/41 (≈7.3%)**. F01 / #669 is **DEPLOYED** on LIVE tip `d2a8112` / prior tip `af43751` — **not VERIFIED** until confirmed channel receipts on @era_leaders1 / announcements topic and real guest/admin acceptance.
+- Register denominator is **42**; evidenced acceptance remains **3/42 (≈7.1%)**. F01 / #669 is **DEPLOYED** on LIVE tip `d2a8112` / prior tip `af43751` — **not VERIFIED** until confirmed channel receipts on @era_leaders1 / announcements topic and real guest/admin acceptance.
 - #664 GCal adapter remains DEPLOYED default OFF; #582 shared-read docs shipped with #729.
 
 ## Registry sync — shipped wave #725–#729 (2026-11-26)
@@ -173,4 +175,4 @@ Evidenced VERIFIED/ПРОВЕРЕНО remains **3** (C01, C02, E12). Denominator
 - #728 E09 approval UI/commands → E09 DEPLOYED (authorized workflow acceptance open).
 - #729 anniversary + GCal OFF + #582 docs → F01/#669 DEPLOYED (channel receipts open).
 - E13 #364 remains BLOCKED (human legal). E14 remains NOT STARTED / BLOCKED without device roles.
-- No new VERIFIED invented; acceptance stays 3/41.
+- No new VERIFIED invented; acceptance stays 3/42.

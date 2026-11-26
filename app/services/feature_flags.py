@@ -15,6 +15,7 @@ class Feature(StrEnum):
     REFERRALS = "referrals"
     MEDIA = "media"
     ROLE_RECRUITMENT = "role_recruitment"
+    EXPERTS = "experts"
 
 
 _FEATURE_ATTR: dict[Feature, str] = {
@@ -40,7 +41,11 @@ def feature_enabled(settings: Settings, feature: Feature, telegram_id: int | Non
     TESTERS is deliberately independent from admin status. The caller passes a
     Telegram id and an explicit tester list grants visibility. Support uses
     its separate SUPPORT_THREAD_TESTER_IDS to isolate this rollout.
+    Experts (#616) uses a dedicated boolean gate defaulting to False.
     """
+
+    if feature == Feature.EXPERTS:
+        return bool(getattr(settings, "experts_platform_enabled", False))
 
     mode = feature_mode(settings, feature)
     if mode == "ALL":

@@ -211,6 +211,7 @@ function parseDeepLink(): DeepLink | null {
     return link({ tab: "community", communitySection: "literature", itemId });
   }
   if (route === "games") return link({ tab: "community", communitySection: "games" });
+  if (route === "experts") return link({ tab: "community", communitySection: "experts" });
   if (route === "community") return link({ tab: "community", communitySection: "opportunities" });
   if (route === "profile") return link({ tab: "profile" });
   if (route === "admin") return link({ tab: "profile", workspace: "admin" });
