@@ -87,6 +87,8 @@ async def _show_laws48_preview(message: Message, session: AsyncSession, settings
         f"Публичная отправка сейчас: "
         f"<b>{'да' if payload['would_public_send'] else 'нет'}</b>\n"
     )
+    if not payload['would_public_send'] and payload.get('series_reason'):
+        header += f"Причина: {payload['series_reason']}\n"
     if nxt:
         header += f"Следующий непубликованный: №{nxt['law_number']} — {nxt['title']}\n"
         header += f"Аудио: {nxt['audio_url'] or 'нет (null)'}\n"

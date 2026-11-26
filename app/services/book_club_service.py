@@ -239,6 +239,12 @@ async def series_status(
             'Плановая отправка блокируется, пока редактор не одобрит точный текст и дату.',
             'approve',
         )
+    # Mirrors every early return in daily_job: launch flag, editorial override,
+    # exact-day approval, prior uncertain/conflict receipt, and a prior send.
+    would_public_send = bool(
+        not launch_flag_off and approved and not editorial_blocks_series
+        and not published and not uncertain
+    )
     return {
         'label': label,
         'reason': reason,
@@ -250,6 +256,7 @@ async def series_status(
         'action': action,
         'editorial_blocks_series': editorial_blocks_series,
         'publish_flag_enabled': not launch_flag_off,
+        'would_public_send': would_public_send,
         'title': get_issue(number).title,
         'preview': render_issue(number),
         'receipt_status': getattr(receipt, 'status', None),

@@ -21,7 +21,7 @@ from app.services.book_club_service import (
     PROGRAM_START,
     publication_number,
     series_issue_delivery,
-    series_issue_is_approved,
+    series_status,
     yerevan_today,
 )
 
@@ -244,11 +244,10 @@ async def admin_preview_payload(
     progress = content_progress()
     next_item = await next_unpublished_analysis(session)
     calendar_number = publication_number(day)
-    approved = False
-    if calendar_number and settings.general_chat_id:
-        approved = await series_issue_is_approved(
-            session, day, settings.general_chat_id, calendar_number
-        )
+    # Read-only: same blockers as daily_job (editorial override, receipts, flag).
+    series = await series_status(session, settings, on_date=day)
+    approved = bool(series.get("approved"))
+    would_public_send = bool(series.get("would_public_send"))
     preview_number = next_item.law_number if next_item else calendar_number
     preview_html = render_analysis(preview_number) if preview_number else ""
     return {
@@ -257,12 +256,11 @@ async def admin_preview_payload(
         "approval_required": True,
         "calendar_number": calendar_number,
         "calendar_approved": approved,
-        "would_public_send": bool(
-            publish_enabled(settings)
-            and approved
-            and calendar_number
-            and settings.general_chat_id
-        ),
+        "would_public_send": would_public_send,
+        "series_label": series.get("label"),
+        "series_reason": series.get("reason"),
+        "editorial_blocks_series": bool(series.get("editorial_blocks_series")),
+        "receipt_status": series.get("receipt_status"),
         "content_progress": progress,
         "next_unpublished": (
             {

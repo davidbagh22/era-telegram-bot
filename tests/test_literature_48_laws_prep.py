@@ -222,3 +222,92 @@ class Literature48PrepTests(IsolatedAsyncioTestCase):
         assert status["label"] == "Подготовка (флаг OFF)"
         assert status["approved"] is True
         assert "literature_48_laws_publish_enabled=false" in status["reason"]
+
+
+class Laws48PreviewSendStatusTests(Literature48PrepTests):
+    """would_public_send mirrors daily_job blockers; preview stays read-only."""
+
+    DAY = date(2026, 10, 10)
+
+    def flag_on(self):
+        self.settings = Settings(
+            bot_token="1234567890:test-token",
+            general_chat_id=-100123,
+            literature_48_laws_publish_enabled=True,
+        )
+
+    async def preview(self):
+        async with self.sessions() as session:
+            return await admin_preview_payload(session, self.settings, on_date=self.DAY)
+
+    async def counts(self):
+        async with self.sessions() as session:
+            deliveries = len((await session.scalars(select(NotificationDelivery))).all())
+            settings_rows = len((await session.scalars(select(AppSetting))).all())
+        return deliveries, settings_rows
+
+    async def add_receipt(self, status):
+        async with self.sessions() as session:
+            session.add(NotificationDelivery(
+                delivery_key="general-topic:literature:issue:2026-10-10:1",
+                chat_id=-100123, notification_type="general_topic", status=status,
+                payload_hash="fixture", attempt_count=1,
+            ))
+            await session.commit()
+
+    async def test_flag_on_approved_without_blocker_would_send(self):
+        self.flag_on()
+        await self.approve_today()
+        payload = await self.preview()
+        assert payload["would_public_send"] is True
+        assert payload["editorial_blocks_series"] is False
+
+    async def test_flag_on_unapproved_would_not_send(self):
+        self.flag_on()
+        assert (await self.preview())["would_public_send"] is False
+
+    async def test_editorial_queue_enabled_or_paused_blocks_send(self):
+        self.flag_on()
+        await self.approve_today()
+        for paused in (False, True):
+            async with self.sessions() as session:
+                await club.save_editorial_settings(
+                    session, actor_id=1, enabled=True, paused=paused,
+                )
+                await session.commit()
+            payload = await self.preview()
+            assert payload["calendar_approved"] is True
+            assert payload["editorial_blocks_series"] is True
+            assert payload["would_public_send"] is False
+            assert "редакцион" in payload["series_reason"].lower()
+        async with self.sessions() as session:
+            await club.save_editorial_settings(session, actor_id=1, enabled=False)
+            await session.commit()
+        assert (await self.preview())["would_public_send"] is True
+
+    async def test_uncertain_or_conflict_receipt_blocks_send(self):
+        self.flag_on()
+        await self.approve_today()
+        for status in ("uncertain", "conflict"):
+            async with self.sessions() as session:
+                for row in (await session.scalars(select(NotificationDelivery))).all():
+                    await session.delete(row)
+                await session.commit()
+            await self.add_receipt(status)
+            payload = await self.preview()
+            assert payload["would_public_send"] is False
+            assert payload["receipt_status"] == status
+
+    async def test_already_sent_receipt_does_not_resend(self):
+        self.flag_on()
+        await self.approve_today()
+        await self.add_receipt("sent")
+        assert (await self.preview())["would_public_send"] is False
+
+    async def test_preview_is_read_only(self):
+        self.flag_on()
+        await self.approve_today()
+        before = await self.counts()
+        await self.preview()
+        assert await self.counts() == before
+        self.bot.send_message.assert_not_awaited()
