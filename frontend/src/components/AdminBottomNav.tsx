@@ -18,13 +18,14 @@ export function AdminBottomNav({ active, onChange }: AdminBottomNavProps) {
   return (
     <nav
       aria-label="Разделы управления ЭРА"
+      data-era-hide-on-keyboard
       style={{
         position: "sticky",
-        bottom: 0,
+        bottom: "calc(0.6rem + var(--era-safe-bottom))",
         display: "flex",
         minWidth: 0,
         gap: "0.125rem",
-        margin: "0 0.5rem calc(0.6rem + env(safe-area-inset-bottom, 0px))",
+        margin: "0 0.5rem 0",
         padding: "0.35rem",
         background: "var(--era-surface)",
         border: "1px solid var(--era-border)",
@@ -51,7 +52,7 @@ export function AdminBottomNav({ active, onChange }: AdminBottomNavProps) {
               minWidth: 0,
               background: "none",
               border: "none",
-              color: isActive ? "#fff" : "var(--era-text-muted)",
+              color: isActive ? "var(--era-on-primary)" : "var(--era-text-muted)",
               fontFamily: "var(--era-font-body)",
               fontSize: "0.625rem",
               fontWeight: isActive ? 700 : 500,

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 interface BottomSheetProps {
   open: boolean;
@@ -29,7 +30,8 @@ export function BottomSheet({ open, onClose, title, children }: BottomSheetProps
     return null;
   }
 
-  return (
+  // Rendered at <body> so no ancestor transform/filter can re-anchor `position: fixed`.
+  return createPortal(
     <div
       className="era-overlay-backdrop"
       onClick={onClose}
@@ -48,7 +50,7 @@ export function BottomSheet({ open, onClose, title, children }: BottomSheetProps
           borderTopRightRadius: "var(--era-radius-sheet)",
           background: "var(--era-surface)",
           boxShadow: "var(--era-shadow-overlay)",
-          padding: "1.25rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom, 0px))",
+          padding: "1.25rem 1.25rem calc(1.25rem + var(--era-safe-bottom))",
           zIndex: 41,
         }}
       >
@@ -69,6 +71,7 @@ export function BottomSheet({ open, onClose, title, children }: BottomSheetProps
         )}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

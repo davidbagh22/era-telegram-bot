@@ -24,7 +24,7 @@ export function StatusBanner({
         gap: "0.75rem",
         alignItems: "center",
         textAlign: "center",
-        padding: "calc(2.5rem + env(safe-area-inset-top, 0px)) 1.5rem 2.5rem",
+        padding: "calc(2.5rem + var(--era-safe-top)) 1.5rem 2.5rem",
         maxWidth: "28rem",
         margin: "0 auto",
       }}

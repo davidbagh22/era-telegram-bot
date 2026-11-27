@@ -81,7 +81,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         aria-relevant="additions text"
         style={{
           position: "fixed",
-          top: "calc(0.75rem + env(safe-area-inset-top, 0px))",
+          top: "calc(0.75rem + var(--era-safe-top))",
           left: "0.75rem",
           right: "0.75rem",
           display: "flex",

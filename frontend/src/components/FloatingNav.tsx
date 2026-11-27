@@ -28,6 +28,7 @@ export function FloatingNav({ active, onChange }: FloatingNavProps) {
     <nav
       aria-label="Основная навигация"
       className="era-bottom-nav"
+      data-era-hide-on-keyboard
       data-active-tab={active}
       style={{
         position: "fixed",

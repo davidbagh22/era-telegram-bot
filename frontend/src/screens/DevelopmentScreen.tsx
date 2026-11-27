@@ -701,7 +701,7 @@ function ChipGrid({
               background: active ? "var(--era-tint-violet)" : "var(--era-surface)",
               color: "var(--era-text)",
               opacity: !active && selected.length >= max ? 0.5 : 1,
-              boxShadow: active ? "0 0 0 2px rgba(188, 33, 132,.22)" : undefined,
+              boxShadow: active ? "0 0 0 2px rgba(var(--era-accent-rgb), .22)" : undefined,
             }}
             onClick={() =>
               active

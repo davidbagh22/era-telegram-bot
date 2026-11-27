@@ -28,7 +28,7 @@ export function UserLayout({ children, activeTab, onTabChange }: UserLayoutProps
             display: "flex",
             flexDirection: "column",
             paddingTop: "var(--era-safe-top)",
-            paddingBottom: "var(--era-bottom-nav-clearance, calc(6rem + env(safe-area-inset-bottom, 0px)))",
+            paddingBottom: "var(--era-bottom-nav-clearance, calc(6rem + var(--era-safe-bottom)))",
           }}
         >
           <div style={{ flex: 1, minWidth: 0 }}>{children}</div>

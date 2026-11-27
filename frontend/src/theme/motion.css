@@ -9,7 +9,7 @@
   animation-name: era-card-in !important;
   animation-duration: var(--era-motion-card) !important;
   animation-iteration-count: 1 !important;
-  animation-fill-mode: both !important;
+  animation-fill-mode: backwards !important;
 }
 
 @keyframes era-question-in {
@@ -18,7 +18,7 @@
 }
 
 .era-question-step {
-  animation: era-question-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: era-question-in 220ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
 }
 
 .era-save-indicator {
@@ -33,7 +33,7 @@
   color: var(--era-text-muted);
   font-size: .75rem;
   font-weight: 750;
-  animation: era-page-in 180ms ease both;
+  animation: era-page-in 180ms ease backwards;
 }
 
 .era-save-indicator[data-state="saved"] {
@@ -55,5 +55,26 @@
   .era-save-indicator,
   .era-gradient-drift {
     animation: none !important;
+  }
+}
+
+/* Ambient/orbit layers animate transform and opacity only; keep them on their
+   own compositor layers so they never trigger layout or repaint of the page. */
+.era-orbit-node__shell,
+.era-orbit-ambient__arc {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+/* Reduced motion: no ambient drift or breathing at all (not merely paused
+   mid-frame); the static composition is the resting state. */
+@media (prefers-reduced-motion: reduce) {
+  .era-orbit-ambient__blob,
+  .era-orbit-ambient__arc,
+  .era-orbit-node__shell,
+  .era-premium-ambient,
+  .era-gradient-drift {
+    animation: none !important;
+    will-change: auto;
   }
 }

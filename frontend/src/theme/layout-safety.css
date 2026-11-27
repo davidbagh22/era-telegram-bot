@@ -6,6 +6,17 @@ body,
   overflow-x: hidden;
 }
 
+/* `hidden` turns body/#root into scroll containers, which breaks
+   `position: sticky` bars (they stick to a box as tall as the content instead
+   of the viewport). `clip` hides horizontal bleed without creating one. */
+@supports (overflow: clip) {
+  html,
+  body,
+  #root {
+    overflow-x: clip;
+  }
+}
+
 #root,
 .era-page,
 .era-page > * {
@@ -21,6 +32,8 @@ body,
 :root {
   --era-safe-top: max(env(safe-area-inset-top, 0px), var(--era-tg-top, 0px));
   --era-safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--era-tg-bottom, 0px));
+  --era-safe-left: max(env(safe-area-inset-left, 0px), var(--era-tg-left, 0px));
+  --era-safe-right: max(env(safe-area-inset-right, 0px), var(--era-tg-right, 0px));
   /* Clears the fixed bottom nav. Event detail adds its own clearance for
      the registration bar so ordinary screens do not keep a large empty tail. */
   --era-page-bottom-safe: calc(5.75rem + var(--era-safe-bottom));
@@ -127,4 +140,44 @@ svg {
   font-size: clamp(1.25rem, 5.2vw, 1.65rem);
   line-height: 1.12;
   overflow-wrap: break-word;
+}
+
+/* --- Keyboard, safe areas, overlays ------------------------------------ */
+
+/* Fixed bars give way to the on-screen keyboard (see telegram/keyboard.ts). */
+html[data-keyboard="open"] [data-era-hide-on-keyboard] { display: none !important; }
+html { scroll-padding-bottom: calc(6.5rem + var(--era-safe-bottom)); }
+
+/* Landscape notch / Telegram side insets. */
+.era-app-shell__content {
+  padding-left: var(--era-safe-left);
+  padding-right: var(--era-safe-right);
+}
+.era-bottom-nav {
+  width: min(
+    calc(100% - 1.25rem),
+    calc(100vw - 1.25rem - 2 * max(var(--era-safe-left), var(--era-safe-right)))
+  ) !important;
+}
+
+/* Sheets and dialogs never grow past the visible area; they scroll inside. */
+.era-bottom-sheet {
+  max-height: calc(100dvh - var(--era-safe-top) - 1rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.era-modal {
+  max-height: calc(100dvh - var(--era-safe-top) - var(--era-safe-bottom) - 3rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.era-overlay-backdrop { overscroll-behavior: contain; }
+
+/* Date/time controls have a wide intrinsic size; never let them stretch a grid. */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"],
+input[type="month"] {
+  min-width: 0;
+  max-width: 100%;
 }

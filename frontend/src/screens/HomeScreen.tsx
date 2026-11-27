@@ -10,6 +10,7 @@ import { StatusBanner } from "../components/StatusBanner";
 import { TypographyFeedCard } from "../components/TypographyFeedCard";
 import { useHome } from "../hooks/useHome";
 import { useMotionPreference } from "../motion/MotionPreference";
+import { useEntranceClass } from "../motion/useEntrance";
 import type { EventItem } from "../types/activity";
 import type { MiniAppUserSummary } from "../types/auth";
 import { formatFeedDateLine, formatProjectFeedDate } from "../utils/feedDate";
@@ -30,6 +31,11 @@ interface HomeScreenProps {
   onOpenOpportunity?: (id: number) => void;
   onOpenProjects?: () => void;
 }
+
+type EventBoard = EventItem[] | "loading" | "error";
+
+// Survives leaving and returning to Home so the board repaints instantly.
+let cachedEventBoard: EventItem[] | null = null;
 
 function greeting() {
   const hour = new Date().getHours();
@@ -62,22 +68,21 @@ export function HomeScreen({
     try { return localStorage.getItem("era.orbit.view") === "list" ? "list" : "orbit"; } catch { return "orbit"; }
   });
   const [dailyQuote, setDailyQuote] = useState("");
-  const [eventBoard, setEventBoard] = useState<EventItem[] | "loading" | "error">("loading");
+  const [eventBoard, setEventBoard] = useState<EventBoard>(() => cachedEventBoard ?? "loading");
+  const rootClass = useEntranceClass(home.status === "ready");
   const [eventsTick, setEventsTick] = useState(0);
 
   useEffect(() => {
     let active = true;
-    setEventBoard("loading");
+    if (eventsTick > 0 || !cachedEventBoard) setEventBoard("loading");
     void fetchEvents("all").then((events) => {
-      if (active) {
-        setEventBoard(
-          events.filter((event) =>
-            ["approved", "published", "registration_open", "registration_closed"].includes(event.status),
-          ),
-        );
-      }
+      const visible = events.filter((event) =>
+        ["approved", "published", "registration_open", "registration_closed"].includes(event.status),
+      );
+      cachedEventBoard = visible;
+      if (active) setEventBoard(visible);
     }).catch(() => {
-      if (active) setEventBoard("error");
+      if (active && !cachedEventBoard) setEventBoard("error");
     });
     return () => {
       active = false;
@@ -148,9 +153,12 @@ export function HomeScreen({
     return undefined;
   })();
 
+  // The featured event is known with the snapshot, so a next step that repeats
+  // it is hidden from the first paint instead of collapsing after the board loads.
   const nextStepRepeatsNearest = data.next_step?.kind === "event"
     && data.next_step.entity_id != null
-    && nearestCards.some((event) => event.id === data.next_step?.entity_id);
+    && (featuredEvent?.id === data.next_step.entity_id
+      || nearestCards.some((event) => event.id === data.next_step?.entity_id));
 
   const handleOrbitNode = (node: OrbitNodeKey) => {
     if (node === "vector") {
@@ -170,7 +178,7 @@ export function HomeScreen({
 
   return (
     <div
-      className="era-page era-stagger"
+      className={rootClass}
       style={{
         padding: "1.15rem 1.15rem var(--era-page-bottom-safe)",
         display: "flex",
@@ -227,7 +235,7 @@ export function HomeScreen({
       </header>
 
       <section aria-label="Твоя орбита" style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "0.75rem" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: "0.5rem 0.75rem" }}>
           <h2 style={{ margin: 0, fontFamily: "var(--era-font-display)", fontSize: "1.35rem" }}>Твоя орбита</h2>
           <div
             role="group"
