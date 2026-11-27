@@ -316,6 +316,21 @@ export function saveUiPreferences(accentColor: string | null): Promise<UiPrefere
   return authorizedSend<UiPreferences>("PUT", "/api/v1/me/preferences", { accent_color: accentColor });
 }
 
+export interface PublishedExpert {
+  id: number;
+  display_name: string;
+  title: string | null;
+  organization: string | null;
+  bio_short: string | null;
+  topics: string | null;
+  published_at: string | null;
+}
+
+/** #616 expert catalog — published profiles only; 404 when platform flag is off. */
+export function fetchPublishedExperts(): Promise<PublishedExpert[]> {
+  return authorizedGet<PublishedExpert[]>("/api/v1/experts");
+}
+
 export function fetchHome(): Promise<HomeSnapshot> {
   return authorizedGet<HomeSnapshot>("/api/v1/home");
 }

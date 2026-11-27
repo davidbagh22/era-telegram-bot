@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     google_calendar_sync_enabled: bool = False
     google_calendar_id: str = ""
     google_calendar_service_account_json: str = ""
+    # #616 expert platform — OFF until owner enables after CI + role acceptance.
+    experts_platform_enabled: bool = False
     dev_auth_enabled: bool = False
     init_data_max_age_seconds: int = 3600
     miniapp_url: str = ""

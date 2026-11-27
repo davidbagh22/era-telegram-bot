@@ -12,3 +12,4 @@
 - #582: owner-approved shared-read for media-hub; writes area-scoped (documented + tests).
 - Still blocked for full VERIFIED: E14 device/role evidence, E13 #364 legal human, #616 expert platform, GCal credentials. Do not invent legal or device acceptance.
 - Campaign/media DM flags remain off unless separately enabled.
+- #616 G01 slice: ExpertProfile/Invite/Suggestion schema + invite/claim/suggest/list APIs + Mini App «Эксперты»; `experts_platform_enabled` defaults False. Not articles/feed/OTP/email.

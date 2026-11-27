@@ -7,6 +7,7 @@ export interface MiniAppFeatureFlags {
   referrals: boolean;
   media: boolean;
   role_recruitment: boolean;
+  experts: boolean;
 }
 
 export interface MiniAppUserSummary {

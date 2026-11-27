@@ -6,13 +6,14 @@ import { LeaderboardScreen } from "./LeaderboardScreen";
 import { MediaScreen } from "./MediaScreen";
 import { OpportunitiesScreen, type OpportunitiesSection } from "./OpportunitiesScreen";
 import { DiscoverScreen } from "./DiscoverScreen";
+import { ExpertsScreen } from "./ExpertsScreen";
 import { LiteratureScreen } from "./LiteratureScreen";
 import { GamesScreen } from "./GamesScreen";
 import { EmptyState } from "../components/EmptyState";
 
 // `community` remains only as a compatibility shell for old deep links.
 // Participant navigation now treats Opportunities as the real fifth domain.
-export type CommunitySection = "opportunities" | "leaderboard" | "surveys" | "media" | "rewards" | "auctions" | "leisure" | "points" | "literature" | "games";
+export type CommunitySection = "opportunities" | "leaderboard" | "surveys" | "media" | "rewards" | "auctions" | "leisure" | "points" | "literature" | "games" | "experts";
 
 interface CommunityScreenProps {
   initialSection?: CommunitySection | null;
@@ -61,6 +62,7 @@ export function CommunityScreen({ initialSection = null, initialItemId = null, i
       media: "media",
       rewards: "rewards",
       auctions: "auctions",
+      experts: "experts",
     };
     const feature = initialSection ? featureBySection[initialSection] : undefined;
     if (feature && !me.data.features[feature]) {
@@ -68,6 +70,9 @@ export function CommunityScreen({ initialSection = null, initialItemId = null, i
     }
   }
 
+  if (initialSection === "experts") {
+    return <ExpertsScreen onBack={() => { window.location.hash = "#/discover"; }} />;
+  }
   if (initialSection === "leaderboard") return <LeaderboardScreen onBack={backToOpportunities} />;
   if (initialSection === "media") return <MediaScreen onBack={backToOpportunities} initialView={initialMediaRoute} />;
 

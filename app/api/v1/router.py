@@ -34,6 +34,7 @@ from app.api.v1 import (
     development,
     engagement,
     era_pro,
+    experts,
     event_attendance,
     event_posters,
     events,
@@ -80,6 +81,7 @@ api_router.include_router(referrals.router, dependencies=[Depends(require_featur
 # endpoints enforce the flag inside era_pro.py so operational review remains
 # available during OFF/TESTERS rollouts.
 api_router.include_router(era_pro.router)
+api_router.include_router(experts.router)
 api_router.include_router(leaderboard.router)
 api_router.include_router(community_users.router)
 api_router.include_router(event_posters.router)
