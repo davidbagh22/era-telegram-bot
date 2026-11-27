@@ -33,9 +33,14 @@ from app.keyboards.participant import (
 from app.repositories.users import rating, user_stats
 from app.services.event_activity_service import REVIEWABLE_STATUSES
 from app.services.notification_service import safe_answer_document, safe_answer_photo
-from app.services import career_service
-from app.services.career_pdf_service import build_career_resume
 from app.services.portfolio_service import build_portfolio_data, portfolio_summary_text
+from app.services.resume_export_service import (
+    ResumeAttachmentError,
+    assemble_resume_export,
+    attachment_preview,
+    attachments_caption,
+    telegram_file_fetcher,
+)
 from app.utils import texts
 from app.utils.constants import (
     ApplicationStatus,
@@ -298,23 +303,36 @@ async def portfolio_file(
     await call.message.answer("Файл прикреплён, но Telegram не дал открыть его повторно.")
 
 
-@router.callback_query(F.data == "portfolio:resume")
-async def resume(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
-    if not await _guard(call, user):
-        return
+async def _send_resume(
+    call: CallbackQuery, user: User, session: AsyncSession, *, skip_failed: bool
+) -> None:
     await call.message.answer("Собираю Ваше портфолио в PDF. Это займёт несколько секунд")
     try:
-        data = await build_portfolio_data(session, user, preview_limit=None)
-        career_profile = await career_service.get_or_create_profile(session, user.id)
-        career_items = await career_service.list_items(session, user.id)
-        content = build_career_resume(
+        preview = await attachment_preview(session, user.id)
+        export = await assemble_resume_export(
+            session,
             user,
-            career_profile,
-            data,
-            career_items,
             purpose="universal",
             mode="portfolio",
+            attach=preview["default_attach"],
+            fetch_file=telegram_file_fetcher(call.bot),
+            skip_failed=skip_failed,
         )
+    except ResumeAttachmentError as exc:
+        names = "\n".join(f"• {item['title']}" + (f" ({item['number']})" if item.get("number") else "") for item in exc.failures)
+        await call.message.answer(
+            "Не удалось приложить к PDF:\n"
+            f"{names}\n\n"
+            "PDF не отправлен, чтобы вы не получили документ без нужных страниц.",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Повторить", callback_data="portfolio:resume")],
+                    [InlineKeyboardButton(text="Отправить без них", callback_data="portfolio:resume_skip")],
+                    [InlineKeyboardButton(text="Назад", callback_data="cabinet:portfolio")],
+                ]
+            ),
+        )
+        return
     except Exception:
         logger.exception("Could not build ERA resume for user %s", user.id)
         await call.message.answer(
@@ -322,12 +340,17 @@ async def resume(call: CallbackQuery, user: User | None, session: AsyncSession) 
             reply_markup=back_keyboard("cabinet:portfolio"),
         )
         return
-    filename_name = "_".join(part for part in data.full_name.split() if part) or "participant"
+    content = export.pdf
+    filename_name = "_".join(part for part in (user.first_name, user.last_name) if part).replace("/", "_") or "participant"
+    caption = "Ваше портфолио ЭРА готово. Его можно сохранить и отправить партнёрам или организаторам"
+    details = attachments_caption(export.manifest, limit=700)
+    if details:
+        caption = f"{caption}\n\n{details}"
     try:
         delivered = await safe_answer_document(
             call.message,
             BufferedInputFile(content, filename=f"ERA_portfolio_{filename_name}.pdf"),
-            caption="Ваше портфолио ЭРА готово. Его можно сохранить и отправить партнёрам или организаторам",
+            caption=caption,
             reply_markup=back_keyboard("cabinet:portfolio"),
         )
     except Exception:
@@ -338,6 +361,22 @@ async def resume(call: CallbackQuery, user: User | None, session: AsyncSession) 
             "PDF собран, но Telegram не дал отправить файл. Попробуйте ещё раз немного позже",
             reply_markup=back_keyboard("cabinet:portfolio"),
         )
+
+
+@router.callback_query(F.data == "portfolio:resume")
+async def resume(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
+    if not await _guard(call, user):
+        return
+    await _send_resume(call, user, session, skip_failed=False)
+
+
+@router.callback_query(F.data == "portfolio:resume_skip")
+async def resume_without_failed_attachments(
+    call: CallbackQuery, user: User | None, session: AsyncSession
+) -> None:
+    if not await _guard(call, user):
+        return
+    await _send_resume(call, user, session, skip_failed=True)
 
 
 @router.callback_query(F.data == "cabinet:projects")

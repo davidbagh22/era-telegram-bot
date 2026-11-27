@@ -13,7 +13,11 @@ import {
   uploadCareerEvidence,
   fetchCertificates,
   downloadCertificate,
+  fetchResumeAttachments,
+  ResumeAttachmentError,
   type IssuedCertificate,
+  type ResumeAttachmentFailure,
+  type ResumeAttachmentsPreview,
 } from "../api/career";
 import { ActionCell } from "../components/ActionCell";
 import { BottomSheet } from "../components/BottomSheet";
@@ -73,6 +77,18 @@ function saveBlob(blob: Blob, filename: string) {
   link.remove();
   URL.revokeObjectURL(url);
 }
+
+function attachmentSummary(attached: number, skipped: number): string {
+  if (attached > 0) return `. Приложено документов: ${attached}`;
+  return skipped > 0 ? ". Без вложений — по вашему выбору" : "";
+}
+
+const ATTACHMENT_REASON_LABEL: Record<string, string> = {
+  hidden: "скрыт из резюме",
+  revoked: "отозван, не прикладывается",
+  rejected: "отклонён, не прикладывается",
+  unsupported_format: "формат не поддерживается (нужен PDF или фото)",
+};
 
 function Counter({ value, label }: { value: number; label: string }) {
   return (
@@ -168,7 +184,11 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportMode, setExportMode] = useState<"download" | "send">("download");
-  const [resumeMode, setResumeMode] = useState<"resume" | "portfolio" | "portfolio_with_certificates">("portfolio");
+  const [resumeMode, setResumeMode] = useState<"resume" | "portfolio">("portfolio");
+  const [attachments, setAttachments] = useState<ResumeAttachmentsPreview | null>(null);
+  const [attachmentsError, setAttachmentsError] = useState(false);
+  const [attachOn, setAttachOn] = useState(false);
+  const [attachFailures, setAttachFailures] = useState<ResumeAttachmentFailure[]>([]);
   const [form, setForm] = useState<CareerItemPayload>(EMPTY_FORM);
   const [profileDraft, setProfileDraft] = useState({ headline: "", about: "", languages: "", skills: "" });
   const [exportDraft, setExportDraft] = useState({ headline: "", about: "", skills: "", languages: "" });
@@ -278,8 +298,32 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
     }
   };
 
+  const loadAttachments = useCallback(async (resetToggle: boolean) => {
+    try {
+      const preview = await fetchResumeAttachments();
+      setAttachments(preview);
+      setAttachmentsError(false);
+      setAttachOn((prev) => (resetToggle ? preview.default_attach : prev && preview.selected_count > 0));
+    } catch {
+      setAttachments(null);
+      setAttachmentsError(true);
+      setAttachOn(false);
+    }
+  }, []);
+
+  const toggleAttachmentVisibility = async (itemId: number, visible: boolean) => {
+    try {
+      await updateCareerItem(itemId, { include_in_resume: visible });
+      await loadAttachments(false);
+    } catch {
+      toast.show("Не удалось изменить настройку документа", "error");
+    }
+  };
+
   const openExportInterview = (mode: "download" | "send") => {
     setExportMode(mode);
+    setAttachFailures([]);
+    void loadAttachments(true);
     setExportDraft({
       headline: profileDraft.headline,
       about: profileDraft.about,
@@ -305,7 +349,7 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
     }
   };
 
-  const confirmExportInterview = async () => {
+  const confirmExportInterview = async (skip: string[] = []) => {
     const busy = exportMode === "send" ? setSendingResume : setDownloading;
     busy(true);
     try {
@@ -316,23 +360,28 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
         skills: parseSkills(exportDraft.skills),
       });
       setProfileDraft({ ...exportDraft });
-      setExportOpen(false);
+      const options = { attach: attachOn, skip };
+      let summary = "";
       if (exportMode === "send") {
-        await sendCareerResume(purpose, resumeMode);
-        toast.show("PDF отправлен в чат с ботом", "success");
+        const result = await sendCareerResume(purpose, resumeMode, options);
+        summary = attachmentSummary(result.manifest?.attached.length ?? 0, skip.length);
+        toast.show(`PDF отправлен в чат с ботом${summary}`, "success");
       } else {
-        const filename =
-          resumeMode === "resume"
-            ? "Резюме_ЭРА.pdf"
-            : resumeMode === "portfolio_with_certificates"
-              ? "Портфолио_ЭРА_с_сертификатами.pdf"
-              : "Портфолио_ЭРА.pdf";
-        saveBlob(await downloadCareerResume(purpose, resumeMode), filename);
-        toast.show("Портфолио готово", "success");
+        const filename = resumeMode === "resume" ? "Резюме_ЭРА.pdf" : "Портфолио_ЭРА.pdf";
+        const result = await downloadCareerResume(purpose, resumeMode, options);
+        saveBlob(result.blob, filename);
+        summary = attachmentSummary(result.manifest?.attached.length ?? 0, skip.length);
+        toast.show(`Резюме готово${summary}`, "success");
       }
+      setAttachFailures([]);
+      setExportOpen(false);
       await refresh();
-    } catch {
-      toast.show(exportMode === "send" ? "Не удалось отправить PDF. Попробуйте ещё раз." : "Не удалось сформировать портфолио", "error");
+    } catch (err) {
+      if (err instanceof ResumeAttachmentError) {
+        setAttachFailures(err.failed);
+      } else {
+        toast.show(exportMode === "send" ? "Не удалось отправить PDF. Попробуйте ещё раз." : "Не удалось сформировать резюме", "error");
+      }
     } finally {
       busy(false);
     }
@@ -433,23 +482,23 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
         <button
           type="button"
           className="era-btn-primary"
-          disabled={sendingResume || downloading}
-          onClick={() => openExportInterview("send")}
+          disabled={downloading || sendingResume}
+          onClick={() => openExportInterview("download")}
           style={{ width: "100%" }}
         >
-          {sendingResume ? "Отправляем…" : "Отправить портфолио в чат с ботом"}
+          {downloading ? "Формируем…" : "Скачать резюме"}
         </button>
         <button
           type="button"
           className="era-btn-secondary"
-          disabled={downloading || sendingResume}
-          onClick={() => openExportInterview("download")}
+          disabled={sendingResume || downloading}
+          onClick={() => openExportInterview("send")}
           style={{ width: "100%", marginTop: "0.55rem" }}
         >
-          {downloading ? "Формируем…" : "Скачать портфолио PDF"}
+          {sendingResume ? "Отправляем…" : "Получить в боте"}
         </button>
         <p style={{ margin: "0.55rem 0 0", color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>
-          Перед выгрузкой спросим навыки и коротко о себе — это попадёт в PDF вместе с участиями и сертификатами.
+          Перед выгрузкой спросим навыки и коротко о себе. Сертификаты можно приложить в конце PDF.
         </p>
 
         <Card style={{ marginTop: "0.75rem" }}>
@@ -502,7 +551,7 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
         </div>
       </BottomSheet>
 
-      <BottomSheet open={exportOpen} onClose={() => setExportOpen(false)} title="Перед выгрузкой портфолио">
+      <BottomSheet open={exportOpen} onClose={() => setExportOpen(false)} title="Перед выгрузкой резюме">
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "var(--era-text-sm)" }}>
             Ответьте коротко — эти формулировки попадут в PDF вместе с подтверждёнными участиями и сертификатами ЭРА.
@@ -536,7 +585,6 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
               [
                 { value: "resume", label: "Резюме 1–2 стр." },
                 { value: "portfolio", label: "Полное портфолио" },
-                { value: "portfolio_with_certificates", label: "Портфолио + сертификаты" },
               ] as const
             ).map((option) => (
               <label key={option.value} style={{ display: "flex", gap: "0.5rem", alignItems: "center", fontSize: "0.86rem" }}>
@@ -550,6 +598,74 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
               </label>
             ))}
           </div>
+          <fieldset aria-label="Приложить сертификаты" style={{ display: "grid", gap: "0.45rem", border: "1px solid var(--era-border)", borderRadius: "var(--era-radius-md, 12px)", padding: "0.7rem", margin: 0, minWidth: 0 }}>
+            <label style={{ display: "flex", gap: "0.5rem", alignItems: "center", fontWeight: 700 }}>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={attachOn}
+                disabled={!attachments || attachments.selected_count === 0}
+                onChange={(event) => setAttachOn(event.target.checked)}
+              />
+              {`Приложить сертификаты${attachments ? ` (${attachments.selected_count})` : ""}`}
+            </label>
+            {attachmentsError && (
+              <button type="button" onClick={() => void loadAttachments(true)}>Не удалось загрузить список. Повторить</button>
+            )}
+            {attachments && attachments.items.length === 0 && (
+              <span style={{ color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>
+                Пока нет сертификатов и загруженных документов.
+              </span>
+            )}
+            {attachments?.items.map((doc) => {
+              const locked = doc.reason === "revoked" || doc.reason === "rejected" || doc.reason === "unsupported_format";
+              return (
+                <label key={doc.key} style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", fontSize: "0.82rem", minWidth: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={doc.selected}
+                    disabled={locked || doc.item_id === null}
+                    onChange={(event) => doc.item_id !== null && void toggleAttachmentVisibility(doc.item_id, event.target.checked)}
+                  />
+                  <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                    {doc.title}
+                    {doc.number ? ` · ${doc.number}` : ""}
+                    {doc.kind === "document" && !doc.verified ? " · загружено вами, ЭРА не проверяла" : ""}
+                    {doc.reason ? ` · ${ATTACHMENT_REASON_LABEL[doc.reason] ?? doc.reason}` : ""}
+                  </span>
+                </label>
+              );
+            })}
+            <span style={{ color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>
+              Страницы сертификатов добавятся в конец PDF. Скрытые и отозванные документы не попадают в файл.
+            </span>
+          </fieldset>
+          {attachFailures.length > 0 && (
+            <div role="alert" style={{ display: "grid", gap: "0.45rem", border: "1px solid var(--era-danger, #e32731)", borderRadius: "var(--era-radius-md, 12px)", padding: "0.7rem" }}>
+              <strong>Не удалось приложить документ</strong>
+              <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
+                {attachFailures.map((failure) => (
+                  <li key={failure.key} style={{ overflowWrap: "anywhere" }}>
+                    {failure.title}{failure.number ? ` · ${failure.number}` : ""}
+                  </li>
+                ))}
+              </ul>
+              <span style={{ color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>
+                PDF не создан, чтобы вы не получили файл без нужных страниц.
+              </span>
+              <button type="button" className="era-btn-primary" disabled={downloading || sendingResume} onClick={() => void confirmExportInterview()}>
+                Повторить
+              </button>
+              <button
+                type="button"
+                className="era-btn-secondary"
+                disabled={downloading || sendingResume}
+                onClick={() => void confirmExportInterview(attachFailures.map((failure) => failure.key))}
+              >
+                {exportMode === "send" ? "Отправить без него" : "Скачать без него"}
+              </button>
+            </div>
+          )}
           <button
             type="button"
             className="era-btn-primary"
