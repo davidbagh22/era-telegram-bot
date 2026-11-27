@@ -28,7 +28,7 @@ test("manager hides and restores an event without deleting registrations or repu
   await page.getByRole("navigation", { name: "Основная навигация" })
     .getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
-  await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
+  await page.getByRole("button", { name: /^Мероприятия.*Создать/ }).click();
   await page.getByRole("button", { name: /Участники и посещаемость/ }).click();
   await expect(page.getByText(/Записано: 3/)).toBeVisible();
 

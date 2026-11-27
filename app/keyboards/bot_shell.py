@@ -13,7 +13,7 @@ from app.keyboards.participant import (
     navigation_guide_keyboard as legacy_navigation_guide_keyboard,
 )
 from app.services.anniversary_registration_service import MENU_BUTTON, MENU_TICKET_BUTTON
-from app.utils.deep_links import miniapp_admin_url, miniapp_leader_url
+from app.utils.deep_links import miniapp_admin_section_url, miniapp_admin_url, miniapp_leader_url
 from app.utils.constants import PRIVILEGED_ROLES
 from app.services.leadership_permission_service import is_assignment_active
 
@@ -71,6 +71,22 @@ def main_inline_keyboard(
 
 
 ADMIN_HUB_BUTTON = "⚙️ Админ"
+OPEN_APP_BUTTON = "🔥 Открыть ЭРА"
+HELP_BUTTON = "❓ Помощь"
+HELP_BUTTON_ALIASES = frozenset({HELP_BUTTON, "Помощь", "помощь", "🆘 Помощь"})
+
+# Texts of every reply-keyboard button the bot has ever shown. Users with an
+# old persistent keyboard can still tap them, so the handlers behind each text
+# must stay registered even though the keyboard itself is now two buttons.
+LEGACY_REPLY_BUTTON_TEXTS = frozenset({
+    "🔥 Открыть ЭРА", "📅 Афиша", "📅 Мероприятия", "🌱 Мой путь", "⭐ Возможности",
+    "👤 Личный кабинет", "💬 Связь", "🧭 Лидеры", "🧭 Панель лидера", "🎬 Медиа",
+    "⚙️ Админ", "💡 Проекты", "✅ Задачи", "🏆 Рейтинг", "🧭 Навигация", "🧭 Главное меню",
+    "⚙️ Панель", "❓ Вопросы об ЭРА", "❓ Вопросы и связь", "🎲 Досуг", "📖 Книжный клуб",
+    "🤝 Партнёры", "🤝 Команда ЭРА", "ℹ️ О боте", "💬 Задать вопрос", "💬 Мои обращения",
+    "📊 Статистика", "📊 Админ-сводка", "📥 Заявки", "⚙️ Управление",
+    "🎟 Зарегистрироваться на годовщину", "🎟 Годовщина · я в списке",
+})
 
 
 def main_reply_keyboard(
@@ -78,73 +94,106 @@ def main_reply_keyboard(
     media_chair: bool = False, anniversary: bool = False,
     anniversary_registered: bool = False,
 ) -> ReplyKeyboardMarkup:
-    """Persistent quick-access menu shown above the Telegram input field.
+    """Persistent menu above the Telegram input field: exactly two buttons.
 
-    Keep short labels. «Лидеры» / «Медиа» only when the user actually has those
-    rights — do not show empty shells. Admin tools collapse into one hub so the
-    keyboard stays short on phones. Leisure stays in the inline shell.
+    «Открыть ЭРА» opens the Mini App, «Помощь» opens the inline hub with every
+    other section and the role shortcuts (leaders, media, admin, anniversary).
+    The role/anniversary arguments are accepted so existing callers keep
+    working; they no longer change the keyboard — those entries live as inline
+    buttons under the «Помощь» message instead.
     """
-    rows: list[list[KeyboardButton]] = []
-    if anniversary:
-        anniversary_label = MENU_TICKET_BUTTON if anniversary_registered else MENU_BUTTON
-        rows.append([KeyboardButton(text=anniversary_label)])
-    if miniapp_url:
-        # Reply-keyboard WebApps use Telegram's simple mode (no signed initData).
-        # «Открыть ЭРА» stays a message so the handler can offer an auth WebApp.
-        rows.append([
-            KeyboardButton(text="🔥 Открыть ЭРА"),
-            KeyboardButton(text="📅 Афиша"),
-        ])
-        rows.append([
-            KeyboardButton(text="🌱 Мой путь"),
-            KeyboardButton(text="⭐ Возможности"),
-        ])
-    else:
-        rows.append([
-            KeyboardButton(text="👤 Личный кабинет"),
-            KeyboardButton(text="📅 Афиша"),
-        ])
-        rows.append([
-            KeyboardButton(text="🌱 Мой путь"),
-            KeyboardButton(text="⭐ Возможности"),
-        ])
-    role_row: list[KeyboardButton] = []
-    if leaders:
-        role_row.append(KeyboardButton(text="🧭 Лидеры"))
-    if media_chair:
-        role_row.append(KeyboardButton(text="🎬 Медиа"))
-    if role_row:
-        rows.append(role_row)
-    # Keep phone height short: admin hub shares the contact row.
-    if admin:
-        rows.append([KeyboardButton(text=ADMIN_HUB_BUTTON), KeyboardButton(text="💬 Связь")])
-    else:
-        rows.append([KeyboardButton(text="💬 Связь")])
     return ReplyKeyboardMarkup(
-        keyboard=rows,
+        keyboard=[[KeyboardButton(text=OPEN_APP_BUTTON), KeyboardButton(text=HELP_BUTTON)]],
         resize_keyboard=True,
         is_persistent=True,
         one_time_keyboard=False,
-        input_field_placeholder="Выберите раздел ЭРА",
+        input_field_placeholder="Откройте ЭРА или нажмите «Помощь»",
     )
 
 
-def admin_hub_keyboard(miniapp_url: str = "") -> InlineKeyboardMarkup:
-    """Inline shortcuts opened from the compact ⚙️ Админ reply button."""
-    rows = [
+def anniversary_inline_keyboard(registered: bool = False) -> InlineKeyboardMarkup:
+    label = MENU_TICKET_BUTTON if registered else MENU_BUTTON
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=label, callback_data="anniversary:menu")]])
+
+
+def help_hub_keyboard(
+    miniapp_url: str = "",
+    *,
+    admin: bool = False,
+    leaders: bool = False,
+    media_chair: bool = False,
+    anniversary: bool = False,
+    anniversary_registered: bool = False,
+    privileged: bool = False,
+) -> InlineKeyboardMarkup:
+    """Everything the old reply keyboard offered, as inline buttons."""
+    rows: list[list[InlineKeyboardButton]] = []
+    if anniversary:
+        label = MENU_TICKET_BUTTON if anniversary_registered else MENU_BUTTON
+        rows.append([InlineKeyboardButton(text=label, callback_data="anniversary:menu")])
+    rows.extend([
         [
-            InlineKeyboardButton(text="📊 Статистика", callback_data="admin:management:open"),
-            InlineKeyboardButton(text="📥 Заявки", callback_data="admin:applications"),
+            InlineKeyboardButton(text="📅 Афиша", callback_data="events:list"),
+            InlineKeyboardButton(text="🌱 Мой путь", callback_data="cabinet:open"),
         ],
-    ]
+        [
+            InlineKeyboardButton(text="⭐ Возможности", callback_data="offers:menu"),
+            InlineKeyboardButton(text="💬 Связь", callback_data="contact:menu"),
+        ],
+        [
+            InlineKeyboardButton(text="🧭 Мой вектор", callback_data="vector:home"),
+            InlineKeyboardButton(text="🎲 Досуг", callback_data="leisure:home"),
+        ],
+        [InlineKeyboardButton(text="❓ Вопросы об ЭРА", callback_data="faq:home")],
+    ])
+    role_row: list[InlineKeyboardButton] = []
+    if leaders:
+        role_row.append(InlineKeyboardButton(text="🧭 Лидеры", callback_data="wc:home"))
+    if media_chair:
+        role_row.append(InlineKeyboardButton(text="🎬 Медиа", callback_data="media:leader"))
+    if role_row:
+        rows.append(role_row)
+    if admin:
+        rows.append([InlineKeyboardButton(text=ADMIN_HUB_BUTTON, callback_data="admin:hub:open")])
+    elif privileged and miniapp_url:
+        rows.append([InlineKeyboardButton(text="🧭 Режим лидера", web_app=WebAppInfo(url=miniapp_leader_url(miniapp_url)))])
+    rows.append([InlineKeyboardButton(text="🧭 Навигация по ЭРА", callback_data="nav:guide")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def admin_hub_keyboard(
+    miniapp_url: str = "", *, pending: int | None = None, expanded: bool = False,
+) -> InlineKeyboardMarkup:
+    """Light admin hub: «Мероприятия», «Заявки · N», «Задачи» and «Ещё».
+
+    «Ещё» swaps the keyboard for the secondary tools (nothing was removed:
+    statistics and the full Mini App admin moved there)."""
+    applications = "📥 Заявки" if not pending else f"📥 Заявки · {pending}"
+    if expanded:
+        rows = [
+            [InlineKeyboardButton(text="📊 Статистика", callback_data="admin:management:open")],
+        ]
+        if miniapp_url:
+            rows.append([InlineKeyboardButton(
+                text="⚙️ Управление ЭРА", web_app=WebAppInfo(url=miniapp_admin_url(miniapp_url)),
+            )])
+        rows.append([InlineKeyboardButton(text="🧭 Лидеры", callback_data="wc:home")])
+        rows.append([InlineKeyboardButton(text="← Назад", callback_data="admin:hub:home")])
+        rows.append([InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")])
+        return InlineKeyboardMarkup(inline_keyboard=rows)
     if miniapp_url:
-        rows.append([
-            InlineKeyboardButton(
-                text="⚙️ Управление ЭРА",
-                web_app=WebAppInfo(url=miniapp_admin_url(miniapp_url)),
-            )
-        ])
-    rows.append([InlineKeyboardButton(text="← Главное меню", callback_data="menu:main")])
+        events_button = InlineKeyboardButton(
+            text="🎉 Мероприятия",
+            web_app=WebAppInfo(url=miniapp_admin_section_url(miniapp_url, "events")),
+        )
+    else:
+        events_button = InlineKeyboardButton(text="🎉 Мероприятия", callback_data="events:list")
+    rows = [
+        [events_button],
+        [InlineKeyboardButton(text=applications, callback_data="admin:applications")],
+        [InlineKeyboardButton(text="✅ Задачи", callback_data="admin:tasks")],
+        [InlineKeyboardButton(text="⋯ Ещё", callback_data="admin:hub:more")],
+    ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

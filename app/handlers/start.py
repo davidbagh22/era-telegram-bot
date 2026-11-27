@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import User
-from app.keyboards.bot_shell import has_leaders_entry, main_reply_keyboard
+from app.keyboards.bot_shell import anniversary_inline_keyboard, has_leaders_entry, main_reply_keyboard
 from app.keyboards.common import registration_keyboard, subscription_keyboard
 from app.keyboards.registration import pending_registration_keyboard
 from app.services import anniversary_registration_service as anniversary
@@ -44,14 +44,8 @@ async def show_home(
         featured and session is not None
         and await anniversary.user_already_registered(session, user.telegram_id, user)
     )
-    if featured and anniversary_registered:
-        text = f"{ux_texts.MAIN_MENU}\n\n{anniversary.MENU_REGISTERED_SHORTCUT}"
-    elif featured:
-        text = f"{ux_texts.MAIN_MENU}\n\n{anniversary.MENU_SHORTCUT}"
-    else:
-        text = ux_texts.MAIN_MENU
     await message.answer(
-        text,
+        ux_texts.MAIN_MENU,
         reply_markup=main_reply_keyboard(
             leaders=has_leaders_entry(user),
             miniapp_url=settings.effective_miniapp_url,
@@ -61,6 +55,11 @@ async def show_home(
             anniversary_registered=anniversary_registered,
         ),
     )
+    if featured:
+        await message.answer(
+            anniversary.MENU_REGISTERED_SHORTCUT if anniversary_registered else anniversary.MENU_SHORTCUT,
+            reply_markup=anniversary_inline_keyboard(anniversary_registered),
+        )
 
 
 async def _subscription_ok(bot: Bot, telegram_id: int, settings: Settings) -> bool | None:

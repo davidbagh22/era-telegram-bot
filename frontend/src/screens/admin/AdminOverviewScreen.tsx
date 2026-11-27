@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fetchAdminDashboard } from "../../api/client";
+import { fetchAdminDashboard, fetchRecentRegistrations } from "../../api/client";
 import { ActionCell } from "../../components/ActionCell";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
@@ -40,6 +40,7 @@ interface AdminOverviewScreenProps {
   onOpenProjects: () => void;
   onOpenProjectReview: () => void;
   onOpenEvents: () => void;
+  onOpenEventCreate: () => void;
   onOpenEventModeration: () => void;
   onOpenEventWaitlist: () => void;
   onOpenActivityResults: () => void;
@@ -64,12 +65,52 @@ function KpiButton({ value, label, note, onClick }: { value: number; label: stri
   );
 }
 
+function registrationTime(value: string | null): string {
+  if (!value) return "";
+  const iso = /(?:Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Yerevan", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(date);
+}
+
+function RecentRegistrations({ onOpen }: { onOpen: () => void }) {
+  const recent = useAsync(() => fetchRecentRegistrations(5), []);
+  return (
+    <section aria-label="Последние записи">
+      <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .5rem" }}>Последние записи</h2>
+      {recent.status === "loading" && <p style={{ color: "var(--era-text-muted)", margin: 0 }}>Загружаем записи…</p>}
+      {recent.status === "error" && <p role="status" style={{ color: "var(--era-text-muted)", margin: 0 }}>Не удалось загрузить последние записи. Списки участников доступны в «Мероприятиях».</p>}
+      {recent.status === "ready" && recent.data.length === 0 && <p style={{ color: "var(--era-text-muted)", margin: 0 }}>Пока никто не записался на мероприятия.</p>}
+      {recent.status === "ready" && recent.data.length > 0 && (
+        <Card style={{ padding: ".25rem .9rem" }}>
+          <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+            {recent.data.map((item, index) => (
+              <li key={item.registration_id} style={{ borderTop: index === 0 ? "none" : "1px solid var(--era-border)" }}>
+                <button type="button" onClick={onOpen} style={{ appearance: "none", border: 0, background: "transparent", width: "100%", textAlign: "left", padding: ".65rem 0", display: "flex", justifyContent: "space-between", gap: ".75rem", color: "inherit", cursor: "pointer" }}>
+                  <span style={{ minWidth: 0 }}>
+                    <strong style={{ display: "block", overflowWrap: "anywhere" }}>{item.participant_name}</strong>
+                    <span style={{ display: "block", color: "var(--era-text-muted)", fontSize: ".8rem", overflowWrap: "anywhere" }}>
+                      {item.event_title}{item.status === "waitlist" ? " · лист ожидания" : ""}
+                    </span>
+                  </span>
+                  <span style={{ flexShrink: 0, color: "var(--era-text-muted)", fontSize: ".78rem" }}>{registrationTime(item.registered_at)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+    </section>
+  );
+}
+
 export function AdminOverviewScreen({
   onOpenPeople,
   onOpenApplications,
   onOpenProjects,
   onOpenProjectReview,
   onOpenEvents,
+  onOpenEventCreate,
   onOpenEventModeration,
   onOpenEventWaitlist,
   onOpenActivityResults,
@@ -83,6 +124,7 @@ export function AdminOverviewScreen({
 }: AdminOverviewScreenProps) {
   const dashboard = useAsync(() => fetchAdminDashboard(), []);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showMore, setShowMore] = useState(false);
 
   if (showAnalytics) {
     return (
@@ -97,10 +139,87 @@ export function AdminOverviewScreen({
     );
   }
 
-  if (dashboard.status === "loading") return <p style={{ color: "var(--era-text-muted)" }}>Загружаем пульт…</p>;
-  if (dashboard.status === "error") return <EmptyState text="Не удалось загрузить пульт управления. Попробуйте ещё раз." />;
+  const metrics = dashboard.status === "ready" ? dashboard.data.metrics : null;
+  const attentionTotal = dashboard.status === "ready" ? dashboard.data.attention_total : 0;
+  const pendingApplications = metrics ? (metrics.users_pending ?? 0) : null;
 
-  const { metrics, attention_total } = dashboard.data;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+      <Card gradient style={{ position: "relative", overflow: "hidden" }}>
+        <p style={{ margin: "0 0 .3rem", color: "var(--era-text-secondary)", fontSize: "var(--era-text-xs)", fontWeight: 850, textTransform: "uppercase" }}>Пульт руководителя</p>
+        <h1 style={{ margin: 0, fontSize: "clamp(1.7rem,7vw,2.25rem)", lineHeight: 1.05 }}>Что происходит в ЭРА</h1>
+        {dashboard.status === "ready" && (
+          <div style={{ marginTop: ".8rem", display: "inline-flex", padding: ".38rem .65rem", borderRadius: 999, background: "var(--era-surface-2)", fontWeight: 850 }}>
+            {attentionTotal > 0 ? `${attentionTotal} требуют внимания` : "Срочных решений нет ✓"}
+          </div>
+        )}
+      </Card>
+
+      <section aria-label="Главное" data-testid="admin-primary-actions" style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
+        <ActionCell title="Мероприятия" description="Создать, списки участников, посещаемость" leading="◎" onClick={onOpenEvents} />
+        <ActionCell title="Заявки" description="Новые регистрации и решения по ним" leading="✓" badge={pendingApplications} onClick={onOpenApplications} />
+        <ActionCell title="Задачи" description="Создать задание и проверить результаты" leading="☰" onClick={onOpenTasks} />
+      </section>
+
+      <section aria-label="Быстро по мероприятиям" data-testid="admin-events-shortcuts" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem" }}>
+        <button type="button" className="era-btn-primary" onClick={onOpenEventCreate}>＋ Создать мероприятие</button>
+        <button type="button" onClick={onOpenEventWaitlist}>Списки участников</button>
+      </section>
+
+      <RecentRegistrations onOpen={onOpenEventWaitlist} />
+
+      <section aria-label="Ещё">
+        <button
+          type="button"
+          aria-expanded={showMore}
+          aria-controls="admin-more-tools"
+          onClick={() => setShowMore((open) => !open)}
+          style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem", padding: ".85rem 1rem", textAlign: "left" }}
+        >
+          <strong style={{ fontSize: "var(--era-text-lg)" }}>Ещё{attentionTotal > 0 ? ` · ${attentionTotal}` : ""}</strong>
+          <span aria-hidden="true">{showMore ? "▲" : "▼"}</span>
+        </button>
+        {showMore && (
+          <div id="admin-more-tools" style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "1rem" }}>
+            {dashboard.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загружаем пульт…</p>}
+            {dashboard.status === "error" && <EmptyState text="Не удалось загрузить пульт управления. Попробуйте ещё раз." />}
+            {metrics && <OverviewMoreTools
+              metrics={metrics}
+              attentionTotal={attentionTotal}
+              onOpenPeople={onOpenPeople}
+              onOpenApplications={onOpenApplications}
+              onOpenProjects={onOpenProjects}
+              onOpenProjectReview={onOpenProjectReview}
+              onOpenEvents={onOpenEvents}
+              onOpenEventModeration={onOpenEventModeration}
+              onOpenEventWaitlist={onOpenEventWaitlist}
+              onOpenActivityResults={onOpenActivityResults}
+              onOpenAttendanceProofs={onOpenAttendanceProofs}
+              onOpenComms={onOpenComms}
+              onOpenOffers={onOpenOffers}
+              onOpenCareer={onOpenCareer}
+              onOpenVerification={onOpenVerification}
+              onOpenMetric={onOpenMetric}
+              onOpenAnalytics={() => setShowAnalytics(true)}
+            />}
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+type MoreToolsProps = Omit<AdminOverviewScreenProps, "onOpenTasks" | "onOpenEventCreate"> & {
+  metrics: Record<string, number>;
+  attentionTotal: number;
+  onOpenAnalytics: () => void;
+};
+
+function OverviewMoreTools({
+  metrics, onOpenPeople, onOpenApplications, onOpenProjects, onOpenProjectReview, onOpenEvents, onOpenEventModeration,
+  onOpenEventWaitlist, onOpenActivityResults, onOpenAttendanceProofs, onOpenComms, onOpenOffers, onOpenCareer,
+  onOpenVerification, onOpenMetric, onOpenAnalytics,
+}: MoreToolsProps) {
   const roster = metrics.current_roster ?? metrics.users_total ?? 0;
   const activeBase = metrics.active_base ?? 0;
   const pending = metrics.users_pending ?? 0;
@@ -123,15 +242,7 @@ export function AdminOverviewScreen({
     .filter((item) => item.value > 0);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <Card gradient style={{ position: "relative", overflow: "hidden" }}>
-        <p style={{ margin: "0 0 .3rem", color: "var(--era-text-secondary)", fontSize: "var(--era-text-xs)", fontWeight: 850, textTransform: "uppercase" }}>Пульт руководителя</p>
-        <h1 style={{ margin: 0, fontSize: "clamp(1.7rem,7vw,2.25rem)", lineHeight: 1.05 }}>Что происходит в ЭРА</h1>
-        <p style={{ margin: ".55rem 0 0", opacity: 0.78 }}>Главное, что требует решения — без перегруженной панели.</p>
-        <div style={{ marginTop: ".8rem", display: "inline-flex", padding: ".38rem .65rem", borderRadius: 999, background: "var(--era-surface-2)", fontWeight: 850 }}>
-          {attention_total > 0 ? `${attention_total} требуют внимания` : "Срочных решений нет ✓"}
-        </div>
-      </Card>
+    <>
 
       <section>
         <h2 style={{ fontSize: "var(--era-text-xl)", margin: "0 0 .5rem" }}>Быстро сделать</h2>
@@ -195,7 +306,7 @@ export function AdminOverviewScreen({
       </section>
 
       <section>
-        <button type="button" onClick={() => setShowAnalytics(true)} style={{ width: "100%", border: 0, padding: 0, background: "transparent", textAlign: "left" }}>
+        <button type="button" onClick={onOpenAnalytics} style={{ width: "100%", border: 0, padding: 0, background: "transparent", textAlign: "left" }}>
           <Card style={{ padding: ".9rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: ".75rem" }}>
               <div style={{ minWidth: 0 }}>
@@ -207,6 +318,6 @@ export function AdminOverviewScreen({
           </Card>
         </button>
       </section>
-    </div>
+    </>
   );
 }

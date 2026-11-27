@@ -57,7 +57,10 @@ class ShowHomeNoLegacyKeyboardTests(unittest.IsolatedAsyncioTestCase):
         settings = SimpleNamespace(era_channel_url='https://t.me/example', effective_miniapp_url='https://era-app.example/')
         await show_home(message, _approved_user(role=Role.LEADER), settings)
         buttons = [b for row in message.answers[0][1]['reply_markup'].keyboard for b in row]
-        entry = next(b for b in buttons if b.text == '🧭 Лидеры')
+        self.assertEqual([b.text for b in buttons], ['🔥 Открыть ЭРА', '❓ Помощь'])
+        from app.keyboards.bot_shell import help_hub_keyboard
+        hub = [b for row in help_hub_keyboard('', leaders=True).inline_keyboard for b in row]
+        entry = next(b for b in hub if b.text == '🧭 Лидеры')
         self.assertIsNone(entry.web_app)
 
     async def test_reply_carries_the_webapp_entry_point(self) -> None:

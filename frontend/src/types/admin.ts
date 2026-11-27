@@ -3,6 +3,16 @@ export interface DashboardData {
   attention_total: number;
 }
 
+export interface RecentRegistration {
+  registration_id: number;
+  event_id: number;
+  event_title: string;
+  participant_id: number;
+  participant_name: string;
+  status: string;
+  registered_at: string | null;
+}
+
 // Admin Mode Overview's "Последняя активность" — see
 // app/services/admin_activity_feed_service.py.
 export interface ActivityFeedEntry {

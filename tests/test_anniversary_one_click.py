@@ -134,14 +134,20 @@ class AnniversaryOneClickTests(IsolatedAsyncioTestCase):
             state = AsyncMock()
             with patch.object(rsvp, "featured_event", AsyncMock(return_value=await session.get(Event, self.event_id))):
                 await _send_main_menu(message, user, settings, session=session)
-                self.assertEqual(message.answer.call_args.kwargs["reply_markup"].keyboard[0][0].text, rsvp.MENU_BUTTON)
+                menu_call, shortcut_call = message.answer.call_args_list[-2:]
+                self.assertEqual(
+                    [b.text for row in menu_call.kwargs["reply_markup"].keyboard for b in row],
+                    ["🔥 Открыть ЭРА", "❓ Помощь"],
+                )
+                inline = shortcut_call.kwargs["reply_markup"].inline_keyboard[0][0]
+                self.assertEqual((inline.text, inline.callback_data), (rsvp.MENU_BUTTON, "anniversary:menu"))
                 await handler.menu_registration(message, state, session, user, settings)
                 self.assertIn("Вы зарегистрированы", message.answer.call_args.args[0])
                 await handler.menu_registration(message, state, session, user, settings)
                 self.assertIn("уже в списке", message.answer.call_args.args[0])
-                labels = {
+                labels = [
                     button.text
                     for row in message.answer.call_args.kwargs["reply_markup"].keyboard
                     for button in row
-                }
-                self.assertIn(rsvp.MENU_TICKET_BUTTON, labels)
+                ]
+                self.assertEqual(labels, ["🔥 Открыть ЭРА", "❓ Помощь"])

@@ -31,6 +31,7 @@ type MetricDetail = { metric: AdminMetricKey; total: number };
 
 type InitialAdminRoute = {
   peopleSection: PeopleSection | null;
+  workSection: WorkSection | null;
   applicationId: number | null;
 };
 
@@ -67,19 +68,14 @@ function positiveId(value: string | null): number | null {
 function initialAdminRoute(): InitialAdminRoute {
   const query = new URLSearchParams(window.location.search);
   const section = query.get("adminSection");
-  if (section === "applications") {
-    return { peopleSection: "applications", applicationId: positiveId(query.get("applicationId")) };
-  }
-  if (section === "team-tasks") {
-    return { peopleSection: "leaders-chat", applicationId: null };
-  }
-  if (section === "offices") {
-    return { peopleSection: "offices", applicationId: null };
-  }
-  if (section === "appoint-leader") {
-    return { peopleSection: "appoint-leader", applicationId: null };
-  }
-  return { peopleSection: null, applicationId: null };
+  const people = (peopleSection: PeopleSection, applicationId: number | null = null): InitialAdminRoute => ({ peopleSection, workSection: null, applicationId });
+  if (section === "applications") return people("applications", positiveId(query.get("applicationId")));
+  if (section === "team-tasks") return people("leaders-chat");
+  if (section === "offices") return people("offices");
+  if (section === "appoint-leader") return people("appoint-leader");
+  if (section === "events") return { peopleSection: null, workSection: "events", applicationId: null };
+  if (section === "tasks") return { peopleSection: null, workSection: "tasks", applicationId: null };
+  return { peopleSection: null, workSection: null, applicationId: null };
 }
 
 function SectionMenu<T extends string>({ title, description, options, onOpen }: { title: string; description: string; options: SectionOption<T>[]; onOpen: (value: T) => void }) {
@@ -108,9 +104,9 @@ function SectionHeader({ title, onBack }: { title: string; onBack: () => void })
 
 export function AdminScreen() {
   const [launchRoute] = useState<InitialAdminRoute>(() => initialAdminRoute());
-  const [group, setGroup] = useState<AdminGroup>(launchRoute.peopleSection ? "people" : "overview");
+  const [group, setGroup] = useState<AdminGroup>(launchRoute.peopleSection ? "people" : launchRoute.workSection ? "work" : "overview");
   const [peopleSection, setPeopleSection] = useState<PeopleSection | null>(launchRoute.peopleSection);
-  const [workSection, setWorkSection] = useState<WorkSection | null>(null);
+  const [workSection, setWorkSection] = useState<WorkSection | null>(launchRoute.workSection);
   const [offersInitialSection, setOffersInitialSection] = useState<OffersSection>("applications");
   const [eventsLaunch, setEventsLaunch] = useState<EventsLaunch | null>(null);
   const [projectsLaunch, setProjectsLaunch] = useState<ProjectsLaunch | null>(null);
@@ -188,6 +184,7 @@ export function AdminScreen() {
             onOpenProjects={() => openWork("projects")}
             onOpenProjectReview={() => openWork("projects", "applications", { projects: { section: "moderation" } })}
             onOpenEvents={() => openWork("events")}
+            onOpenEventCreate={() => openWork("events", "applications", { events: { section: "create" } })}
             onOpenEventModeration={() => openWork("events", "applications", { events: { section: "moderation" } })}
             onOpenEventWaitlist={() => openWork("events", "applications", { events: { section: "operations" } })}
             onOpenActivityResults={() => openWork("events", "applications", { events: { section: "activities", activitiesMode: "review" } })}

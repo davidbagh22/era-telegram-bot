@@ -21,7 +21,7 @@ from app.utils.constants import ApplicationStatus, Role
 logger = logging.getLogger(__name__)
 
 # Bump when reply-shell layout or labels change so clients refresh once.
-PRIVATE_MENU_VERSION = "2026-11-18-admin-hub-ticket"
+PRIVATE_MENU_VERSION = "2026-11-27-two-button-menu"
 
 
 class LegacyKeyboardCleanupMiddleware(BaseMiddleware):
@@ -104,8 +104,9 @@ class LegacyKeyboardCleanupMiddleware(BaseMiddleware):
                 if approved else ReplyKeyboardRemove()
             )
             notice = (
-                "Меню ЭРА обновлено. Админ-раздел — кнопка ⚙️ Админ рядом со «Связь»."
-                if admin else "Разделы ЭРА доступны в меню под полем ввода."
+                "Меню ЭРА стало короче: «Открыть ЭРА» и «Помощь». Афиша, путь, связь"
+                + (" и админ-раздел" if admin else "")
+                + " — внутри «Помощь», все команды работают как раньше."
                 if approved else LEGACY_KEYBOARD_CLEARED
             )
             try:

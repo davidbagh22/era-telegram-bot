@@ -44,7 +44,7 @@ test("manager replaces a published poster without republishing or touching regis
   await page.getByRole("navigation", { name: "Основная навигация" })
     .getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
-  await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
+  await page.getByRole("button", { name: /^Мероприятия.*Создать/ }).click();
   await page.getByRole("button", { name: /Участники и посещаемость/ }).click();
   await page.getByRole("button", { name: "Изменить афишу" }).click();
 

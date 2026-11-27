@@ -24,6 +24,7 @@ from app.api.v1 import (
     admin_participation,
     admin_people_detail,
     admin_project_detail,
+    admin_recent_registrations,
     admin_recruitment,
     admin_verification,
     auctions,
@@ -116,6 +117,7 @@ api_router.include_router(admin_project_detail.router)
 api_router.include_router(admin_recruitment.router)
 api_router.include_router(admin_verification.router)
 api_router.include_router(admin_event_create.router)
+api_router.include_router(admin_recent_registrations.router)
 api_router.include_router(admin_event_operations.router)
 api_router.include_router(admin_event_attendance.router)
 api_router.include_router(admin.router)

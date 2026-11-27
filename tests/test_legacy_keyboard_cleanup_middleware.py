@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock
 from aiogram.exceptions import TelegramAPIError
 from aiogram.types import ReplyKeyboardRemove
 
-from app.middlewares.legacy_keyboard_cleanup import LegacyKeyboardCleanupMiddleware
+from app.middlewares.legacy_keyboard_cleanup import PRIVATE_MENU_VERSION, LegacyKeyboardCleanupMiddleware
 
 
 class FakeBot:
@@ -189,9 +189,8 @@ class CurrentPersistentKeyboardMigrationTests(unittest.IsolatedAsyncioTestCase):
         assert isinstance(markup, ReplyKeyboardMarkup)
         assert markup.is_persistent and markup.one_time_keyboard is False
         labels = {button.text for row in markup.keyboard for button in row}
-        assert "⚙️ Админ" in labels
-        assert "💬 Связь" in labels
-        assert any({button.text for button in row} == {"⚙️ Админ", "💬 Связь"} for row in markup.keyboard)
+        assert labels == {"🔥 Открыть ЭРА", "❓ Помощь"}
+        assert sum(len(row) for row in markup.keyboard) == 2
         assert user.legacy_reply_keyboard_removed
 
 
@@ -225,8 +224,7 @@ class VersionedPrivateMenuTests(unittest.IsolatedAsyncioTestCase):
                     await session.commit()
             assert len(bot.sent) == 1
             labels = {b.text for row in bot.sent[0][2]['reply_markup'].keyboard for b in row}
-            assert '⚙️ Админ' in labels and '💬 Связь' in labels
-            assert any({b.text for b in row} == {'⚙️ Админ', '💬 Связь'} for row in bot.sent[0][2]['reply_markup'].keyboard)
+            assert labels == {'🔥 Открыть ЭРА', '❓ Помощь'}
             assert '📊 Статистика' not in labels
             assert '❓ Вопросы и связь' not in labels
             assert '🔥 Открыть ЭРА' in labels
@@ -234,6 +232,6 @@ class VersionedPrivateMenuTests(unittest.IsolatedAsyncioTestCase):
             saved = await session.scalar(
                 __import__('sqlalchemy', fromlist=['select']).select(AppSetting).where(AppSetting.key == 'private-menu:900001')
             )
-            assert saved.value['version'] == '2026-11-18-admin-hub-ticket'
+            assert saved.value['version'] == PRIVATE_MENU_VERSION
         finally:
             await engine.dispose()

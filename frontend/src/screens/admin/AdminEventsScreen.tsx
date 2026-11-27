@@ -14,8 +14,8 @@ type ActivitiesMode = "review" | "manage";
 
 const SECTIONS: { value: EventsSection; label: string; description: string; icon: string }[] = [
   { value: "create", label: "Создать мероприятие", description: "Черновик или сразу открыть регистрацию", icon: "＋" },
-  { value: "moderation", label: "На согласовании", description: "Проверить предложения мероприятий от команды", icon: "✓" },
   { value: "operations", label: "Участники и посещаемость", description: "Изменить карточку или афишу, посмотреть регистрации и отметить посещение", icon: "◎" },
+  { value: "moderation", label: "На согласовании", description: "Проверить предложения мероприятий от команды", icon: "✓" },
   { value: "activities", label: "Активности после события", description: "Задания, материалы и результаты участников", icon: "✦" },
 ];
 
@@ -55,7 +55,7 @@ export function AdminEventsScreen({
           <p style={{ margin: "0 0 0.25rem", color: "var(--era-text-secondary)", fontSize: "var(--era-text-xs)", fontWeight: 800, textTransform: "uppercase" }}>Мероприятия</p>
           <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>Управление мероприятиями</h2>
           <p style={{ margin: "0.5rem 0 0", color: "var(--era-text-secondary)" }}>
-            Сначала создайте или согласуйте событие. После публикации здесь же ведите регистрации, посещаемость и активности.
+            Создать мероприятие и открыть списки участников можно сразу. Согласование и активности после события — ниже.
           </p>
         </Card>
         {SECTIONS.map((item) => (

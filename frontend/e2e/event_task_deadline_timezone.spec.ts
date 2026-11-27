@@ -8,7 +8,7 @@ test("wizard task deadline persists an absolute instant and reopens in editor lo
   await page.getByRole("navigation", { name: "Основная навигация" })
     .getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
-  await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
+  await page.getByRole("button", { name: /^Мероприятия.*Создать/ }).click();
   await page.getByRole("button", { name: /Создать мероприятие.*Черновик/ }).click();
   await page.getByRole("button", { name: "＋ Создать мероприятие" }).click();
   await page.getByLabel("Название", { exact: true }).fill("E2E срок задания, только черновик");
@@ -52,7 +52,7 @@ test("wizard program time and presenter remain usable at 320px", async ({ page }
   await page.getByRole("navigation", { name: "Основная навигация" })
     .getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
-  await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
+  await page.getByRole("button", { name: /^Мероприятия.*Создать/ }).click();
   await page.getByRole("button", { name: /Создать мероприятие.*Черновик/ }).click();
   await page.getByRole("button", { name: "＋ Создать мероприятие" }).click();
   await page.getByLabel("Название", { exact: true }).fill("E2E мобильная программа, только черновик");
@@ -84,7 +84,7 @@ test("wizard navigation preserves newer edits while a save response is pending",
   await page.getByRole("navigation", { name: "Основная навигация" })
     .getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
-  await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
+  await page.getByRole("button", { name: /^Мероприятия.*Создать/ }).click();
   await page.getByRole("button", { name: /Создать мероприятие.*Черновик/ }).click();
   await page.getByRole("button", { name: "＋ Создать мероприятие" }).click();
 
@@ -127,7 +127,7 @@ test("wizard stays open when newer edits arrive during save-and-exit", async ({ 
   await page.getByRole("navigation", { name: "Основная навигация" })
     .getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
-  await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
+  await page.getByRole("button", { name: /^Мероприятия.*Создать/ }).click();
   await page.getByRole("button", { name: /Создать мероприятие.*Черновик/ }).click();
   await page.getByRole("button", { name: "＋ Создать мероприятие" }).click();
 
@@ -169,7 +169,7 @@ test("wizard keeps edits typed while the exit draft-list refresh is pending", as
   await page.getByRole("navigation", { name: "Основная навигация" })
     .getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
-  await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
+  await page.getByRole("button", { name: /^Мероприятия.*Создать/ }).click();
   await page.getByRole("button", { name: /Создать мероприятие.*Черновик/ }).click();
   await page.getByRole("button", { name: "＋ Создать мероприятие" }).click();
 

@@ -61,9 +61,8 @@ class AnniversaryMenuKeyboardRefreshTests(IsolatedAsyncioTestCase):
                 self.message, self.state, session=AsyncMock(), user=self.user, settings=self.settings,
             )
         kwargs = self.message.answer.await_args.kwargs
-        labels = {button.text for row in kwargs["reply_markup"].keyboard for button in row}
-        assert rsvp.MENU_TICKET_BUTTON in labels
-        assert rsvp.MENU_BUTTON not in labels
+        labels = [button.text for row in kwargs["reply_markup"].keyboard for button in row]
+        assert labels == ["🔥 Открыть ЭРА", "❓ Помощь"]
         assert "Вы зарегистрированы" in self.message.answer.await_args.args[0]
 
     async def test_ticket_tap_shows_existing_details_without_reregister_copy(self):
@@ -81,9 +80,9 @@ class AnniversaryMenuKeyboardRefreshTests(IsolatedAsyncioTestCase):
         assert "уже в списке" in text
         assert "Анна" in text
         assert "Зарегистрироваться" not in text
-        labels = {
+        labels = [
             button.text
             for row in self.message.answer.await_args.kwargs["reply_markup"].keyboard
             for button in row
-        }
-        assert rsvp.MENU_TICKET_BUTTON in labels
+        ]
+        assert labels == ["🔥 Открыть ЭРА", "❓ Помощь"]

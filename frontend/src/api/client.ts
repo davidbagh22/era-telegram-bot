@@ -13,6 +13,7 @@ import type {
 import type { ApiErrorBody, MiniAppAuthResponse, MiniAppUserSummary } from "../types/auth";
 import type {
   ActivityFeedEntry,
+  RecentRegistration,
   ActivitySubmissionAdmin,
   AnalyticsExcelSection,
   AnalyticsSummary,
@@ -681,6 +682,10 @@ export function redeemReward(rewardId: number): Promise<Reward> {
 
 export function fetchAdminDashboard(): Promise<DashboardData> {
   return authorizedGet<DashboardData>("/api/v1/admin/dashboard");
+}
+
+export function fetchRecentRegistrations(limit = 5): Promise<RecentRegistration[]> {
+  return authorizedGet<RecentRegistration[]>(`/api/v1/admin/events/recent-registrations?limit=${limit}`);
 }
 
 export function fetchRecentActivity(): Promise<ActivityFeedEntry[]> {

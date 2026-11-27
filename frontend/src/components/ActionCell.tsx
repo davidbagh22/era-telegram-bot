@@ -7,6 +7,8 @@ interface ActionCellProps {
   leading?: ReactNode;
   onClick: () => void;
   active?: boolean;
+  /** Small count pill, e.g. pending applications. Hidden when empty or 0. */
+  badge?: number | string | null;
 }
 
 /**
@@ -21,6 +23,7 @@ export function ActionCell({
   leading,
   onClick,
   active = false,
+  badge = null,
 }: ActionCellProps) {
   return (
     <button
@@ -109,6 +112,23 @@ export function ActionCell({
           </span>
         )}
       </span>
+      {badge !== null && badge !== undefined && badge !== 0 && badge !== "" && (
+        <span
+          style={{
+            minWidth: "1.6rem",
+            padding: "0.15rem 0.5rem",
+            borderRadius: 999,
+            flexShrink: 0,
+            textAlign: "center",
+            fontSize: "var(--era-text-sm)",
+            fontWeight: 800,
+            background: "var(--era-red)",
+            color: "#fff",
+          }}
+        >
+          {badge}
+        </span>
+      )}
       <span aria-hidden="true" style={{ color: "var(--era-text-muted)", fontSize: "1.125rem", flexShrink: 0 }}>
         →
       </span>

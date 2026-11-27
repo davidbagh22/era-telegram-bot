@@ -227,21 +227,71 @@ async def _management_report_access(user, telegram_id, settings, session) -> boo
     )
 
 
+def _hub_time(value, timezone_name: str) -> str:
+    from datetime import timezone as dt_timezone
+    from zoneinfo import ZoneInfo
+    if value is None:
+        return ''
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=dt_timezone.utc)
+    return value.astimezone(ZoneInfo(timezone_name)).strftime('%d.%m %H:%M')
+
+
+async def admin_hub_text(session: AsyncSession, settings: Settings) -> tuple[str, int]:
+    from html import escape
+    from app.services.admin_dashboard_service import pending_applications_count
+    from app.services.event_registration_service import recent_registrations
+    pending = await pending_applications_count(session)
+    lines = ['<b>⚙️ Админ ЭРА</b>', '', f'📥 Заявок на рассмотрении: <b>{pending}</b>', '', '<b>Последние записи на мероприятия</b>']
+    recent = await recent_registrations(session, limit=3)
+    if not recent:
+        lines.append('Пока никто не записался.')
+    for item in recent:
+        when = _hub_time(item.registered_at, settings.timezone)
+        waitlist = ' · лист ожидания' if item.status == 'waitlist' else ''
+        lines.append(f'• {escape(item.participant_name)} — {escape(item.event_title)}{waitlist}' + (f' · {when}' if when else ''))
+    return '\n'.join(lines), pending
+
+
+async def _admin_allowed(event, user: User | None, settings: Settings) -> bool:
+    from app.services.authorization_service import is_full_admin
+    if not user or user.is_blocked or user.is_archived or not is_full_admin(user, settings, event.from_user.id):
+        return False
+    return True
+
+
 @router.message(StateFilter('*'), F.text == '⚙️ Админ', F.chat.type == 'private')
 async def admin_hub_command(
     message: Message, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext,
 ) -> None:
-    """Compact reply-keyboard entry: stats + applications (+ Mini App admin)."""
+    """Light admin hub: events, applications (with count), tasks, and «Ещё»."""
     from app.keyboards.bot_shell import admin_hub_keyboard
-    from app.services.authorization_service import is_full_admin
     await state.clear()
-    if not user or user.is_blocked or user.is_archived or not is_full_admin(user, settings, message.from_user.id):
+    if not await _admin_allowed(message, user, settings):
         await message.answer('Админ-раздел доступен только администраторам ЭРА.')
         return
-    await message.answer(
-        '⚙️ Админ-раздел ЭРА\n\nСтатистика, заявки и управление — в одном месте:',
-        reply_markup=admin_hub_keyboard(settings.effective_miniapp_url),
-    )
+    text, pending = await admin_hub_text(session, settings)
+    await message.answer(text, parse_mode='HTML', reply_markup=admin_hub_keyboard(settings.effective_miniapp_url, pending=pending))
+
+
+@router.callback_query(F.data.in_({'admin:hub:open', 'admin:hub:more', 'admin:hub:home'}), F.message.chat.type == 'private')
+async def admin_hub_callback(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, state: FSMContext) -> None:
+    from aiogram.exceptions import TelegramBadRequest
+    from app.keyboards.bot_shell import admin_hub_keyboard
+    if not await _admin_allowed(call, user, settings):
+        await call.answer('Админ-раздел доступен только администраторам ЭРА.', show_alert=True)
+        return
+    await call.answer()
+    text, pending = await admin_hub_text(session, settings)
+    if call.data == 'admin:hub:open':
+        await state.clear()
+        await call.message.answer(text, parse_mode='HTML', reply_markup=admin_hub_keyboard(settings.effective_miniapp_url, pending=pending))
+        return
+    markup = admin_hub_keyboard(settings.effective_miniapp_url, pending=pending, expanded=call.data == 'admin:hub:more')
+    try:
+        await call.message.edit_text(text, parse_mode='HTML', reply_markup=markup)
+    except TelegramBadRequest:
+        await call.message.edit_reply_markup(reply_markup=markup)
 
 
 @router.message(Command('report'), F.chat.type == 'private')
