@@ -80,10 +80,15 @@ async def deliver_application_notices(bot, settings, session_factory, *, only_ke
                         # same notice worker resumes access synchronization.
                         await session.commit()
                         continue
+            markup = None
+            if payload['status'] == ApplicationStatus.APPROVED:
+                from app.services.event_entry_service import with_pending_event_button
+                markup = await with_pending_event_button(
+                    session, target.telegram_id,
+                    main_inline_keyboard(miniapp_url=settings.effective_miniapp_url))
             result = await safe_send_once(bot, settings, target.telegram_id, payload['text'],
                 delivery_key=key, notification_type='application_decision', parse_mode=None,
-                reply_markup=main_inline_keyboard(miniapp_url=settings.effective_miniapp_url)
-                    if payload['status'] == ApplicationStatus.APPROVED else None)
+                reply_markup=markup)
             permanent_failure = result.status == 'failed' and (
                 result.error_code not in {'telegram_retry_after', 'delivery_ledger_unavailable', 'delivery_in_flight', 'delivery_retry_ledger_failed'}
                 or result.attempt_count >= 3)

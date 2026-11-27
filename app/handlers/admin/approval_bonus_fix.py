@@ -53,6 +53,9 @@ async def approve_user_with_100_points(
         await call.message.answer("Эта заявка уже отклонена — повторно одобрить её нельзя")
         return
     await call.message.answer(f"Заявка одобрена ✅\n\n{target.first_name} получил доступ к функциям участника")
-    await safe_send(bot, target.telegram_id, texts.APPLICATION_APPROVED, main_inline_keyboard(miniapp_url=settings.effective_miniapp_url))
+    from app.services.event_entry_service import with_pending_event_button
+    approved_markup = await with_pending_event_button(
+        session, target.telegram_id, main_inline_keyboard(miniapp_url=settings.effective_miniapp_url))
+    await safe_send(bot, target.telegram_id, texts.APPLICATION_APPROVED, approved_markup)
     await safe_send(bot, target.telegram_id, "Перед стартом — короткие правила сообщества\n\n" + texts.CHAT_RULES)
     await sync_user_chat_access(bot, settings, session, target)

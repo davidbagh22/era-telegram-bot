@@ -105,6 +105,39 @@ async def event_list(call: CallbackQuery, user: User | None, session: AsyncSessi
     await _send_event_list(call.message, user, session)
 
 
+def _blocked(user: User | None) -> bool:
+    return bool(user and (getattr(user, "is_blocked", False) or getattr(user, "is_archived", False)))
+
+
+def _entry_gate_keyboard(user: User | None, *, resume_registration: bool) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if user is None:
+        if resume_registration:
+            rows.append([InlineKeyboardButton(text="Продолжить анкету", callback_data="registration:resume")])
+        else:
+            rows.append([InlineKeyboardButton(text="Заполнить анкету участника", callback_data="registration:start")])
+    else:
+        if user.application_status in {ApplicationStatus.REJECTED, ApplicationStatus.NEEDS_INFO}:
+            rows.append([InlineKeyboardButton(text="✏️ Дополнить и подать повторно", callback_data="registration:reapply")])
+        rows.append([InlineKeyboardButton(text="Проверить статус заявки", callback_data="registration:status")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _entry_gate_text(user: User | None) -> str:
+    if user is None:
+        return (
+            "Чтобы записаться, нужно стать участником ЭРА: заполните короткую анкету. "
+            "Мы запомнили это мероприятие — после одобрения заявки бот вернёт вас сюда."
+        )
+    from app.handlers.registration import application_status_message
+
+    status = user.application_status
+    text = application_status_message(status)
+    if status == ApplicationStatus.REJECTED:
+        return text
+    return f"{text}\n\nМероприятие мы запомнили: после одобрения бот пришлёт кнопку для записи."
+
+
 async def show_public_event_registration_card(
     message: Message,
     user: User | None,
@@ -112,9 +145,15 @@ async def show_public_event_registration_card(
     event_id: int | None,
     settings: Settings | None = None,
     telegram_id: int | None = None,
+    resume_registration: bool = False,
 ) -> None:
-    """Same published-event card for the afisha and a direct /start URL."""
-    if not _approved(user):
+    """Same published-event card for the afisha and a direct /start URL.
+
+    Approved participants get the full card. Newcomers and applicants see the
+    event title/date with the next step (application or its real status) and the
+    event is remembered by Telegram ID so the bot can bring them back.
+    """
+    if _blocked(user):
         await message.answer(texts.APPLICATION_PENDING)
         return
     if event_id is None:
@@ -124,11 +163,40 @@ async def show_public_event_registration_card(
     if event is None or event.status not in PUBLIC_EVENT_STATUSES:
         await message.answer("Это мероприятие сейчас недоступно в афише")
         return
+    approved = _approved(user)
+    actor_telegram_id = getattr(user, "telegram_id", None) or telegram_id
+    if approved and actor_telegram_id is not None:
+        from app.services import event_entry_service
+
+        await event_entry_service.forget_event(session, actor_telegram_id, event.id)
+    if not approved:
+        if actor_telegram_id is None:
+            await message.answer(texts.APPLICATION_PENDING)
+            return
+        if not anniversary.is_public_anniversary(event):
+            from app.services import event_entry_service
+
+            await event_entry_service.remember_event(session, actor_telegram_id, event.id)
+            await send_event_card(
+                message,
+                event,
+                extra_text=_entry_gate_text(user),
+                keyboard=_entry_gate_keyboard(user, resume_registration=resume_registration),
+            )
+            return
     experience = await session.get(EventExperience, event.id)
     if anniversary.is_public_anniversary(event):
-        keyboard = _event_keyboard(event.id, registration_button=None, has_activities=False)
+        # Guests of the anniversary register without an application, so this
+        # branch serves approved members and newcomers alike.
+        if approved:
+            keyboard = _event_keyboard(event.id, registration_button=None, has_activities=False)
+        else:
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[])
         legacy_status = await anniversary.legacy_registration_status(session, event, user)
-        if await anniversary.get_registration(session, user.telegram_id) or legacy_status in anniversary.ACTIVE_REGISTRATION_STATUSES:
+        if (
+            (actor_telegram_id is not None and await anniversary.get_registration(session, actor_telegram_id))
+            or legacy_status in anniversary.ACTIVE_REGISTRATION_STATUSES
+        ):
             extra = "Вы зарегистрированы."
         elif legacy_status == RegistrationStatus.WAITLIST:
             extra = "Вы в листе ожидания."
@@ -139,7 +207,7 @@ async def show_public_event_registration_card(
             keyboard.inline_keyboard.insert(0, [InlineKeyboardButton(text="Зарегистрироваться", callback_data=f"anniversary:{action}")])
         else:
             extra = "Регистрация закрыта."
-        await send_event_card(message, event, extra_text=extra, keyboard=keyboard)
+        await send_event_card(message, event, extra_text=extra, keyboard=keyboard if keyboard.inline_keyboard else None)
         return
     stats = await registration_stats(session, event)
     registration_open = (
@@ -255,13 +323,43 @@ async def event_calendar(call: CallbackQuery, user: User | None, session: AsyncS
     )
 
 
+async def _drop_join_button(message: Message, event_id: int, leave_button: str | None = None) -> None:
+    """Refresh the tapped card so a second tap on a stale join button is impossible.
+
+    Best-effort: Telegram edit failures must never affect the saved registration.
+    """
+    join_data = f"event:join:{event_id}"
+    leave_data = f"event:plans_changed:{event_id}"
+    markup = getattr(message, "reply_markup", None)
+    if markup is None:
+        return
+    rows = [
+        [button for button in row if button.callback_data != join_data]
+        for row in markup.inline_keyboard
+    ]
+    rows = [row for row in rows if row]
+    if leave_button is not None and not any(
+        button.callback_data == leave_data for row in rows for button in row
+    ):
+        rows.insert(0, [InlineKeyboardButton(text=leave_button, callback_data=leave_data)])
+    try:
+        await message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    except Exception:
+        return
+
+
 @router.callback_query(F.data.startswith("event:join:"))
 async def event_join(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
     await call.answer()
-    if not _approved(user):
-        await call.message.answer(texts.APPLICATION_PENDING)
-        return
     event_id = _event_id_from_callback(call.data, "event:join:")
+    if not _approved(user):
+        # Stale or forwarded button from a person without an approved profile:
+        # route through the same entry card instead of a dead-end notice.
+        await show_public_event_registration_card(
+            call.message, user, session, event_id,
+            telegram_id=getattr(getattr(call, "from_user", None), "id", None),
+        )
+        return
     if event_id is None:
         await call.message.answer("Это мероприятие сейчас недоступно")
         return
@@ -295,6 +393,8 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
                 reply = "Вы уже в листе ожидания на это мероприятие."
         await session.commit()
         await call.message.answer(reply)
+        if error in {"already", "full", "closed", "registration_not_required"}:
+            await _drop_join_button(call.message, event.id)
         return
     assert registration is not None
     notice = await enqueue_registration_notice(session, registration, user.telegram_id, RegistrationNoticeKind.TELEGRAM)
@@ -302,6 +402,12 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
     await deliver_registration_notice(
         session, notice, lambda _recipient, text, **kwargs: call.message.answer(text, **kwargs)
     )
+    leave = (
+        "Покинуть лист ожидания"
+        if registration.status == RegistrationStatus.WAITLIST
+        else "Отказаться от места"
+    )
+    await _drop_join_button(call.message, event.id, leave_button=leave)
 
 
 @router.callback_query(F.data.regexp(r"^event:confirm_code:[0-9]+$"), F.message.chat.type == "private")
