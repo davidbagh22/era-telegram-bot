@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_session, get_settings
@@ -90,37 +91,55 @@ class SubtaskAssignIn(BaseModel):
     assignee_id: int | None
 
 
+_UNSET = object()
+
+
 def _mission_meta(task: Task) -> dict:
     """Return Community Mission metadata without changing legacy Task behavior."""
     return (getattr(task, "reward_json", None) or {}).get("community_mission") or {}
 
 
 async def _to_task_out(
-    session: AsyncSession, task: Task, user: User, settings: Settings
+    session: AsyncSession,
+    task: Task,
+    user: User,
+    settings: Settings,
+    *,
+    joined_ids: set[int] | None = None,
+    completed_ids: set[int] | None = None,
+    can_submit: bool | None = None,
+    squad: Any = _UNSET,
+    squad_size: int | None = None,
 ) -> TaskOut:
-    joined_ids = await task_service.joined_task_ids(session, user, [task])
-    completed = task.id in await task_service.completed_task_ids(session, user, [task])
-    can_submit = await task_service.can_submit(session, task, user)
+    if joined_ids is None:
+        joined_ids = await task_service.joined_task_ids(session, user, [task])
+    if completed_ids is None:
+        completed_ids = await task_service.completed_task_ids(session, user, [task])
+    completed = task.id in completed_ids
+    if can_submit is None:
+        can_submit = await task_service.can_submit(session, task, user)
     meta = _mission_meta(task)
-    squad = (
-        await session.scalar(select(TaskSquad).where(TaskSquad.task_id == task.id))
-        if meta
-        else None
-    )
-    squad_size = 0
-    if meta:
-        squad_size = int(
-            len(
-                (
-                    await session.scalars(
-                        select(TaskParticipant.id).where(
-                            TaskParticipant.task_id == task.id,
-                            TaskParticipant.status.in_(["accepted", "joined"]),
-                        )
-                    )
-                ).all()
-            )
+    if squad is _UNSET:
+        squad = (
+            await session.scalar(select(TaskSquad).where(TaskSquad.task_id == task.id))
+            if meta
+            else None
         )
+    if squad_size is None:
+        squad_size = 0
+        if meta:
+            squad_size = int(
+                len(
+                    (
+                        await session.scalars(
+                            select(TaskParticipant.id).where(
+                                TaskParticipant.task_id == task.id,
+                                TaskParticipant.status.in_(["accepted", "joined"]),
+                            )
+                        )
+                    ).all()
+                )
+            )
     return TaskOut(
         id=task.id,
         title=task.title,
@@ -270,6 +289,68 @@ async def read_tasks(
     settings: Settings = Depends(get_settings),
 ) -> list[TaskOut]:
     tasks = await list_tasks(session, user, scope)
+    if len(tasks) > 1 and hasattr(session, "scalars") and hasattr(session, "execute"):
+        task_ids = [t.id for t in tasks]
+        joined_ids = await task_service.joined_task_ids(session, user, tasks)
+        completed_ids = await task_service.completed_task_ids(session, user, tasks)
+        accepted_ids = set(
+            (
+                await session.scalars(
+                    select(TaskParticipant.task_id).where(
+                        TaskParticipant.user_id == user.id,
+                        TaskParticipant.task_id.in_(task_ids),
+                        TaskParticipant.status.in_(task_service.ACCEPTED_MEMBERSHIP_STATUSES),
+                    )
+                )
+            ).all()
+        )
+        has_media = any(task_service._is_media_task(t) for t in tasks)
+        media_allowed = await task_service.media_team_access(session, user) if has_media else True
+        mission_ids = [t.id for t in tasks if _mission_meta(t)]
+        squads = (
+            {
+                s.task_id: s
+                for s in (
+                    await session.scalars(select(TaskSquad).where(TaskSquad.task_id.in_(mission_ids)))
+                ).all()
+            }
+            if mission_ids
+            else {}
+        )
+        squad_sizes = (
+            {
+                tid: int(cnt or 0)
+                for tid, cnt in (
+                    await session.execute(
+                        select(TaskParticipant.task_id, func.count())
+                        .where(
+                            TaskParticipant.task_id.in_(mission_ids),
+                            TaskParticipant.status.in_(["accepted", "joined"]),
+                        )
+                        .group_by(TaskParticipant.task_id)
+                    )
+                ).all()
+            }
+            if mission_ids
+            else {}
+        )
+        return [
+            await _to_task_out(
+                session,
+                task,
+                user,
+                settings,
+                joined_ids=joined_ids,
+                completed_ids=completed_ids,
+                can_submit=(
+                    (not task_service._is_media_task(task) or media_allowed)
+                    and (task.assignee_id == user.id or task.id in accepted_ids)
+                ),
+                squad=squads.get(task.id),
+                squad_size=squad_sizes.get(task.id, 0),
+            )
+            for task in tasks
+        ]
     return [await _to_task_out(session, task, user, settings) for task in tasks]
 
 
