@@ -3,8 +3,8 @@
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0070_expert_platform"
-down_revision = "0069_event_public_listing"
+revision = "0071_expert_platform"
+down_revision = "0070_user_ui_preferences"
 branch_labels = None
 depends_on = None
 
