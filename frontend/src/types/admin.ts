@@ -169,6 +169,7 @@ export interface EventParticipant {
   participant_id: number;
   participant_name: string;
   status: string;
+  registered_at?: string | null;
 }
 
 export interface Partner {

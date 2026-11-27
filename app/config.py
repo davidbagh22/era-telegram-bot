@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     # Immutable registered account ID; never inferred from a mutable name or username.
     era_chair_user_id: int | None = Field(default=None, gt=0)
     admin_ids: IdList = Field(default_factory=list)
+    # Owner's private-chat Excel after every new event registration. The owner is
+    # the registered, active account with this Telegram ID; when unset, the
+    # verified chairman account (ERA_CHAIR_USER_ID). Never inferred from ADMIN_IDS.
+    event_registration_owner_telegram_id: int | None = Field(default=None, gt=0)
+    event_registration_owner_excel_enabled: bool = True
 
     # One feature-flag mechanism for participant-facing optional modules.
     # Valid values: OFF / TESTERS / ALL. Testers are explicit and never

@@ -110,7 +110,7 @@ async def list_participants(
         select(EventRegistration, User)
         .join(User, User.id == EventRegistration.user_id)
         .where(EventRegistration.event_id == event_id)
-        .order_by(EventRegistration.created_at)
+        .order_by(EventRegistration.created_at, EventRegistration.id)
     )
     return list(result.all())
 

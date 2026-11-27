@@ -145,6 +145,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "event-announcement-recovery",
                 "google-calendar-sync",
                 "event-registration-notice-recovery",
+                "event-owner-participants-xlsx-recovery",
                 "event-wizard-task-sync",
                 "project-scoring-reconciliation",
                 "task-squad-notifications",

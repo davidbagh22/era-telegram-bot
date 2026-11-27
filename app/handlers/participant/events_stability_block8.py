@@ -1,3 +1,5 @@
+import logging
+
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -17,6 +19,7 @@ from app.services.event_registration_notice_service import (
     deliver_registration_notice,
     enqueue_registration_notice,
 )
+from app.services.event_owner_export_service import deliver_owner_export, enqueue_owner_export
 from app.services.event_registration_policy import registration_is_closed
 from app.services.notification_service import safe_answer_document
 from app.services.event_registration_service import registration_stats
@@ -28,6 +31,8 @@ from app.services.event_service import (
 )
 from app.utils import texts, ux_texts
 from app.utils.constants import ApplicationStatus, RegistrationStatus
+
+logger = logging.getLogger(__name__)
 
 router = Router(name="participant_events_stability_block8")
 
@@ -256,7 +261,9 @@ async def event_calendar(call: CallbackQuery, user: User | None, session: AsyncS
 
 
 @router.callback_query(F.data.startswith("event:join:"))
-async def event_join(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
+async def event_join(
+    call: CallbackQuery, user: User | None, session: AsyncSession, settings: Settings | None = None
+) -> None:
     await call.answer()
     if not _approved(user):
         await call.message.answer(texts.APPLICATION_PENDING)
@@ -298,10 +305,16 @@ async def event_join(call: CallbackQuery, user: User | None, session: AsyncSessi
         return
     assert registration is not None
     notice = await enqueue_registration_notice(session, registration, user.telegram_id, RegistrationNoticeKind.TELEGRAM)
+    owner_export = await enqueue_owner_export(session, settings, registration) if settings is not None else None
     await session.commit()
     await deliver_registration_notice(
         session, notice, lambda _recipient, text, **kwargs: call.message.answer(text, **kwargs)
     )
+    if owner_export is not None:
+        try:
+            await deliver_owner_export(session, owner_export, call.bot.send_document, settings)
+        except Exception:
+            logger.exception("Registration saved, owner Excel delivery pending event_id=%s", event.id)
 
 
 @router.callback_query(F.data.regexp(r"^event:confirm_code:[0-9]+$"), F.message.chat.type == "private")

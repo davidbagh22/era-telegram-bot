@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from aiogram import F, Bot, Router
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,11 +12,20 @@ from app.services.event_registration_service import (
     event_points_already_awarded,
     registration_stats,
 )
-from app.services.notification_service import safe_send
+from app.services.event_participants_export import build_participants_xlsx, format_registered_at
+from app.services.notification_service import safe_answer_document, safe_send
 from app.services.points_service import add_points
 from app.utils.constants import REGISTRATION_STATUS_LABELS, RegistrationStatus
 
 router = Router(name="admin_event_registration_block14")
+
+PARTICIPANTS_SHOWN = 30
+_REGISTRATION_GROUPS = (
+    ("✅ Зарегистрированы", {RegistrationStatus.REGISTERED, RegistrationStatus.WILL_COME}),
+    ("⏳ Лист ожидания", {RegistrationStatus.WAITLIST}),
+    ("🎟 Посетили", {RegistrationStatus.ATTENDED}),
+    ("▫️ Остальные", None),
+)
 
 
 def _participants_keyboard(event_id: int, rows: list[tuple[EventRegistration, User]]) -> InlineKeyboardMarkup:
@@ -38,6 +47,9 @@ def _participants_keyboard(event_id: int, rows: list[tuple[EventRegistration, Us
                 callback_data=f"admin:event:attendance:no_show:{event_id}:{registration.id}",
             ),
         ])
+    buttons.append([
+        InlineKeyboardButton(text="📥 Скачать Excel", callback_data=f"admin:event:xlsx:{event_id}")
+    ])
     buttons.append([
         InlineKeyboardButton(
             text="✨ Управление активностями",
@@ -72,27 +84,69 @@ async def event_participants(
         select(EventRegistration, User)
         .join(User, User.id == EventRegistration.user_id)
         .where(EventRegistration.event_id == event.id)
-        .order_by(EventRegistration.created_at, User.first_name)
+        .order_by(EventRegistration.created_at.desc(), EventRegistration.id.desc())
     )
     rows = list(result.all())
     stats = await registration_stats(session, event)
     if not rows:
         await call.message.answer(
-            f"👥 Участники мероприятия\n\n{event.title}\n\nПока никто не зарегистрирован.",
+            f"👥 Участники · 0\n\n{event.title}\n\nПока никто не зарегистрирован.",
             reply_markup=_participants_keyboard(event.id, rows),
         )
         return
-    lines = []
-    for index, (registration, participant) in enumerate(rows, 1):
-        name = f"{participant.first_name} {participant.last_name or ''}".strip()
-        status = REGISTRATION_STATUS_LABELS.get(registration.status, registration.status)
-        lines.append(f"{index}. {name} — {status}")
+    shown = rows[:PARTICIPANTS_SHOWN]
+    placed: set[int] = set()
+    sections = []
+    for title, statuses in _REGISTRATION_GROUPS:
+        group = [
+            (registration, participant) for registration, participant in shown
+            if registration.id not in placed and (statuses is None or registration.status in statuses)
+        ]
+        if not group:
+            continue
+        placed.update(registration.id for registration, _ in group)
+        lines = []
+        for registration, participant in group:
+            name = f"{participant.first_name} {participant.last_name or ''}".strip()
+            status = REGISTRATION_STATUS_LABELS.get(registration.status, registration.status)
+            moment = format_registered_at(registration.created_at, settings.timezone)
+            lines.append(f"• {name} — {status} · {moment}")
+        sections.append(f"{title}\n" + "\n".join(lines))
+    hidden = len(rows) - len(shown)
+    tail = f"\n\nПоказаны {len(shown)} новых регистраций, ещё {hidden} — в Excel и в Mini App." if hidden else ""
     await call.message.answer(
-        f"👥 Участники мероприятия\n\n{event.title}\n"
-        f"Зарегистрировано: {stats['registered']}\n"
-        f"Свободных мест: {stats['free']}\n\n"
-        + "\n".join(lines),
-        reply_markup=_participants_keyboard(event.id, rows),
+        f"👥 Участники · {stats['registered']}\n\n{event.title}\n"
+        f"Свободных мест: {stats['free']}\n"
+        "Сначала новые регистрации.\n\n"
+        + "\n\n".join(sections) + tail,
+        reply_markup=_participants_keyboard(event.id, shown),
+    )
+
+
+@router.callback_query(F.data.regexp(r"^admin:event:xlsx:[0-9]+$"))
+async def event_participants_xlsx(
+    call: CallbackQuery,
+    user: User | None,
+    settings: Settings,
+    session: AsyncSession,
+) -> None:
+    if not await guard(call, user, settings):
+        return
+    event_id = int(call.data.rsplit(":", 1)[-1])
+    event = await session.get(Event, event_id)
+    if not event:
+        await call.message.answer("Мероприятие не найдено")
+        return
+    rows = (await session.execute(
+        select(EventRegistration, User)
+        .join(User, User.id == EventRegistration.user_id)
+        .where(EventRegistration.event_id == event_id)
+        .order_by(EventRegistration.created_at, EventRegistration.id)
+    )).all()
+    await safe_answer_document(
+        call.message,
+        BufferedInputFile(build_participants_xlsx(rows, settings.timezone), filename=f"ERA_event_{event_id}_participants.xlsx"),
+        caption=f"📋 {event.title[:200]}\nУчастников в списке: {len(rows)}",
     )
 
 
