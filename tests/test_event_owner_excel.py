@@ -26,6 +26,7 @@ from app.database.system_models import NotificationDelivery
 from app.handlers.participant.events_stability_block8 import event_join
 from app.services.event_owner_export_service import (
     NOTICE_TYPE,
+    deliver_owner_export,
     enqueue_owner_export,
     recover_owner_exports,
 )
@@ -33,6 +34,14 @@ from app.services.event_participants_export import build_participants_xlsx
 from app.utils.constants import ApplicationStatus, EventStatus, RegistrationStatus, Role
 
 OWNER_TG = 900
+
+
+def _aware(stamp: datetime) -> datetime:
+    return stamp.replace(tzinfo=timezone.utc) if stamp.tzinfo is None else stamp
+
+
+def _status_by_name(rows: list[list[str]]) -> dict[str, str]:
+    return {row[0]: row[5] for row in rows[1:]}
 
 
 def _sheet_rows(document) -> list[list[str]]:
@@ -130,7 +139,7 @@ class OwnerExcelTests(_OwnerExcelBase):
         self.assertEqual(len(await self._rows()), 2)
 
     async def test_transient_failure_keeps_registration_and_retry_delivers(self) -> None:
-        self.bot.send_document.side_effect = TelegramRetryAfter(GetMe(), "slow down", 1)
+        self.bot.send_document.side_effect = TelegramRetryAfter(GetMe(), "slow down", 0)
         await self._join_miniapp(self.anna_id)
         async with self.sessions() as session:
             status = await session.scalar(select(EventRegistration.status))
@@ -145,6 +154,83 @@ class OwnerExcelTests(_OwnerExcelBase):
         self.assertEqual([row.status for row in await self._rows()], ["sent"])
         await recover_owner_exports(self.bot, self.settings, self.sessions)
         self.assertEqual(self.bot.send_document.await_count, 1)
+
+    async def test_telegram_retry_delay_is_honored_and_not_counted_as_an_attempt(self) -> None:
+        self.bot.send_document.side_effect = TelegramRetryAfter(GetMe(), "flood", 600)
+        await self._join_miniapp(self.anna_id)
+        [row] = await self._rows()
+        self.assertEqual((row.status, row.error_code, row.attempt_count), ("queued", "telegram_retry_after", 0))
+        self.assertGreater(_aware(row.last_attempt_at), datetime.now(timezone.utc) + timedelta(seconds=500))
+
+        self.bot.send_document.reset_mock(side_effect=True)
+        for _ in range(6):
+            await recover_owner_exports(self.bot, self.settings, self.sessions)
+        self.bot.send_document.assert_not_awaited()
+        self.assertEqual([(row.status, row.attempt_count) for row in await self._rows()], [("queued", 0)])
+
+        await self._make_due()
+        await recover_owner_exports(self.bot, self.settings, self.sessions)
+        self.assertEqual(self.bot.send_document.await_count, 1)
+        self.assertEqual([row.status for row in await self._rows()], ["sent"])
+
+    async def test_cancelled_newer_registration_does_not_strand_the_older_export(self) -> None:
+        self.bot.send_document.side_effect = TelegramRetryAfter(GetMe(), "flood", 0)
+        await self._join_miniapp(self.anna_id)
+        self.bot.send_document.reset_mock(side_effect=True)
+        await self._enqueue_for(self.boris_id)
+        async with self.sessions() as session:
+            boris = await session.scalar(select(EventRegistration).where(EventRegistration.user_id == self.boris_id))
+            boris.status = RegistrationStatus.CANCELLED
+            await session.commit()
+
+        await recover_owner_exports(self.bot, self.settings, self.sessions)
+        self.assertEqual(self.bot.send_document.await_count, 1)
+        rows, caption = self._files()[0]
+        self.assertEqual(_status_by_name(rows), {"Анна": "Зарегистрирован", "Борис": "Регистрация отменена"})
+        self.assertIn("Добавлен: Анна Тестова", caption)
+        self.assertEqual(
+            [(row.status, row.error_code) for row in await self._rows()],
+            [("sent", None), ("skipped", "event_owner_export_obsolete")],
+        )
+
+    async def test_older_export_is_revived_when_the_newer_one_turns_obsolete(self) -> None:
+        self.bot.send_document.side_effect = TelegramRetryAfter(GetMe(), "flood", 0)
+        await self._join_miniapp(self.anna_id)
+        self.bot.send_document.reset_mock(side_effect=True)
+        await self._enqueue_for(self.boris_id)
+        anna_key, boris_key = [row.delivery_key for row in await self._rows()]
+        async with self.sessions() as session:
+            await deliver_owner_export(session, anna_key, self.bot.send_document, self.settings)
+        self.bot.send_document.assert_not_awaited()
+        async with self.sessions() as session:
+            boris = await session.scalar(select(EventRegistration).where(EventRegistration.user_id == self.boris_id))
+            boris.status = RegistrationStatus.CANCELLED
+            await session.commit()
+        async with self.sessions() as session:
+            await deliver_owner_export(session, boris_key, self.bot.send_document, self.settings)
+        self.assertEqual([row.status for row in await self._rows()], ["queued", "skipped"])
+
+        await recover_owner_exports(self.bot, self.settings, self.sessions)
+        self.assertEqual(self.bot.send_document.await_count, 1)
+        self.assertEqual(_status_by_name(self._files()[0][0])["Анна"], "Зарегистрирован")
+        self.assertEqual([row.status for row in await self._rows()], ["sent", "skipped"])
+
+    async def _enqueue_for(self, user_id: int) -> None:
+        from app.services.event_service import register_for_event
+
+        async with self.sessions() as session:
+            event = await session.get(Event, self.event_id)
+            registration, _error = await register_for_event(session, event, user_id)
+            await enqueue_owner_export(session, self.settings, registration)
+            await session.commit()
+
+    async def _make_due(self) -> None:
+        async with self.sessions() as session:
+            row = (await session.scalars(
+                select(NotificationDelivery).where(NotificationDelivery.notification_type == NOTICE_TYPE)
+            )).one()
+            row.last_attempt_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+            await session.commit()
 
     async def test_uncertain_delivery_is_never_replayed(self) -> None:
         self.bot.send_document.side_effect = TelegramNetworkError(GetMe(), "timeout")

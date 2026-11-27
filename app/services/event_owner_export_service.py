@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramAPIError, TelegramRetryAfter
@@ -55,6 +55,7 @@ class _Payload:
     document: bytes
     filename: str
     caption: str
+    attempt_count: int
 
 
 async def resolve_owner_chat(session: AsyncSession, settings: Settings) -> int | None:
@@ -93,6 +94,10 @@ def _key(registration: EventRegistration) -> str:
     return f"{KEY_PREFIX}:{registration.event_id}:{registration.id}:{registration.status}:{_revision(registration)}"
 
 
+def _as_utc(stamp: datetime) -> datetime:
+    return stamp.replace(tzinfo=timezone.utc) if stamp.tzinfo is None else stamp.astimezone(timezone.utc)
+
+
 def _identity(key: str) -> tuple[int, int, str, str] | None:
     try:
         prefix, raw_event, raw_registration, status, revision = key.split(":", 4)
@@ -102,6 +107,21 @@ def _identity(key: str) -> tuple[int, int, str, str] | None:
     if prefix != KEY_PREFIX or event_id <= 0 or registration_id <= 0 or status not in _ADDED_STATUSES:
         return None
     return event_id, registration_id, status, revision
+
+
+async def _can_deliver(session: AsyncSession, row: NotificationDelivery) -> bool:
+    """True when this queued intent still describes a registration that is added right now."""
+    identity = _identity(row.delivery_key)
+    if identity is None or row.attempt_count >= MAX_ATTEMPTS:
+        return False
+    event_id, registration_id, expected_status, revision = identity
+    registration = await session.get(EventRegistration, registration_id, populate_existing=True)
+    return (
+        registration is not None
+        and registration.event_id == event_id
+        and registration.status == expected_status
+        and _revision(registration) == revision
+    )
 
 
 async def enqueue_owner_export(
@@ -188,11 +208,14 @@ async def _claim(session: AsyncSession, key: str, settings: Settings) -> _Payloa
         )
         if row is None:
             return None
+        now = datetime.now(timezone.utc)
+        if row.last_attempt_at is not None and _as_utc(row.last_attempt_at) > now:
+            return None
         if event is None or event.status in _UNAVAILABLE_EVENTS:
             row.status, row.error_code = "skipped", _OBSOLETE
             return None
 
-        lease_start = datetime.now(timezone.utc) - _DELIVERY_LEASE
+        lease_start = now - _DELIVERY_LEASE
         siblings = (await session.scalars(
             select(NotificationDelivery)
             .where(
@@ -210,9 +233,11 @@ async def _claim(session: AsyncSession, key: str, settings: Settings) -> _Payloa
                 stamp = stamp.replace(tzinfo=timezone.utc)
             if sibling.status == "pending" and stamp is not None and stamp > lease_start:
                 return None  # one send per event at a time; a later pass delivers this row
-        if any(sibling.status == "queued" and sibling.id > row.id for sibling in siblings):
-            row.status, row.error_code = "skipped", _SUPERSEDED
-            return None
+        last_sent_id = max((s.id for s in siblings if s.status == "sent"), default=0)
+        for sibling in siblings:
+            if sibling.status == "queued" and sibling.id > row.id and await _can_deliver(session, sibling):
+                row.status, row.error_code = "skipped", _SUPERSEDED
+                return None
 
         registration = await session.get(EventRegistration, registration_id, populate_existing=True)
         if (
@@ -220,13 +245,13 @@ async def _claim(session: AsyncSession, key: str, settings: Settings) -> _Payloa
             or registration.status != expected_status or _revision(registration) != revision
         ):
             row.status, row.error_code = "skipped", _OBSOLETE
+            await _revive_latest_superseded(session, siblings, row, last_sent_id)
             return None
         chat_id = await resolve_owner_chat(session, settings)
         if chat_id is None or chat_id != row.chat_id:
             row.status, row.error_code = "skipped", "event_owner_unresolved"
             return None
 
-        last_sent_id = max((s.id for s in siblings if s.status == "sent"), default=0)
         absorbed = [
             s for s in siblings
             if last_sent_id < s.id < row.id
@@ -251,7 +276,21 @@ async def _claim(session: AsyncSession, key: str, settings: Settings) -> _Payloa
         row.last_attempt_at = now
         row.error_code = None
         row.payload_hash = _payload_hash(caption)
-        return _Payload(chat_id, document, _filename(event_id, now, settings.timezone), caption)
+        return _Payload(chat_id, document, _filename(event_id, now, settings.timezone), caption, row.attempt_count)
+
+
+async def _revive_latest_superseded(
+    session: AsyncSession, siblings: list[NotificationDelivery], row: NotificationDelivery, last_sent_id: int,
+) -> None:
+    """A newer intent went obsolete: the newest older export it displaced must still be sent."""
+    for sibling in sorted(siblings, key=lambda s: s.id, reverse=True):
+        if (
+            last_sent_id < sibling.id < row.id
+            and sibling.status == "skipped" and sibling.error_code == _SUPERSEDED
+            and await _can_deliver(session, sibling)
+        ):
+            sibling.status, sibling.error_code = "queued", None
+            return
 
 
 async def deliver_owner_export(
@@ -266,7 +305,7 @@ async def deliver_owner_export(
             return
         if payload is None:
             return
-        status, error_code, message_id, sent_at = await _send(payload, send_document, key)
+        status, error_code, message_id, sent_at, not_before = await _send(payload, send_document, key)
         try:
             async with session.begin():
                 values: dict[str, object] = {
@@ -274,6 +313,8 @@ async def deliver_owner_export(
                 }
                 if status == "queued":
                     values["sent_at"] = None
+                    values["last_attempt_at"] = not_before
+                    values["attempt_count"] = max(payload.attempt_count - 1, 0)
                 await session.execute(
                     update(NotificationDelivery)
                     .where(
@@ -305,18 +346,27 @@ async def _send(payload: _Payload, send_document: SendDocument, key: str):
         )
         observed = getattr(message, "message_id", None)
         message_id = observed if isinstance(observed, int) else None
-        return "sent", None, message_id, datetime.now(timezone.utc)
-    except TelegramRetryAfter:
-        # Telegram rejected it before sending: safe to retry with a fresh snapshot.
-        return "queued", "telegram_retry_after", None, None
+        return "sent", None, message_id, datetime.now(timezone.utc), None
+    except TelegramRetryAfter as exc:
+        # Telegram refused before sending: retry with a fresh snapshot once its delay has passed.
+        not_before = datetime.now(timezone.utc) + timedelta(seconds=max(float(exc.retry_after), 0.0))
+        return "queued", "telegram_retry_after", None, None, not_before
     except TelegramAPIError as exc:
         status, error_code, _ = _delivery_failure(exc)
         if status == "uncertain":
             logger.warning("Owner event Excel outcome unknown, not replaying key=%s", key)
-        return status, error_code, message_id, sent_at
+        return status, error_code, message_id, sent_at, None
     except Exception:
         logger.exception("Owner event Excel outcome unknown key=%s", key)
-        return "uncertain", "delivery_outcome_unknown", None, None
+        return "uncertain", "delivery_outcome_unknown", None, None, None
+
+
+def _eligible_now():
+    """A queued row with last_attempt_at set is not due until that instant (Telegram retry delay)."""
+    return or_(
+        NotificationDelivery.last_attempt_at.is_(None),
+        NotificationDelivery.last_attempt_at <= datetime.now(timezone.utc),
+    )
 
 
 async def _next_queued_key(session: AsyncSession, key: str) -> str | None:
@@ -331,6 +381,7 @@ async def _next_queued_key(session: AsyncSession, key: str) -> str | None:
                 NotificationDelivery.delivery_key.startswith(f"{KEY_PREFIX}:{identity[0]}:"),
                 NotificationDelivery.status == "queued",
                 NotificationDelivery.attempt_count < MAX_ATTEMPTS,
+                _eligible_now(),
             )
             .order_by(NotificationDelivery.id.desc())
             .limit(1)
@@ -367,7 +418,11 @@ async def recover_owner_exports(
             row.status, row.error_code = "failed", "telegram_retry_after"
         keys = (await session.scalars(
             select(NotificationDelivery.delivery_key)
-            .where(NotificationDelivery.notification_type == NOTICE_TYPE, NotificationDelivery.status == "queued")
+            .where(
+                NotificationDelivery.notification_type == NOTICE_TYPE,
+                NotificationDelivery.status == "queued",
+                _eligible_now(),
+            )
             .order_by(NotificationDelivery.id)
             .limit(100)
         )).all()
