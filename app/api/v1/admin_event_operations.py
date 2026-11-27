@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import csv
+from datetime import datetime
 from hashlib import sha256
 
 from aiogram import Bot
-from io import BytesIO, StringIO
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from openpyxl import Workbook
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +18,11 @@ from app.services.notification_service import broadcast_detailed_once
 from app.utils.constants import EventStatus, RegistrationStatus
 from app.utils.deep_links import telegram_event_miniapp_url
 from app.services import event_registration_service
+from app.services.event_participants_export import (
+    XLSX_MEDIA_TYPE,
+    build_participants_csv,
+    build_participants_xlsx,
+)
 from app.services.authorization_service import can_manage_events
 from app.services.event_topic_lifecycle import TopicActionError, update_topic_status
 
@@ -44,6 +47,7 @@ class EventParticipantDetailOut(BaseModel):
     first_name: str
     last_name: str
     status: str
+    registered_at: datetime | None = None
 
 
 async def _rows(session: AsyncSession, event_id: int):
@@ -76,14 +80,10 @@ async def read_event_participants(
                 first_name=first_name,
                 last_name=last_name,
                 status=registration.status,
+                registered_at=getattr(registration, "created_at", None),
             )
         )
     return result
-
-
-def _safe_export_name(value: str) -> str:
-    clean = value.replace("\r", " ").replace("\n", " ").strip()
-    return "'" + clean if clean.startswith(("=", "+", "-", "@")) else clean
 
 
 @router.get("/{event_id}/participants/export.xlsx")
@@ -91,31 +91,12 @@ async def export_event_participants_xlsx(
     event_id: int,
     _admin: User = Depends(require_event_manager),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> Response:
     rows = await _rows(session, event_id)
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "Участники"
-    sheet.append(["Имя", "Фамилия", "Номер телефона", "ФИО для регистрации", "Организация или вуз"])
-    for _registration, participant in rows:
-        sheet.append(
-            [
-                _safe_export_name(participant.first_name or ""),
-                _safe_export_name(participant.last_name or ""),
-                _safe_export_name((getattr(_registration, "signup", None) or {}).get("phone") or participant.phone or ""),
-                _safe_export_name((getattr(_registration, "signup", None) or {}).get("full_name", "")),
-                _safe_export_name((getattr(_registration, "signup", None) or {}).get("organization", "")),
-            ]
-        )
-    sheet.freeze_panes = "A2"
-    sheet.column_dimensions["A"].width = 24
-    sheet.column_dimensions["B"].width = 28
-    sheet.column_dimensions["C"].width = 22
-    output = BytesIO()
-    workbook.save(output)
     return Response(
-        content=output.getvalue(),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        content=build_participants_xlsx(rows, settings.timezone),
+        media_type=XLSX_MEDIA_TYPE,
         headers={"Content-Disposition": f'attachment; filename="ERA_event_{event_id}_participants.xlsx"'},
     )
 
@@ -125,23 +106,11 @@ async def export_event_participants_csv(
     event_id: int,
     _admin: User = Depends(require_event_manager),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> Response:
     rows = await _rows(session, event_id)
-    output = StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["Имя", "Фамилия", "Номер телефона", "ФИО для регистрации", "Организация или вуз"])
-    for _registration, participant in rows:
-        writer.writerow(
-            [
-                _safe_export_name(participant.first_name or ""),
-                _safe_export_name(participant.last_name or ""),
-                _safe_export_name((getattr(_registration, "signup", None) or {}).get("phone") or participant.phone or ""),
-                _safe_export_name((getattr(_registration, "signup", None) or {}).get("full_name", "")),
-                _safe_export_name((getattr(_registration, "signup", None) or {}).get("organization", "")),
-            ]
-        )
     return Response(
-        content="\ufeff" + output.getvalue(),
+        content=build_participants_csv(rows, settings.timezone),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="ERA_event_{event_id}_participants.csv"'},
     )

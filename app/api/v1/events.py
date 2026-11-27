@@ -17,6 +17,7 @@ from app.database.event_experience import EventExperience
 from app.database.models import Event, EventRegistration, User
 from app.services import anniversary_registration_service as anniversary, event_activity_service
 from app.services.activity_service import EventScope, list_events
+from app.services.event_owner_export_service import deliver_owner_export, enqueue_owner_export
 from app.services.event_registration_policy import registration_is_closed
 from app.services.event_registration_notice_service import (
     RegistrationNoticeKind,
@@ -470,8 +471,10 @@ async def register_event(
         raise HTTPException(status_code=409, detail=error)
     assert registration is not None
     notice = None
+    owner_export = None
     if bot is not None:
         notice = await enqueue_registration_notice(session, registration, user.telegram_id, RegistrationNoticeKind.MINI_APP)
+        owner_export = await enqueue_owner_export(session, settings, registration)
     result = await _to_event_out(session, event, registration, user)
     await session.commit()
     # Registration has already been committed. A Telegram outage must not
@@ -481,6 +484,11 @@ async def register_event(
             await deliver_registration_notice(session, notice, bot.send_message, settings)
         except Exception:
             logger.exception("Registration saved, notice delivery pending event_id=%s", event.id)
+    if owner_export is not None and bot is not None:
+        try:
+            await deliver_owner_export(session, owner_export, bot.send_document, settings)
+        except Exception:
+            logger.exception("Registration saved, owner Excel delivery pending event_id=%s", event.id)
     if signup is not None and bot and registration.status == RegistrationStatus.REGISTERED:
         try:
             manager = await session.get(User, settings.era_chair_user_id or event.created_by)

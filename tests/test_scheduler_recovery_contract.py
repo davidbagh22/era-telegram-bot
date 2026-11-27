@@ -48,6 +48,7 @@ class SchedulerRecoveryContractTests(unittest.TestCase):
             "event-announcement-recovery",
             "event-lifecycle-notifications",
             "event-registration-notice-recovery",
+            "event-owner-participants-xlsx-recovery",
             "event-wizard-task-sync",
             "configured-event-reminders",
             "project-review-notices",

@@ -23,6 +23,7 @@ from app.services.event_topic_lifecycle import close_due_event_topics
 from app.services.certificate_service import deliver_requested_certificates
 from app.services.event_publication_service import deliver_pending_event_announcements
 from app.services.google_calendar_sync_service import process_pending_calendar_syncs
+from app.services.event_owner_export_service import recover_owner_exports
 from app.services.event_registration_notice_service import recover_event_registration_notices
 from app.services.event_wizard_sync_service import sync_event_wizard_tasks_job
 from app.services.leadership_weekly_service import check_weekly_pulses_job, open_weekly_pulses_job
@@ -112,6 +113,11 @@ def add_system_jobs(
     scheduler.add_job(
         recover_event_registration_notices, "interval", minutes=1, args=(bot, settings, session_factory),
         id="event-registration-notice-recovery", replace_existing=True, max_instances=1, coalesce=True,
+        next_run_time=now,
+    )
+    scheduler.add_job(
+        recover_owner_exports, "interval", minutes=1, args=(bot, settings, session_factory),
+        id="event-owner-participants-xlsx-recovery", replace_existing=True, max_instances=1, coalesce=True,
         next_run_time=now,
     )
     scheduler.add_job(sync_event_wizard_tasks_job, "interval", minutes=1, args=(session_factory, tuple(getattr(settings, 'event_wizard_sync_event_ids', ()))), id="event-wizard-task-sync", replace_existing=True, max_instances=1, coalesce=True, next_run_time=now)

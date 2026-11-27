@@ -353,9 +353,10 @@ async def event_status_change(
     )
     await session.commit()
     from app.handlers.admin.events_block6 import event_kb
+    from app.services.event_registration_service import registration_count
     await call.message.answer(
         f"Статус обновлён: {EVENT_STATUS_LABELS.get(next_status, next_status)}",
-        reply_markup=event_kb(event, settings=settings, telegram_id=call.from_user.id),
+        reply_markup=event_kb(event, settings=settings, telegram_id=call.from_user.id, participants_count=await registration_count(session, event.id)),
     )
 
 
