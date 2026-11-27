@@ -36,7 +36,13 @@ class LiteratureTests(IsolatedAsyncioTestCase):
         async with self.engine.begin() as c:
             await c.run_sync(Base.metadata.create_all)
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
-        self.settings = Settings(bot_token='1234567890:test-token', general_chat_id=-100123)
+        self.settings = Settings(
+            bot_token='1234567890:test-token',
+            general_chat_id=-100123,
+            # Existing literature send tests exercise the approved path with
+            # the #321 launch switch explicitly enabled.
+            literature_48_laws_publish_enabled=True,
+        )
         self.bot = SimpleNamespace(send_message=AsyncMock())
         async with self.sessions() as s:
             s.add_all([User(id=i, telegram_id=100+i, first_name='Test', book_club_subscribed=i != 4,

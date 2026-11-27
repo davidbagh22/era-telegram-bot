@@ -197,6 +197,8 @@ async def series_status(
     # run_editorial_queue returns True and the 48-issue series is skipped.
     editorial = await editorial_settings(session)
     editorial_blocks_series = bool(editorial.get('enabled'))
+    from app.services.literature_48_laws_service import publish_enabled as laws48_publish_enabled
+    launch_flag_off = not laws48_publish_enabled(settings)
     if published:
         label, reason, action = 'Опубликован', f'Доставка в чат: {receipt.status}', 'none'
     elif uncertain:
@@ -204,6 +206,15 @@ async def series_status(
             'Нужна проверка',
             f'Исход отправки неизвестен ({receipt.status}). Повтор остановлен до сверки.',
             'none',
+        )
+    elif launch_flag_off:
+        label, reason, action = (
+            'Подготовка (флаг OFF)',
+            (
+                'literature_48_laws_publish_enabled=false — публичная отправка '
+                'заблокирована. Админский предпросмотр доступен без публикации.'
+            ),
+            'approve' if not approved else 'revoke',
         )
     elif approved and editorial_blocks_series:
         paused = ' (на паузе)' if editorial.get('paused') else ''
@@ -228,6 +239,12 @@ async def series_status(
             'Плановая отправка блокируется, пока редактор не одобрит точный текст и дату.',
             'approve',
         )
+    # Mirrors every early return in daily_job: launch flag, editorial override,
+    # exact-day approval, prior uncertain/conflict receipt, and a prior send.
+    would_public_send = bool(
+        not launch_flag_off and approved and not editorial_blocks_series
+        and not published and not uncertain
+    )
     return {
         'label': label,
         'reason': reason,
@@ -238,6 +255,8 @@ async def series_status(
         'published': published,
         'action': action,
         'editorial_blocks_series': editorial_blocks_series,
+        'publish_flag_enabled': not launch_flag_off,
+        'would_public_send': would_public_send,
         'title': get_issue(number).title,
         'preview': render_issue(number),
         'receipt_status': getattr(receipt, 'status', None),
@@ -310,6 +329,12 @@ async def reflection_summary(session, user):
 
 async def daily_job(bot: Bot, settings: Settings, session_factory) -> None:
     if await run_editorial_queue(bot, settings, session_factory):
+        return
+    # #321 launch switch: keep scheduler registered but never public-send while
+    # literature_48_laws_publish_enabled is False (default). Exact-day approval
+    # remains mandatory when the flag is later enabled.
+    from app.services.literature_48_laws_service import publish_enabled as laws48_publish_enabled
+    if not laws48_publish_enabled(settings):
         return
     local_day = datetime.now(ZoneInfo('Asia/Yerevan')).date()
     candidate = publication_number(local_day)
