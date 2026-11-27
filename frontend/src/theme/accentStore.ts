@@ -13,6 +13,8 @@ const appliedProperties = new Set<string>();
 let current: string | null = readStored();
 let lastSyncAt = 0;
 let syncInFlight: Promise<void> | null = null;
+let localRevision = 0;
+let writeChain: Promise<boolean> = Promise.resolve(true);
 
 function readStored(): string | null {
   try {
@@ -93,15 +95,28 @@ function normalizeChoice(hex: string | null): string | null {
 
 /** Apply instantly and cache locally; the server copy follows via persistAccent. */
 export function setAccentLocal(hex: string | null): void {
+  localRevision += 1;
   commit(normalizeChoice(hex));
   setPending(true);
 }
 
-/** Store the current colour on the server so other devices pick it up. */
-export async function persistAccent(): Promise<boolean> {
+/**
+ * Writes run one at a time and always send the colour current at the moment they start,
+ * so the server ends on the latest choice. Pending is cleared only when no newer local
+ * change happened while the request was in flight.
+ */
+export function persistAccent(): Promise<boolean> {
+  const run = writeChain.then(writeLatest);
+  writeChain = run;
+  return run;
+}
+
+async function writeLatest(): Promise<boolean> {
+  const revision = localRevision;
+  const value = current;
   try {
-    await saveUiPreferences(current);
-    setPending(false);
+    await saveUiPreferences(value);
+    if (revision === localRevision) setPending(false);
     return true;
   } catch {
     return false;
@@ -115,16 +130,13 @@ export async function saveAccent(hex: string | null): Promise<boolean> {
 
 async function runSync(): Promise<void> {
   if (isPending()) {
-    try {
-      await saveUiPreferences(current);
-      setPending(false);
-    } catch {
-      return;
-    }
+    await persistAccent();
     return;
   }
+  const revisionAtRequest = localRevision;
   try {
     const remote = await fetchUiPreferences();
+    if (revisionAtRequest !== localRevision || isPending()) return;
     const next = isValidHex(remote.accent_color) ? remote.accent_color.toLowerCase() : null;
     if (next !== current) commit(next);
   } catch {

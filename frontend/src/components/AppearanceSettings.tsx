@@ -79,12 +79,24 @@ export function AppearanceSettings() {
 
   const onHexInput = (value: string) => {
     setHexText(value);
-    const normalized = normalizeHex(value);
-    if (!normalized) {
-      setHexError(value.trim().length >= 4);
+    const trimmed = value.trim();
+    if (/^#?[0-9a-f]{6}$/i.test(trimmed)) {
+      const normalized = normalizeHex(trimmed);
+      if (normalized) choose(normalized, { debounce: true });
       return;
     }
-    choose(normalized, { debounce: true });
+    setHexError(trimmed.length >= 7 && normalizeHex(trimmed) === null);
+  };
+
+  const onHexBlur = () => {
+    const trimmed = hexText.trim();
+    if (trimmed.length === 0) return;
+    const normalized = normalizeHex(trimmed);
+    if (!normalized) {
+      setHexError(true);
+      return;
+    }
+    choose(normalized, { debounce: false });
   };
 
   const reset = () => {
@@ -150,6 +162,10 @@ export function AppearanceSettings() {
               aria-invalid={hexError}
               aria-describedby={hexError ? "appearance-hex-error" : undefined}
               onChange={(event) => onHexInput(event.target.value)}
+              onBlur={onHexBlur}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") onHexBlur();
+              }}
               placeholder="#BC2184"
             />
           </label>

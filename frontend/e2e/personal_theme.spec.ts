@@ -122,6 +122,26 @@ test.describe("personal colour", () => {
     expect(DEFAULT_ACCENT).toBe("#bc2184");
   });
 
+  test("typing a hex code character by character keeps the full value and saves only what was typed", async ({ page }) => {
+    await openAppearance(page, USER_A);
+    const hex = page.getByLabel("Код цвета");
+
+    await hex.fill("");
+    await hex.pressSequentially("#123456");
+    await expect(hex).toHaveValue("#123456");
+    await expect.poll(() => rootVar(page, "--era-primary")).toBe(deriveAccent("#123456", "dark").fill);
+    await expect.poll(() => getAccent(page, USER_A)).toBe("#123456");
+
+    await hex.fill("");
+    await hex.pressSequentially("#abc");
+    await expect(hex).toHaveValue("#abc");
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await hex.blur();
+    await expect(hex).toHaveValue("#AABBCC");
+    await expect.poll(() => rootVar(page, "--era-primary")).toBe(deriveAccent("#aabbcc", "dark").fill);
+    await expect.poll(() => getAccent(page, USER_A)).toBe("#aabbcc");
+  });
+
   test("hard colours stay readable on real controls: tabs, primary button, status chips", async ({ page }) => {
     await openAppearance(page, USER_A);
     const hex = page.getByLabel("Код цвета");
