@@ -577,19 +577,28 @@ def _dedupe_key(title: str, date_label: str = "", organization: str = "") -> str
     return "|".join(part.strip().casefold() for part in (title, date_label, organization) if part and part.strip())
 
 
-def merge_pdf_bytes(parts: list[bytes]) -> bytes:
-    """Append PDF parts with pypdf; skip empty/invalid blobs."""
+def merge_pdf_bytes(parts: list[bytes], *, strict: bool = False) -> bytes:
+    """Append PDF parts with pypdf.
+
+    Non-strict mode skips empty/invalid blobs. Strict mode raises ValueError so a
+    caller can never ship a document that silently lacks a requested part.
+    """
     from pypdf import PdfReader, PdfWriter
 
     writer = PdfWriter()
     for blob in parts:
         if not blob:
+            if strict:
+                raise ValueError("empty_pdf_part")
             continue
         try:
             reader = PdfReader(BytesIO(blob))
-        except Exception:
+            pages = list(reader.pages)
+        except Exception as exc:
+            if strict:
+                raise ValueError("invalid_pdf_part") from exc
             continue
-        for page in reader.pages:
+        for page in pages:
             writer.add_page(page)
     if len(writer.pages) == 0:
         raise ValueError("empty_pdf_merge")
@@ -824,10 +833,7 @@ def build_career_resume(
     doc.build(story)
     base_pdf = stream.getvalue()
     if export_mode == "portfolio_with_certificates" and certificate_pdfs:
-        try:
-            return merge_pdf_bytes([base_pdf, *[blob for blob in certificate_pdfs if blob]])
-        except ValueError:
-            return base_pdf
+        return merge_pdf_bytes([base_pdf, *certificate_pdfs], strict=True)
     return base_pdf
 
 
