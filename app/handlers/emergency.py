@@ -22,8 +22,9 @@ from app.handlers.participant.navigation import (
     _send_event_list,
     _send_main_menu,
     _send_personal_cabinet,
+    send_help_hub,
 )
-from app.keyboards.bot_shell import contact_keyboard
+from app.keyboards.bot_shell import HELP_BUTTON_ALIASES, contact_keyboard
 from app.keyboards.common import registration_keyboard, subscription_keyboard
 from app.keyboards.participant import open_app_button, project_menu_keyboard
 from app.services import event_activity_service, event_qr_service, task_service
@@ -40,6 +41,9 @@ from app.utils.deep_links import (
 )
 
 router = Router(name="emergency")
+# Mounted ahead of all stateful form routers so persistent reply buttons
+# never get swallowed as free-text input during active FSM flows.
+persistent_navigation_router = Router(name="emergency_navigation")
 
 MENU_BUTTONS = {
     "🔥 Открыть ЭРА",
@@ -431,7 +435,23 @@ async def cancel_any(
     await message.answer(texts.APPLICATION_PENDING)
 
 
-@router.message(
+@persistent_navigation_router.message(
+    StateFilter("*"),
+    F.text.in_(HELP_BUTTON_ALIASES),
+    F.chat.type == "private",
+)
+async def rescue_help_button(
+    message: Message,
+    user: User | None,
+    settings: Settings,
+    state: FSMContext,
+    session: AsyncSession | None = None,
+) -> None:
+    await state.clear()
+    await send_help_hub(message, user, settings, session)
+
+
+@persistent_navigation_router.message(
     StateFilter("*"),
     F.text.in_(MENU_BUTTONS),
     F.chat.type == "private",

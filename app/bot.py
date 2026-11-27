@@ -136,6 +136,7 @@ def create_dispatcher(settings: Settings, session_factory) -> Dispatcher:
 
     dispatcher.include_routers(
         telegram_analytics_router,
+        emergency.persistent_navigation_router,
         # Referral deep links are a specialised /start form and must be handled
         # before the emergency catch-all /start router, otherwise ref_<code>
         # is discarded before registration begins.

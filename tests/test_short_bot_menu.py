@@ -109,7 +109,7 @@ def _walk(router):
         yield from _walk(sub)
 
 
-async def _first_handler(dispatcher, text: str) -> str | None:
+async def _first_handler(dispatcher, text: str, *, raw_state: str | None = None) -> str | None:
     message = Message(
         message_id=1, date=datetime.now(), chat=Chat(id=5, type="private"),
         from_user=TgUser(id=5, is_bot=False, first_name="x"), text=text,
@@ -120,7 +120,7 @@ async def _first_handler(dispatcher, text: str) -> str | None:
             for handler in router.message.handlers:
                 try:
                     matched, _ = await handler.check(
-                        message, raw_state=None, bot=bot, event_chat=message.chat,
+                        message, raw_state=raw_state, bot=bot, event_chat=message.chat,
                         event_from_user=message.from_user,
                     )
                 except Exception:
@@ -133,6 +133,16 @@ async def _first_handler(dispatcher, text: str) -> str | None:
 
 
 class ShortBotMenuRoutingTests(unittest.IsolatedAsyncioTestCase):
+    @classmethod
+    def tearDownClass(cls):
+        global _DISPATCHER
+        if _DISPATCHER is not None:
+            for sub in list(_DISPATCHER.sub_routers):
+                sub._parent_router = None
+            _DISPATCHER.sub_routers.clear()
+            _DISPATCHER = None
+        super().tearDownClass()
+
     async def test_every_legacy_reply_button_text_still_routes_to_a_handler(self):
         unrouted = [text for text in sorted(LEGACY_REPLY_BUTTON_TEXTS) if await _first_handler(_dispatcher(), text) is None]
         assert unrouted == []
@@ -140,12 +150,12 @@ class ShortBotMenuRoutingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_legacy_texts_keep_their_original_handlers(self):
         expected = {
-            "📅 Афиша": "emergency:rescue_menu_button",
+            "📅 Афиша": "emergency_navigation:rescue_menu_button",
             "📅 Мероприятия": "participant_events_stability_block8:event_list_button",
             "🌱 Мой путь": "cabinet:journey_button",
-            "⭐ Возможности": "emergency:rescue_menu_button",
-            "💬 Связь": "emergency:rescue_menu_button",
-            "🔥 Открыть ЭРА": "emergency:rescue_menu_button",
+            "⭐ Возможности": "emergency_navigation:rescue_menu_button",
+            "💬 Связь": "emergency_navigation:rescue_menu_button",
+            "🔥 Открыть ЭРА": "emergency_navigation:rescue_menu_button",
             "🧭 Лидеры": "leaders_native:native_leaders",
             "🎬 Медиа": "media_management:leader_command",
             "⚙️ Админ": "admin_commands_ready:admin_hub_command",
@@ -158,7 +168,50 @@ class ShortBotMenuRoutingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_help_button_texts_route_to_help_hub(self):
         for text in sorted(HELP_BUTTON_ALIASES):
-            assert await _first_handler(_dispatcher(), text) == "participant_navigation:help_button", text
+            assert await _first_handler(_dispatcher(), text) == "emergency_navigation:rescue_help_button", text
+
+
+    async def test_persistent_buttons_escape_active_fsm_forms(self):
+        from app.handlers.anniversary import AnniversaryStates
+        from app.handlers.book_club import ReflectionStates
+        from app.handlers.emergency import rescue_help_button
+        from app.handlers.leader.events_block6 import EventBlock6States
+        from app.handlers.pulse_private import PulseState
+
+        active_states = [
+            AnniversaryStates.first_name.state,
+            AnniversaryStates.last_name.state,
+            AnniversaryStates.organization.state,
+            PulseState.answer.state,
+            ReflectionStates.answer.state,
+            EventBlock6States.date.state,
+        ]
+        for active_state in active_states:
+            for text in sorted(HELP_BUTTON_ALIASES):
+                assert (
+                    await _first_handler(_dispatcher(), text, raw_state=active_state)
+                    == "emergency_navigation:rescue_help_button"
+                ), (active_state, text)
+            assert (
+                await _first_handler(_dispatcher(), "🔥 Открыть ЭРА", raw_state=active_state)
+                == "emergency_navigation:rescue_menu_button"
+            ), active_state
+
+        assert (
+            await _first_handler(_dispatcher(), "Иван", raw_state=AnniversaryStates.first_name.state)
+            == "anniversary:field"
+        )
+
+        state = SimpleNamespace(clear=AsyncMock())
+        user = SimpleNamespace(
+            telegram_id=1, role=Role.PARTICIPANT, application_status=ApplicationStatus.APPROVED,
+            is_blocked=False, is_archived=False, office_assignments=[],
+        )
+        settings = Settings(bot_token="1234567890:test-token", miniapp_url=URL)
+        message = SimpleNamespace(answer=AsyncMock())
+        await rescue_help_button(message, user, settings, state, None)
+        state.clear.assert_awaited_once()
+        assert "events:list" in {b.callback_data for b in _inline(message.answer.await_args.kwargs["reply_markup"])}
 
 
     async def test_existing_commands_still_routed(self):
