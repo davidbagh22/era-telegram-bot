@@ -187,6 +187,7 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
   const [resumeMode, setResumeMode] = useState<"resume" | "portfolio">("portfolio");
   const [attachments, setAttachments] = useState<ResumeAttachmentsPreview | null>(null);
   const [attachmentsError, setAttachmentsError] = useState(false);
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
   const [attachOn, setAttachOn] = useState(false);
   const [attachFailures, setAttachFailures] = useState<ResumeAttachmentFailure[]>([]);
   const [form, setForm] = useState<CareerItemPayload>(EMPTY_FORM);
@@ -299,6 +300,7 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
   };
 
   const loadAttachments = useCallback(async (resetToggle: boolean) => {
+    setAttachmentsLoading(true);
     try {
       const preview = await fetchResumeAttachments();
       setAttachments(preview);
@@ -308,6 +310,8 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
       setAttachments(null);
       setAttachmentsError(true);
       setAttachOn(false);
+    } finally {
+      setAttachmentsLoading(false);
     }
   }, []);
 
@@ -350,6 +354,7 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
   };
 
   const confirmExportInterview = async (skip: string[] = []) => {
+    if (attachmentsLoading) return;
     const busy = exportMode === "send" ? setSendingResume : setDownloading;
     busy(true);
     try {
@@ -604,7 +609,7 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
                 type="checkbox"
                 role="switch"
                 checked={attachOn}
-                disabled={!attachments || attachments.selected_count === 0}
+                disabled={attachmentsLoading || !attachments || attachments.selected_count === 0}
                 onChange={(event) => setAttachOn(event.target.checked)}
               />
               {`Приложить сертификаты${attachments ? ` (${attachments.selected_count})` : ""}`}
@@ -653,13 +658,13 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
               <span style={{ color: "var(--era-text-muted)", fontSize: "var(--era-text-xs)" }}>
                 PDF не создан, чтобы вы не получили файл без нужных страниц.
               </span>
-              <button type="button" className="era-btn-primary" disabled={downloading || sendingResume} onClick={() => void confirmExportInterview()}>
+              <button type="button" className="era-btn-primary" disabled={downloading || sendingResume || attachmentsLoading} onClick={() => void confirmExportInterview()}>
                 Повторить
               </button>
               <button
                 type="button"
                 className="era-btn-secondary"
-                disabled={downloading || sendingResume}
+                disabled={downloading || sendingResume || attachmentsLoading}
                 onClick={() => void confirmExportInterview(attachFailures.map((failure) => failure.key))}
               >
                 {exportMode === "send" ? "Отправить без него" : "Скачать без него"}
@@ -669,10 +674,12 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
           <button
             type="button"
             className="era-btn-primary"
-            disabled={downloading || sendingResume}
+            disabled={downloading || sendingResume || attachmentsLoading}
             onClick={() => void confirmExportInterview()}
           >
-            {exportMode === "send"
+            {attachmentsLoading
+              ? "Загружаем документы…"
+              : exportMode === "send"
               ? (sendingResume ? "Отправляем…" : "Сохранить и отправить PDF")
               : (downloading ? "Формируем…" : "Сохранить и скачать PDF")}
           </button>
