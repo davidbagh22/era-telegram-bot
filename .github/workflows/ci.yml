@@ -90,6 +90,10 @@ jobs:
         run: python -m pip install --upgrade pip && pip install -r requirements.txt
       - name: Rehearse reversible public listing migration on isolated PostgreSQL
         run: python scripts/postgres_event_public_listing_probe.py
+      - name: Prove the last event seat cannot be double-booked on PostgreSQL
+        env:
+          ERA_TEST_PG_URL: postgresql+asyncpg://era_test:era_test@127.0.0.1:5432/era_test
+        run: python -m pip install pytest && python -m pytest -q tests/test_event_registration_entry.py -k postgresql
       - name: Upgrade a clean PostgreSQL database through every migration
         run: alembic upgrade head
       - name: Install PostgreSQL clients for isolated backup restore probe
