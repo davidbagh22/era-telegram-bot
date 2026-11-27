@@ -46,7 +46,7 @@ test("published poster editor recovers from draft and image GET failures", async
   await page.getByRole("navigation", { name: "Основная навигация" })
     .getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
-  await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
+  await page.getByRole("button", { name: /^Мероприятия.*Создать/ }).click();
   await page.getByRole("button", { name: /Участники и посещаемость/ }).click();
   await page.getByRole("button", { name: "Изменить афишу" }).click();
 

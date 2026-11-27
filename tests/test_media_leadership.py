@@ -122,7 +122,10 @@ class MediaLeadershipTests(IsolatedAsyncioTestCase):
             await _send_main_menu(message, chair, settings)
             markup = message.answer.call_args.kwargs["reply_markup"]
             buttons = [button.text for row in markup.keyboard for button in row]
-            self.assertIn("🎬 Медиа", buttons)
+            self.assertEqual(buttons, ["🔥 Открыть ЭРА", "❓ Помощь"])
+            from app.keyboards.bot_shell import help_hub_keyboard
+            hub = [b for row in help_hub_keyboard("", media_chair=True).inline_keyboard for b in row]
+            self.assertTrue(any(b.text == "🎬 Медиа" and b.callback_data == "media:leader" for b in hub))
             self.assertNotIn("📊 Статистика", buttons)
             self.assertFalse(has_dashboard_access(chair, settings, chair.telegram_id))
             await leader_command(message, chair, session, settings, state)

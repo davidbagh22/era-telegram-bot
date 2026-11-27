@@ -8,8 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.database.models import User
 from app.keyboards.bot_shell import (
+    HELP_BUTTON_ALIASES,
+    anniversary_inline_keyboard,
     contact_keyboard,
     has_leaders_entry,
+    help_hub_keyboard,
     main_reply_keyboard,
     navigation_guide_keyboard,
     team_keyboard,
@@ -101,24 +104,68 @@ async def _send_main_menu(
         featured and session is not None and user is not None
         and await anniversary.user_already_registered(session, user.telegram_id, user)
     )
-    if featured and anniversary_registered:
-        menu_text = f"{ux_texts.MAIN_INLINE_MENU}\n\n{anniversary.MENU_REGISTERED_SHORTCUT}"
-    elif featured:
-        menu_text = f"{ux_texts.MAIN_INLINE_MENU}\n\n{anniversary.MENU_SHORTCUT}"
-    else:
-        menu_text = ux_texts.MAIN_INLINE_MENU
+    admin = user.role == Role.ADMIN or bool(settings and getattr(user, "telegram_id", None) in getattr(settings, "admin_ids", []))
     await message.answer(
-        menu_text,
+        ux_texts.MAIN_INLINE_MENU,
         parse_mode=ParseMode.HTML,
         reply_markup=main_reply_keyboard(
             leaders=has_leaders_entry(user),
             miniapp_url=settings.effective_miniapp_url if settings else "",
-            admin=user.role == Role.ADMIN or bool(settings and getattr(user, 'telegram_id', None) in getattr(settings, 'admin_ids', [])),
+            admin=admin,
             media_chair=bool(settings and is_media_chair(user, settings)),
             anniversary=featured,
             anniversary_registered=anniversary_registered,
         ),
     )
+    if featured:
+        await message.answer(
+            anniversary.MENU_REGISTERED_SHORTCUT if anniversary_registered else anniversary.MENU_SHORTCUT,
+            reply_markup=anniversary_inline_keyboard(anniversary_registered),
+        )
+
+
+HELP_TEXT = """❓ <b>Помощь</b>
+
+Главное — в приложении: нажмите «🔥 Открыть ЭРА».
+Здесь — быстрые переходы: афиша, ваш путь, возможности, связь с командой и рабочие разделы по вашей роли.
+
+Не нашли нужное — «💬 Связь»."""
+
+
+async def send_help_hub(
+    message: Message, user: User | None, settings: Settings | None, session: AsyncSession | None = None,
+) -> None:
+    if not _approved(user):
+        await message.answer(texts.APPLICATION_PENDING)
+        return
+    from app.services.media_leadership_service import is_media_chair
+    featured = session is not None and await anniversary.menu_available(session)
+    registered = bool(
+        featured and session is not None
+        and await anniversary.user_already_registered(session, user.telegram_id, user)
+    )
+    admin = user.role == Role.ADMIN or bool(settings and user.telegram_id in getattr(settings, "admin_ids", []))
+    await message.answer(
+        HELP_TEXT,
+        parse_mode=ParseMode.HTML,
+        reply_markup=help_hub_keyboard(
+            settings.effective_miniapp_url if settings else "",
+            admin=admin,
+            leaders=has_leaders_entry(user),
+            media_chair=bool(settings and is_media_chair(user, settings)),
+            anniversary=featured,
+            anniversary_registered=registered,
+            privileged=user.role in PRIVILEGED_ROLES,
+        ),
+    )
+
+
+@router.message(F.text.in_(HELP_BUTTON_ALIASES), F.chat.type == "private")
+async def help_button(
+    message: Message, user: User | None, settings: Settings, state: FSMContext, session: AsyncSession | None = None,
+) -> None:
+    await state.clear()
+    await send_help_hub(message, user, settings, session)
 
 
 async def _send_personal_cabinet(message: Message, user: User, session: AsyncSession, settings: Settings) -> None:

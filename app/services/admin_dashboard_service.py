@@ -59,6 +59,17 @@ def has_dashboard_access(user: User | None, settings: Settings, telegram_id: int
     return is_full_admin(user, settings, telegram_id)
 
 
+async def pending_applications_count(session: AsyncSession) -> int:
+    """Applications waiting for a decision — the same predicate as the admin
+    applications queue, so the badge on «Заявки» equals the rows behind it."""
+    return await _count(
+        session,
+        User,
+        User.application_status.in_([ApplicationStatus.PENDING, ApplicationStatus.NEEDS_INFO]),
+        User.is_archived.is_not(True),
+    )
+
+
 async def _count(session: AsyncSession, model, *conditions) -> int:
     query = select(func.count()).select_from(model)
     for condition in conditions:
@@ -119,12 +130,7 @@ async def dashboard_metrics(session: AsyncSession) -> DashboardMetrics:
         "current_roster": current_roster,
         "users_approved": current_roster,
         "active_base": active_base,
-        "users_pending": await _count(
-            session,
-            User,
-            User.application_status.in_([ApplicationStatus.PENDING, ApplicationStatus.NEEDS_INFO]),
-            User.is_archived.is_(False),
-        ),
+        "users_pending": await pending_applications_count(session),
         "activists": await _role_count(session, Role.ACTIVIST),
         "leaders": await _role_count(session, Role.LEADER, Role.HEAD, Role.COUNCIL, Role.ADMIN),
         "projects_review": await _count(

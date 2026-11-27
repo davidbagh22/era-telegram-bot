@@ -140,10 +140,19 @@ async def _show_result(message, state, data=None, *, user=None, settings=None, s
 
 @router.message(StateFilter("*"), F.chat.type == "private", F.text.in_({rsvp.MENU_BUTTON, rsvp.MENU_TICKET_BUTTON}))
 async def menu_registration(message: Message, state: FSMContext, session, user, settings: Settings | None = None):
+    await _menu_registration(message, message.from_user.id, state, session, user, settings)
+
+
+@router.callback_query(StateFilter("*"), F.message.chat.type == "private", F.data == "anniversary:menu")
+async def menu_registration_inline(call: CallbackQuery, state: FSMContext, session, user, settings: Settings | None = None):
+    await call.answer()
+    await _menu_registration(call.message, call.from_user.id, state, session, user, settings)
+
+
+async def _menu_registration(message: Message, telegram_id: int, state: FSMContext, session, user, settings: Settings | None):
     if blocked(user):
         await message.answer("Регистрация недоступна.")
         return
-    telegram_id = message.from_user.id
     event = await rsvp.featured_event(session)
     if event is None:
         await message.answer("Регистрация на годовщину недоступна.")

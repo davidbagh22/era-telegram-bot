@@ -7,7 +7,7 @@ test("wizard date and start time fit a 320px Telegram viewport", async ({ page }
   await page.getByRole("navigation", { name: "Основная навигация" })
     .getByRole("button", { name: "Я", exact: true }).click();
   await page.getByRole("button", { name: /Управление ЭРА/ }).click();
-  await page.getByRole("button", { name: /Мероприятие.*Создать и вести/ }).click();
+  await page.getByRole("button", { name: /^Мероприятия.*Создать/ }).click();
   await page.getByRole("button", { name: /Создать мероприятие.*Черновик/ }).click();
   await page.getByRole("button", { name: "＋ Создать мероприятие" }).click();
   await page.getByRole("button", { name: "Продолжить" }).click();

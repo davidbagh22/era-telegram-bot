@@ -6,7 +6,7 @@ from app.config import Settings
 from app.handlers.book_club import _keyboard as literature_keyboard
 from app.handlers.era_game_room import menu_markup
 from app.handlers.era_leisure import _markup
-from app.keyboards.bot_shell import main_inline_keyboard, main_reply_keyboard
+from app.keyboards.bot_shell import help_hub_keyboard, main_inline_keyboard, main_reply_keyboard
 from app.keyboards.participant import main_inline_keyboard as compatibility_menu
 
 
@@ -24,8 +24,9 @@ def test_main_menu_has_one_leisure_entry_and_no_flat_literature():
             reply = main_reply_keyboard(url, admin=admin)
             assert reply.is_persistent and reply.one_time_keyboard is False
             labels = {button.text for button in buttons(reply)}
-            assert ("⚙️ Админ" in labels) == admin
-            assert "📊 Статистика" not in labels
+            assert labels == {"🔥 Открыть ЭРА", "❓ Помощь"}
+            help_callbacks = {b.callback_data for b in buttons(help_hub_keyboard(url, admin=admin))}
+            assert ("admin:hub:open" in help_callbacks) == admin
 
 
 class LeisureNavigationTests(IsolatedAsyncioTestCase):

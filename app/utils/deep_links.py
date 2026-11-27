@@ -201,5 +201,9 @@ def miniapp_admin_url(miniapp_url: str) -> str:
     return miniapp_path_url(miniapp_url, "admin")
 
 
+def miniapp_admin_section_url(miniapp_url: str, section: str) -> str:
+    return miniapp_path_url(miniapp_url, "admin", {"adminSection": section})
+
+
 def miniapp_leader_url(miniapp_url: str) -> str:
     return miniapp_path_url(miniapp_url, "leader")

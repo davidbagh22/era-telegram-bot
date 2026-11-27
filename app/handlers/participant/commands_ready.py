@@ -31,7 +31,8 @@ router = Router(name="participant_commands_ready")
 # /menu is unaffected: it's itself the Mini-App entry point (not a
 # duplicate screen). /help is folded into the same "🧭 Навигация"
 # explainer /navigation uses, rather than the old about_keyboard() menu
-# of bot-native shortcuts — see _send_navigation_guide.
+# of bot-native shortcuts — see _send_navigation_guide. The «❓ Помощь»
+# reply button opens the wider inline hub instead (navigation.send_help_hub).
 
 
 @router.message(Command("menu"), F.chat.type == "private")

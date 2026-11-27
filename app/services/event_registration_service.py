@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -140,3 +143,56 @@ async def award_attendance_points(
         )
         newly_awarded.append(participant)
     return newly_awarded
+
+
+RECENT_REGISTRATION_STATUSES = (
+    RegistrationStatus.REGISTERED,
+    RegistrationStatus.WILL_COME,
+    RegistrationStatus.WAITLIST,
+    RegistrationStatus.ATTENDED,
+)
+
+
+@dataclass(frozen=True)
+class RecentRegistration:
+    registration_id: int
+    event_id: int
+    event_title: str
+    participant_id: int
+    participant_name: str
+    status: str
+    registered_at: datetime | None
+
+
+def _registrant_name(registration: EventRegistration, user: User) -> str:
+    full_name = str((registration.signup or {}).get("full_name") or "").strip()
+    if full_name:
+        return full_name
+    joined = " ".join(part for part in (user.first_name, user.last_name) if part).strip()
+    return joined or "Участник"
+
+
+async def recent_registrations(session: AsyncSession, limit: int = 5) -> list[RecentRegistration]:
+    """Newest sign-ups first, across all events. Cancelled and declined
+    registrations are skipped, so the first row is the last person who really
+    signed up."""
+    rows = await session.execute(
+        select(EventRegistration, User, Event)
+        .join(User, User.id == EventRegistration.user_id)
+        .join(Event, Event.id == EventRegistration.event_id)
+        .where(EventRegistration.status.in_([str(item) for item in RECENT_REGISTRATION_STATUSES]))
+        .order_by(EventRegistration.created_at.desc(), EventRegistration.id.desc())
+        .limit(limit)
+    )
+    return [
+        RecentRegistration(
+            registration_id=registration.id,
+            event_id=event.id,
+            event_title=event.title,
+            participant_id=user.id,
+            participant_name=_registrant_name(registration, user),
+            status=str(registration.status),
+            registered_at=registration.created_at,
+        )
+        for registration, user, event in rows.all()
+    ]

@@ -9,6 +9,11 @@ function profileTab(page: import("@playwright/test").Page) {
     .getByRole("button", { name: "Я", exact: true });
 }
 
+async function openMoreTools(page: import("@playwright/test").Page) {
+  const more = page.getByRole("button", { name: /^Ещё/ });
+  if ((await more.getAttribute("aria-expanded")) !== "true") await more.click();
+}
+
 async function enterAdminWorkspace(page: import("@playwright/test").Page) {
   await page.goto(`/app/?devTelegramId=${ADMIN_TELEGRAM_ID}`);
   await expect(profileTab(page)).toBeVisible();
@@ -66,11 +71,38 @@ test("admin overview is a simple leader control surface", async ({ page }) => {
 
   await expect(page.getByText("Пульт руководителя", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Что происходит в ЭРА" })).toBeVisible();
+  const primary = page.getByTestId("admin-primary-actions");
+  await expect(primary.getByRole("button")).toHaveCount(3);
+  await expect(primary.getByRole("button", { name: /^Мероприятия/ })).toBeVisible();
+  await expect(primary.getByRole("button", { name: /^Заявки/ })).toBeVisible();
+  await expect(primary.getByRole("button", { name: /^Задачи/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "＋ Создать мероприятие" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Списки участников", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Последние записи" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Решить сегодня" })).toHaveCount(0);
+
+  await openMoreTools(page);
   await expect(page.getByRole("heading", { name: "Решить сегодня" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Быстро сделать" })).toBeVisible();
   await expect(page.getByText("Регистрация и состав", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Аналитика/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Контроль" })).toHaveCount(0);
+});
+
+test("overview shows pending applications count and the latest registrations", async ({ page }) => {
+  await page.route("**/api/v1/admin/dashboard", (route) => route.fulfill({
+    json: { metrics: { current_roster: 10, users_pending: 4 }, attention_total: 4 },
+  }));
+  await page.route("**/api/v1/admin/events/recent-registrations**", (route) => route.fulfill({ json: [
+    { registration_id: 2, event_id: 7, event_title: "Мок-встреча", participant_id: 3, participant_name: "Мок Новый", status: "registered", registered_at: "2026-11-20T12:05:00+00:00" },
+    { registration_id: 1, event_id: 7, event_title: "Мок-встреча", participant_id: 2, participant_name: "Мок Прежний", status: "registered", registered_at: "2026-11-20T12:00:00+00:00" },
+  ] }));
+  await enterAdminWorkspace(page);
+  await expect(page.getByTestId("admin-primary-actions").getByRole("button", { name: /^Заявки.*4$/ })).toBeVisible();
+  const items = page.getByRole("region", { name: "Последние записи" }).getByRole("listitem");
+  await expect(items).toHaveCount(2);
+  await expect(items.first()).toContainText("Мок Новый");
+  await expect(items.first()).toContainText("Мок-встреча");
 });
 
 test("overview shows task and support queues and opens their native resolver", async ({ page }) => {
@@ -87,6 +119,7 @@ test("overview shows task and support queues and opens their native resolver", a
     window.Telegram.WebApp.close = () => { document.body.dataset.nativeQueueClosed = "true"; };
   });
   await expect(page.getByText("8 требуют внимания", { exact: true })).toBeVisible();
+  await openMoreTools(page);
   await expect(page.getByText("Очередь чистая ✓", { exact: true })).toHaveCount(0);
   for (const [title, payload] of [
     ["7 · Задачи требуют внимания", "admin_task_attention"],
@@ -116,23 +149,27 @@ test("Решить сегодня opens event and project resolvers, not section
   await page.route("**/api/v1/admin/activities/submissions**", (route) => route.fulfill({ json: [] }));
   await enterAdminWorkspace(page);
 
+  await openMoreTools(page);
   await page.getByRole("button", { name: /2 · События на согласовании/ }).click();
   await expect(page.getByRole("heading", { name: "На согласовании" })).toBeVisible();
   await expect(page.getByText("Создать мероприятие", { exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Обзор", exact: true }).click();
+  await openMoreTools(page);
   await page.getByRole("button", { name: /4 · лист ожидания/ }).click();
   await expect(page.getByRole("heading", { name: "Участники и посещаемость" })).toBeVisible();
   await expect(page.getByText("Создать мероприятие", { exact: true })).toHaveCount(0);
   await expect(page.getByText("На согласовании", { exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Обзор", exact: true }).click();
+  await openMoreTools(page);
   await page.getByRole("button", { name: /3 · Результаты активностей/ }).click();
   await expect(page.getByRole("heading", { name: "Активности после события" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Проверить результаты/ })).toHaveCount(0);
   await expect(page.getByText("Активностей на проверке нет.")).toBeVisible();
 
   await page.getByRole("button", { name: "Обзор", exact: true }).click();
+  await openMoreTools(page);
   await page.getByRole("button", { name: /1 · Проекты на проверке/ }).click();
   await expect(page.getByRole("heading", { name: "Проекты на рассмотрении" })).toBeVisible();
   await expect(page.getByText("Создать проект", { exact: true })).toHaveCount(0);
@@ -183,6 +220,7 @@ test("appoint leader keeps selected person after search clears", async ({ page }
 
 test("analytics expands from overview instead of a separate control hub", async ({ page }) => {
   await enterAdminWorkspace(page);
+  await openMoreTools(page);
   await page.getByRole("button", { name: /Аналитика/ }).click();
 
   await expect(page.getByRole("heading", { name: "ЭРА одним взглядом" })).toBeVisible();
@@ -201,6 +239,7 @@ test("analytics expands from overview instead of a separate control hub", async 
 test("analytics sends the selected report through the authenticated bot delivery endpoint", async ({ page }) => {
   await page.route("**/api/v1/admin/analytics/executive-report/send", route => route.fulfill({ json: { sent: true } }));
   await enterAdminWorkspace(page);
+  await openMoreTools(page);
   await page.getByRole("button", { name: /Аналитика/ }).click();
   const requestPromise = page.waitForRequest(request => request.method() === "POST" && request.url().endsWith("/executive-report/send"));
   await page.getByRole("button", { name: "PDF в чат с ботом", exact: true }).click();
@@ -215,6 +254,7 @@ test("analytics sends the selected report through the authenticated bot delivery
 
 test("analytics exports selected custom period as a complete PDF", async ({ page }) => {
   await enterAdminWorkspace(page);
+  await openMoreTools(page);
   await page.getByRole("button", { name: /Аналитика/ }).click();
   await page.getByLabel("Период отчёта").selectOption("custom");
   const downloadButton = page.getByRole("button", { name: "↓ Скачать отчёт PDF" });
@@ -248,6 +288,7 @@ test("analytics exports selected custom period as a complete PDF", async ({ page
 
 test("analytics quick action opens the actual tasks workspace", async ({ page }) => {
   await enterAdminWorkspace(page);
+  await openMoreTools(page);
   await page.getByRole("button", { name: /Аналитика/ }).click();
   await page.getByRole("button", { name: "Открыть задания →", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Дать работу или проверить результат" })).toBeVisible();
@@ -263,6 +304,7 @@ test("analytics shows observed zero counters and excludes personal-list shortcut
     await route.fulfill({ response, json: payload });
   });
   await enterAdminWorkspace(page);
+  await openMoreTools(page);
   await page.getByRole("button", { name: /Аналитика/ }).click();
   await expect(page.getByLabel("Период отчёта")).toHaveValue("month");
   const source = page.locator('.era-card').filter({ has: page.getByRole('heading', { name: 'Публикации канала', exact: true }) });
@@ -276,6 +318,7 @@ test("analytics shows observed zero counters and excludes personal-list shortcut
 
 test("overview KPI opens exact underlying rows", async ({ page }) => {
   await enterAdminWorkspace(page);
+  await openMoreTools(page);
 
   const currentRoster = page.getByRole("button", { name: /Участники.*Открыть состав/ });
   await expect(currentRoster).toBeVisible();
