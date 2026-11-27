@@ -35,6 +35,8 @@ import {
   projectTaskStatusLabel,
 } from "./statusLabels";
 
+const OPENABLE_EVENT_STATUSES = new Set(["approved", "published", "registration_open", "registration_closed", "active", "completed"]);
+
 type WorkspaceSection = "team" | "tasks" | "milestones" | "events" | "analytics";
 
 const SECTIONS: { value: WorkspaceSection; label: string; description: string }[] = [
@@ -310,7 +312,7 @@ export function ProjectWorkspace({ projectId }: ProjectWorkspaceProps) {
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
           {workspace.can_manage && <Card><SectionTitle title="Связать событие" /><FormStack><input value={eventId} onChange={(event) => setEventId(event.target.value)} inputMode="numeric" placeholder="Номер мероприятия" style={inputStyle} /><button type="button" disabled={busy || !optionalNumber(eventId)} onClick={() => run(async () => { await linkProjectEvent(projectId, optionalNumber(eventId) ?? 0); setEventId(""); })} style={buttonStyle}>Связать</button></FormStack></Card>}
           {workspace.events.length === 0 ? <EmptyState text="Связанных событий пока нет." /> : workspace.events.map((event) => (
-            <Card key={event.id}><div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}><div><strong>{event.title}</strong><p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>{event.event_date} · {event.event_time}</p></div><StatusBadge label={projectEventStatusLabel(event.status)} tone="violet" /></div></Card>
+            <Card key={event.id}><div style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem" }}><div><strong>{event.title}</strong><p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>{event.event_date} · {event.event_time}</p></div><StatusBadge label={projectEventStatusLabel(event.status)} tone="violet" /></div>{OPENABLE_EVENT_STATUSES.has(event.status) && <button type="button" onClick={() => { window.location.hash = `#/events/${event.id}`; }} style={{ ...secondaryButtonStyle, marginTop: "0.5rem" }}>Открыть мероприятие</button>}</Card>
           ))}
         </div>
       )}

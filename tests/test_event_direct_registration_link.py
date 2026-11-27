@@ -57,8 +57,13 @@ class EventDirectRegistrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_no_guest_bypass_or_draft_leak(self):
         message = SimpleNamespace(answer=AsyncMock())
         session = AsyncMock()
+        session.get.return_value = SimpleNamespace(id=42, status=EventStatus.DRAFT)
+        await events.show_public_event_registration_card(message, None, session, 42, telegram_id=500)
+        session.add.assert_not_called()
+        message.answer.assert_awaited_once()
+        self.assertIn("недоступно", message.answer.call_args.args[0])
+        message.answer.reset_mock()
         await events.show_public_event_registration_card(message, None, session, 42)
-        session.get.assert_not_awaited()
         message.answer.assert_awaited_once()
 
         approved = SimpleNamespace(application_status="approved",

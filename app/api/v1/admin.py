@@ -942,11 +942,16 @@ async def approve_user_application(
     if bot is not None:
         # Mirrors app/handlers/admin/panel.py::approve_user exactly, so a
         # Mini App approval looks identical to the Bot one to the user.
+        from app.services.event_entry_service import with_pending_event_button
+
         await safe_send(
             bot,
             target.telegram_id,
             texts.APPLICATION_APPROVED,
-            main_inline_keyboard(miniapp_url=settings.effective_miniapp_url),
+            await with_pending_event_button(
+                session, target.telegram_id,
+                main_inline_keyboard(miniapp_url=settings.effective_miniapp_url),
+            ),
         )
         await safe_send(
             bot, target.telegram_id, "Перед стартом — короткие правила сообщества\n\n" + texts.CHAT_RULES

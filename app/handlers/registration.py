@@ -887,6 +887,12 @@ async def finish_registration(
             texts.REG_DONE, parse_mode="HTML",
             reply_markup=pending_registration_keyboard(settings.era_channel_url),
         )
+    from app.services.event_entry_service import registration_followup
+    followup = await registration_followup(
+        session, call.from_user.id, approved=user.application_status == ApplicationStatus.APPROVED
+    )
+    if followup is not None:
+        await call.message.answer(followup[0], reply_markup=followup[1])
 
     if created or resubmitted:
         from app.services.application_review_service import application_review_version
