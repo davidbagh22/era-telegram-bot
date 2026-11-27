@@ -68,6 +68,8 @@ export const fetchCareerDashboard = () => request<CareerDashboard>("/api/v1/care
 export interface IssuedCertificate { id: number; number: string; title: string; status: string; issued_at: string }
 export const fetchCertificates = () => request<IssuedCertificate[]>("/api/v1/career/certificates");
 export const downloadCertificate = (id: number) => requestBlob(`/api/v1/career/certificates/${id}.pdf`);
+export const sendCertificate = (id: number) =>
+  request<{ sent: boolean }>(`/api/v1/career/certificates/${id}/send`, { method: "POST" });
 
 export const updateCareerProfile = (payload: CareerProfileData) =>
   request<CareerProfileData>("/api/v1/career/profile", {
@@ -127,6 +129,9 @@ export const requestOfficialRecommendation = (purpose: CareerPurpose) =>
 
 export const downloadOfficialRecommendation = (requestId: number) =>
   requestBlob(`/api/v1/career/recommendation/${requestId}.pdf`);
+
+export const sendOfficialRecommendation = (requestId: number) =>
+  request<{ sent: boolean }>(`/api/v1/career/recommendation/${requestId}/send`, { method: "POST" });
 
 export const fetchAdminCareerItems = () => request<AdminCareerItem[]>("/api/v1/admin/career/pending");
 export const fetchAdminRecommendations = () => request<AdminRecommendation[]>("/api/v1/admin/career/recommendations/pending");

@@ -68,7 +68,8 @@ async def _active_certificate_pdfs(session: AsyncSession, user_id: int) -> list[
 async def my_certificates(user: User = Depends(get_current_user), session: AsyncSession = Depends(get_session)):
     rows = (await session.scalars(select(CertificateIssue).where(CertificateIssue.user_id == user.id)
                                   .order_by(CertificateIssue.id.desc()))).all()
-    return [{"id": row.id, "number": row.document_number, "title": row.snapshot["event_title"],
+    return [{"id": row.id, "number": row.document_number,
+             "title": row.snapshot.get("project_title") or row.snapshot.get("event_title") or "Сертификат ЭРА",
              "status": row.status, "issued_at": row.issued_at.isoformat()} for row in rows]
 
 
@@ -82,6 +83,44 @@ async def certificate_pdf(issue_id: int, user: User = Depends(get_current_user),
                                            revoked=issue.status == "revoked"), media_type="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="{issue.document_number}.pdf"',
                              "Cache-Control": "private, no-store"})
+
+
+@router.post("/certificates/{issue_id}/send")
+async def send_certificate_to_bot_chat(
+    issue_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    bot: Bot | None = Depends(get_bot),
+) -> dict[str, bool]:
+    from app.services.certificate_pdf_service import build_certificate_pdf
+
+    issue = await session.get(CertificateIssue, issue_id)
+    if issue is None or issue.user_id != user.id:
+        raise HTTPException(status_code=404, detail="certificate_not_found")
+    if bot is None:
+        raise HTTPException(status_code=503, detail="bot_unavailable")
+    pdf = build_certificate_pdf(
+        issue.snapshot,
+        number=issue.document_number,
+        issued_at=issue.issued_at,
+        revoked=issue.status == "revoked",
+    )
+    caption = (
+        f"Сертификат {issue.document_number} (отозван)"
+        if issue.status == "revoked"
+        else f"Ваш сертификат ЭРА · {issue.document_number}"
+    )
+    try:
+        sent = await bot.send_document(
+            user.telegram_id,
+            BufferedInputFile(pdf, filename=f"{issue.document_number}.pdf"),
+            caption=caption,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="certificate_delivery_unavailable") from exc
+    if sent.document is None:
+        raise HTTPException(status_code=502, detail="certificate_delivery_unavailable")
+    return {"sent": True}
 
 MAX_EVIDENCE_BYTES = 10 * 1024 * 1024
 ALLOWED_CONTENT_TYPES = {
@@ -433,6 +472,38 @@ async def download_recommendation(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{request.document_number}.pdf"'},
     )
+
+
+@router.post("/recommendation/{request_id}/send")
+async def send_recommendation_to_bot_chat(
+    request_id: int,
+    user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    bot: Bot | None = Depends(get_bot),
+) -> dict[str, bool]:
+    request = _owned_request(await session.get(RecommendationRequest, request_id), user)
+    if request.status != "approved" or not request.verification_token:
+        raise HTTPException(status_code=409, detail="recommendation_not_approved")
+    if bot is None:
+        raise HTTPException(status_code=503, detail="bot_unavailable")
+    verification_url = (
+        f"{settings.effective_base_url}/api/v1/career/verify/{request.verification_token}"
+        if settings.effective_base_url
+        else f"/api/v1/career/verify/{request.verification_token}"
+    )
+    pdf = build_official_recommendation(user, request, verification_url=verification_url)
+    try:
+        sent = await bot.send_document(
+            user.telegram_id,
+            BufferedInputFile(pdf, filename=f"{request.document_number}.pdf"),
+            caption=f"Официальное рекомендательное письмо ЭРА · {request.document_number}",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="recommendation_delivery_unavailable") from exc
+    if sent.document is None:
+        raise HTTPException(status_code=502, detail="recommendation_delivery_unavailable")
+    return {"sent": True}
 
 
 @router.get("/verify/{token}")

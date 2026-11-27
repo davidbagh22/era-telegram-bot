@@ -5,6 +5,7 @@ import {
   downloadCareerResume,
   sendCareerResume,
   downloadOfficialRecommendation,
+  sendOfficialRecommendation,
   fetchCareerDashboard,
   requestOfficialRecommendation,
   submitCareerVerification,
@@ -13,6 +14,7 @@ import {
   uploadCareerEvidence,
   fetchCertificates,
   downloadCertificate,
+  sendCertificate,
   type IssuedCertificate,
 } from "../api/career";
 import { ActionCell } from "../components/ActionCell";
@@ -177,6 +179,8 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [sendingResume, setSendingResume] = useState(false);
+  const [sendingCertId, setSendingCertId] = useState<number | null>(null);
+  const [sendingRecommendation, setSendingRecommendation] = useState(false);
   const toast = useToast();
   const [certificates, setCertificates] = useState<IssuedCertificate[]>([]);
   const [certificateError, setCertificateError] = useState(false);
@@ -364,6 +368,32 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
     }
   };
 
+  const sendRecommendationToChat = async () => {
+    const recommendation = data?.official_recommendation;
+    if (!recommendation?.can_download) return;
+    setSendingRecommendation(true);
+    try {
+      await sendOfficialRecommendation(recommendation.id);
+      toast.show("Письмо отправлено в чат с ботом", "success");
+    } catch {
+      toast.show("Не удалось отправить письмо в Telegram", "error");
+    } finally {
+      setSendingRecommendation(false);
+    }
+  };
+
+  const sendCertificateToChat = async (cert: IssuedCertificate) => {
+    setSendingCertId(cert.id);
+    try {
+      await sendCertificate(cert.id);
+      toast.show("Сертификат отправлен в чат с ботом", "success");
+    } catch {
+      toast.show("Не удалось отправить сертификат в Telegram", "error");
+    } finally {
+      setSendingCertId(null);
+    }
+  };
+
   if (loading) {
     return <div className="era-page" style={{ padding: "1.25rem", display: "grid", gap: "1rem" }}><SkeletonCard /><SkeletonCard /><SkeletonCard /></div>;
   }
@@ -378,10 +408,30 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
       {certificateError && <button type="button" onClick={loadCertificates}>Не удалось загрузить сертификаты. Повторить</button>}
       {certificates.length > 0 && <section aria-label="Сертификаты ЭРА">
         <h2>Сертификаты ЭРА</h2>
-        {certificates.map((cert) => <ActionCell key={cert.id} title={cert.title}
-          description={`${cert.number} • ${cert.status === "revoked" ? "Отозван" : "Выдан"}`} meta="PDF"
-          onClick={() => { void downloadCertificate(cert.id).then((blob) => saveBlob(blob, `${cert.number}.pdf`))
-            .catch(() => toast.show("Не удалось скачать сертификат", "error")); }} />)}
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+          {certificates.map((cert) => (
+            <div key={cert.id} style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+              <ActionCell
+                title={cert.title}
+                description={`${cert.number} • ${cert.status === "revoked" ? "Отозван" : "Выдан"}`}
+                meta="PDF"
+                onClick={() => {
+                  void downloadCertificate(cert.id)
+                    .then((blob) => saveBlob(blob, `${cert.number}.pdf`))
+                    .catch(() => toast.show("Не удалось скачать сертификат", "error"));
+                }}
+              />
+              <button
+                type="button"
+                className="era-btn-secondary"
+                disabled={sendingCertId === cert.id}
+                onClick={() => void sendCertificateToChat(cert)}
+              >
+                {sendingCertId === cert.id ? "Отправляем…" : `Отправить в Telegram · ${cert.number}`}
+              </button>
+            </div>
+          ))}
+        </div>
       </section>}
 
       <Card gradient>
@@ -468,9 +518,14 @@ export function CareerPortfolioScreen({ onBack }: { onBack: () => void }) {
               </div>
             )}
             {data.official_recommendation?.status === "approved" && (
-              <button type="button" className="era-btn-primary" disabled={downloading} onClick={() => void downloadRecommendation()}>
-                Скачать официальное письмо · {data.official_recommendation.document_number}
-              </button>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                <button type="button" className="era-btn-primary" disabled={sendingRecommendation || downloading} onClick={() => void sendRecommendationToChat()}>
+                  {sendingRecommendation ? "Отправляем…" : `Отправить в Telegram · ${data.official_recommendation.document_number}`}
+                </button>
+                <button type="button" className="era-btn-secondary" disabled={downloading || sendingRecommendation} onClick={() => void downloadRecommendation()}>
+                  Скачать официальное письмо · {data.official_recommendation.document_number}
+                </button>
+              </div>
             )}
           </div>
         </Card>

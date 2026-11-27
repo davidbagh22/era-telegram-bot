@@ -574,8 +574,19 @@ async def confirm_attendance(
         from app.services.certificate_service import auto_issue_participation_certificate
         issuer = await session.get(User, approved_by_id or event.created_by)
         if issuer:
-            issue = await auto_issue_participation_certificate(session, issuer, user_id=user_id, event_id=event.id)
-            session.add(AppSetting(key=f"event-certificate:pending:{issue.id}", value={"issue_id": issue.id}))
+            try:
+                async with session.begin_nested():
+                    issue = await auto_issue_participation_certificate(session, issuer, user_id=user_id, event_id=event.id)
+                    existing_keys = (
+                        f"event-certificate:pending:{issue.id}",
+                        f"event-certificate:sent:{issue.id}",
+                        f"event-certificate:needs_attention:{issue.id}",
+                        f"event-certificate:skipped:{issue.id}",
+                    )
+                    if await session.scalar(select(AppSetting.id).where(AppSetting.key.in_(existing_keys))) is None:
+                        session.add(AppSetting(key=f"event-certificate:pending:{issue.id}", value={"issue_id": issue.id}))
+            except Exception:
+                logger.exception("auto certificate after code confirmation failed event_id=%s user_id=%s", event.id, user_id)
 
     portfolio_exists = await session.scalar(
         select(PortfolioItem.id).where(

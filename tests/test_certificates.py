@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 import app.database  # noqa: F401
-from app.api.deps import get_current_user, get_session
+from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.api.v1.career import router
 from app.config import Settings
 from app.database.base import Base
@@ -124,4 +124,139 @@ def test_old_certificate_click_cannot_issue_without_current_preview():
             await confirm(call,None,None,None,state)
             issue.assert_not_awaited()
             assert 'устарел' in call.message.answer.call_args.args[0]
+    asyncio.run(scenario())
+
+
+def test_send_certificate_and_recommendation_to_telegram_enforces_owner():
+    from unittest.mock import patch
+    app = FastAPI()
+    app.include_router(router, prefix="/api/v1")
+    snapshot = dict(
+        full_name="Анна Смирнова",
+        event_title="Событие ЭРА",
+        event_date="2026-10-19",
+        signatory="Багдасарян Д.С.",
+        template_version="era-event-v2",
+    )
+    issue = SimpleNamespace(
+        id=7,
+        user_id=2,
+        status="issued",
+        snapshot=snapshot,
+        issued_at=None,
+        document_number="ERA-CERT-000007",
+    )
+    rec = SimpleNamespace(
+        id=9,
+        user_id=2,
+        status="approved",
+        verification_token="tok-123",
+        document_number="ERA-REC-000009",
+        purpose="universal",
+        approved_at=None,
+        approved_by=1,
+    )
+
+    async def _get(model, obj_id):
+        if model is CertificateIssue:
+            return issue
+        return rec
+
+    session = SimpleNamespace(get=AsyncMock(side_effect=_get))
+    bot = SimpleNamespace(send_document=AsyncMock(return_value=SimpleNamespace(document=SimpleNamespace(file_id="f1"))))
+
+    async def override_session():
+        yield session
+
+    app.dependency_overrides[get_session] = override_session
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        id=1, telegram_id=99001, first_name="Анна", last_name="Смирнова"
+    )
+    app.dependency_overrides[get_bot] = lambda: bot
+    app.dependency_overrides[get_settings] = lambda: Settings(bot_token="0000000000:TEST")
+    client = TestClient(app)
+
+    # Other user's certificate or recommendation must return 404.
+    assert client.post("/api/v1/career/certificates/7/send").status_code == 404
+    assert client.post("/api/v1/career/recommendation/9/send").status_code == 404
+
+    issue.user_id = 1
+    res = client.post("/api/v1/career/certificates/7/send")
+    assert res.status_code == 200 and res.json() == {"sent": True}
+    assert bot.send_document.await_args.args[0] == 99001
+    assert bot.send_document.await_args.args[1].filename == "ERA-CERT-000007.pdf"
+
+    rec.user_id = 1
+    rec.status = "requested"
+    assert client.post("/api/v1/career/recommendation/9/send").status_code == 409
+
+    rec.status = "approved"
+    with patch(
+        "app.api.v1.career.build_official_recommendation",
+        return_value=b"%PDF-1.4\n",
+    ):
+        res_rec = client.post("/api/v1/career/recommendation/9/send")
+    assert res_rec.status_code == 200 and res_rec.json() == {"sent": True}
+    assert bot.send_document.await_args.args[1].filename == "ERA-REC-000009.pdf"
+
+
+def test_confirm_attendance_auto_certificate_skips_duplicate_pending_marker():
+    from datetime import datetime, timezone
+    from unittest.mock import patch
+    from app.database.event_attendance import EventAttendanceSession
+    from app.database.event_experience import EventExperience
+    from app.database.models import AppSetting
+    from app.services.event_attendance_service import confirm_attendance
+
+    async def scenario():
+        engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            sessions = async_sessionmaker(engine, expire_on_commit=False)
+            async with sessions() as session:
+                actor = User(id=1, telegram_id=5001, first_name="Орг", application_status=ApplicationStatus.APPROVED)
+                participant = User(id=2, telegram_id=5002, first_name="Гость", application_status=ApplicationStatus.APPROVED)
+                session.add_all([actor, participant])
+                await session.flush()
+                event = Event(
+                    id=10,
+                    title="Встреча",
+                    description="Тест",
+                    event_date=date(2026, 11, 1),
+                    event_time=time(18, 0),
+                    location="Ереван",
+                    format="offline",
+                    points_for_visit=10,
+                    created_by=actor.id,
+                    status=EventStatus.COMPLETED,
+                )
+                session.add(event)
+                await session.flush()
+                session.add(EventExperience(event_id=10, issue_certificate=True))
+                session.add(EventAttendanceSession(
+                    event_id=10,
+                    attendance_code="ABCD2345",
+                    completed_at=datetime.now(timezone.utc),
+                    completed_by=actor.id,
+                ))
+                session.add(EventRegistration(
+                    event_id=10, user_id=participant.id, status=RegistrationStatus.REGISTERED
+                ))
+                await session.commit()
+
+            async with sessions() as session:
+                with patch(
+                    "app.services.certificate_service.auto_issue_participation_certificate",
+                    new=AsyncMock(return_value=SimpleNamespace(id=55, document_number="ERA-CERT-000055")),
+                ):
+                    # Pre-existing pending marker must not cause IntegrityError.
+                    session.add(AppSetting(key="event-certificate:pending:55", value={"issue_id": 55}))
+                    await session.flush()
+                    res = await confirm_attendance(session, 10, 2, "ABCD-2345")
+                    await session.commit()
+                    assert res.points_awarded == 10
+        finally:
+            await engine.dispose()
+
     asyncio.run(scenario())
