@@ -11,11 +11,12 @@ import { projectEventStatusLabel } from "../../projects/statusLabels";
 interface EventsListProps {
   onSelect: (eventId: number) => void;
   onEditPoster?: (eventId: number) => void;
+  onOpenParticipants?: (eventId: number) => void;
 }
 
 // Events already approved/published — the entry point into per-event
 // attendance and points, distinct from the moderation queue above.
-export function EventsList({ onSelect, onEditPoster }: EventsListProps) {
+export function EventsList({ onSelect, onEditPoster, onOpenParticipants }: EventsListProps) {
   const [editor, setEditor] = useState<number | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [overrides, setOverrides] = useState<Record<number, boolean>>({});
@@ -83,6 +84,11 @@ export function EventsList({ onSelect, onEditPoster }: EventsListProps) {
               Записано: {event.registered} · Свободно: {event.free} · За визит: +{event.points_for_visit}
             </p>
           </button>
+          {onOpenParticipants && (
+            <button type="button" className="era-btn-primary" onClick={() => onOpenParticipants(event.id)} style={{ marginTop: ".6rem", marginRight: ".6rem" }}>
+              Участники · {event.registered}
+            </button>
+          )}
           {onEditPoster && <button onClick={() => setEditor(event.id)}>Редактировать мероприятие</button>}
           {onEditPoster && (
             <>

@@ -15,6 +15,7 @@ from app.services.audit_service import audit
 from app.services.authorization_service import can_manage_events
 from app.services.event_card import format_event_text, send_event_card
 from app.services.event_publication_service import escaped_text_parts
+from app.services.event_registration_service import registration_count
 from app.services.notification_service import safe_send, safe_answer_photo
 from app.utils import texts
 from app.utils.constants import EVENT_STATUS_LABELS, EventStatus
@@ -69,7 +70,18 @@ async def public_event_keyboard(
     )
 
 
-def event_kb(event: Event, *, settings: Settings | None = None, telegram_id: int = 0) -> InlineKeyboardMarkup:
+async def _participants_count(session: AsyncSession, event_id: int) -> int | None:
+    # The count only labels a button; never let it break the admin card.
+    try:
+        return await registration_count(session, event_id)
+    except Exception:
+        logging.getLogger(__name__).warning("Could not count participants event_id=%s", event_id, exc_info=True)
+        return None
+
+
+def event_kb(
+    event: Event, *, settings: Settings | None = None, telegram_id: int = 0, participants_count: int | None = None
+) -> InlineKeyboardMarkup:
     rows = []
     if event.status == EventStatus.PENDING_APPROVAL:
         rows.append([InlineKeyboardButton(text="✅ Одобрить без рассылки", callback_data=f"admin:event:approve:{event.id}")])
@@ -79,7 +91,7 @@ def event_kb(event: Event, *, settings: Settings | None = None, telegram_id: int
         rows.append([InlineKeyboardButton(text="👁 Предпросмотр рассылки", callback_data=f"admin:event:broadcast_preview:{event.id}")])
         rows.append([InlineKeyboardButton(text="✅ Подготовить рассылку 1/2", callback_data=f"admin:event:broadcast_prepare:{event.id}")])
     elif event.status in {EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN, EventStatus.REGISTRATION_CLOSED, EventStatus.ACTIVE, EventStatus.COMPLETED}:
-        rows.append([InlineKeyboardButton(text="👥 Участники и посещение", callback_data=f"admin:event:participants:{event.id}")])
+        rows.append([InlineKeyboardButton(text="👥 Участники" + (f" · {participants_count}" if participants_count is not None else " и посещение"), callback_data=f"admin:event:participants:{event.id}")])
         if event.status in PUBLIC_EVENT_STATUSES:
             rows.append([InlineKeyboardButton(text="🔗 Ссылка на регистрацию", callback_data=f"admin:event:share:{event.id}")])
         if event.status == EventStatus.PUBLISHED:
@@ -117,7 +129,7 @@ async def events_list(call: CallbackQuery, user: User | None, settings: Settings
             call.message,
             event,
             header=f"📅 Мероприятие #{event.id}\nСтатус: {EVENT_STATUS_LABELS.get(event.status, event.status)}",
-            keyboard=event_kb(event, settings=settings, telegram_id=call.from_user.id),
+            keyboard=event_kb(event, settings=settings, telegram_id=call.from_user.id, participants_count=await _participants_count(session, event.id)),
         )
 
 
@@ -167,7 +179,7 @@ async def approve_event(call: CallbackQuery, user: User | None, settings: Settin
         call.message,
         event,
         header="Мероприятие одобрено. Рассылка ещё не отправлена.",
-        keyboard=event_kb(event, settings=settings, telegram_id=call.from_user.id),
+        keyboard=event_kb(event, settings=settings, telegram_id=call.from_user.id, participants_count=await _participants_count(session, event.id)),
     )
 
 
@@ -184,7 +196,7 @@ async def broadcast_preview(call: CallbackQuery, user: User | None, settings: Se
         event,
         header="👁 Предпросмотр рассылки",
         extra_text="Регистрация будет открыта в боте после публикации.",
-        keyboard=event_kb(event, settings=settings, telegram_id=call.from_user.id),
+        keyboard=event_kb(event, settings=settings, telegram_id=call.from_user.id, participants_count=await _participants_count(session, event.id)),
     )
 
 
@@ -273,7 +285,7 @@ async def broadcast_publish(call: CallbackQuery, user: User | None, settings: Se
                 action="event.broadcast_published", entity_type="event", entity_id=event.id)
     await call.message.answer(
         "Регистрация открыта. Доставка анонса подтверждена.",
-        reply_markup=event_kb(event, settings=settings, telegram_id=call.from_user.id),
+        reply_markup=event_kb(event, settings=settings, telegram_id=call.from_user.id, participants_count=await _participants_count(session, event.id)),
     )
 
 

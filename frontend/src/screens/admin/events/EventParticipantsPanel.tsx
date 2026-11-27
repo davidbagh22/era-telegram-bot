@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   describeActionError,
   fetchEventParticipants,
@@ -34,9 +34,25 @@ const FILTERS = [
 
 type FilterValue = typeof FILTERS[number]["value"];
 
+const GROUP_CHIPS: { value: FilterValue; label: string }[] = [
+  { value: "all", label: "Все" },
+  { value: "active", label: "Регистрации" },
+  { value: "waitlist", label: "Лист ожидания" },
+  { value: "attended", label: "Посетили" },
+];
+
 interface EventParticipantsPanelProps {
   eventId: number;
   onBack: () => void;
+  /** Opened from «Участники · N»: scroll straight to the list. */
+  focusParticipants?: boolean;
+}
+
+function formatRegisteredAt(value?: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 function matchesFilter(status: string, filter: FilterValue): boolean {
@@ -46,7 +62,7 @@ function matchesFilter(status: string, filter: FilterValue): boolean {
   return status === filter;
 }
 
-export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPanelProps) {
+export function EventParticipantsPanel({ eventId, onBack, focusParticipants = false }: EventParticipantsPanelProps) {
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchEventParticipants(eventId), [eventId, refreshKey]);
   const [exporting, setExporting] = useState<"xlsx" | "csv" | null>(null);
@@ -58,7 +74,11 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<FilterValue>("all");
 
+  const listRef = useRef<HTMLDivElement | null>(null);
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
+  useEffect(() => {
+    if (focusParticipants && state.status === "ready") listRef.current?.scrollIntoView?.({ block: "start" });
+  }, [focusParticipants, state.status]);
 
   const handleExport = async (format: "xlsx" | "csv") => {
     setExporting(format);
@@ -108,11 +128,21 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("ru");
-    return participants.filter((item) => {
-      if (!matchesFilter(item.status, filter)) return false;
-      return !normalized || item.participant_name.toLocaleLowerCase("ru").includes(normalized);
-    });
+    return participants
+      .filter((item) => {
+        if (!matchesFilter(item.status, filter)) return false;
+        return !normalized || item.participant_name.toLocaleLowerCase("ru").includes(normalized);
+      })
+      .sort((left, right) => {
+        const byTime = Date.parse(right.registered_at ?? "") - Date.parse(left.registered_at ?? "");
+        return Number.isNaN(byTime) || byTime === 0 ? right.registration_id - left.registration_id : byTime;
+      });
   }, [filter, participants, query]);
+
+  const chipCounts = useMemo(
+    () => Object.fromEntries(GROUP_CHIPS.map((chip) => [chip.value, participants.filter((item) => matchesFilter(item.status, chip.value)).length])),
+    [participants],
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -170,6 +200,20 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
         </div>
       </Card>
 
+      <div ref={listRef} style={{ scrollMarginTop: ".5rem" }}>
+        <strong>Участники · {stats.registrations}</strong>
+        <p style={{ margin: ".25rem 0 .5rem", color: "var(--era-text-muted)", fontSize: ".8rem" }}>Сначала новые регистрации. Список в Excel автоматически приходит владельцу в Telegram после каждой новой регистрации.</p>
+        <div role="group" aria-label="Группы участников" style={{ display: "flex", flexWrap: "wrap", gap: ".4rem" }}>
+          {GROUP_CHIPS.map((chip) => (
+            <button key={chip.value} type="button" aria-pressed={filter === chip.value}
+              className={filter === chip.value ? "era-btn-primary" : undefined}
+              onClick={() => setFilter(chip.value)}>
+              {chip.label} · {chipCounts[chip.value] ?? 0}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 180px), 1fr))", gap: ".5rem", minWidth: 0 }}>
         <input aria-label="Поиск участника" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск участника" style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }} />
         <select aria-label="Фильтр участников" value={filter} onChange={(event) => setFilter(event.target.value as FilterValue)} style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }}>
@@ -195,7 +239,14 @@ export function EventParticipantsPanel({ eventId, onBack }: EventParticipantsPan
       {filtered.map((participant) => (
         <Card key={participant.registration_id} style={{ padding: "0.8rem 0.9rem" }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "center" }}>
-            <strong>{participant.participant_name}</strong>
+            <div style={{ minWidth: 0 }}>
+              <strong>{participant.participant_name}</strong>
+              {formatRegisteredAt(participant.registered_at) && (
+                <p style={{ margin: ".15rem 0 0", color: "var(--era-text-muted)", fontSize: ".75rem" }}>
+                  Зарегистрирован {formatRegisteredAt(participant.registered_at)}
+                </p>
+              )}
+            </div>
             {participant.organization && <p>{participant.organization} · {participant.phone}</p>}
             <StatusBadge label={STATUS_LABELS[participant.status] ?? "Статус обновлён"} tone={participant.status === "attended" ? "violet" : "neutral"} />
           </div>

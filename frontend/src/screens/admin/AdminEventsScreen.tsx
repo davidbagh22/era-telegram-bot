@@ -35,6 +35,7 @@ export function AdminEventsScreen({
     initialEventId ? "operations" : initialSection,
   );
   const [selectedEventId, setSelectedEventId] = useState<number | null>(initialEventId);
+  const [focusParticipants, setFocusParticipants] = useState(false);
   const [posterEventId, setPosterEventId] = useState<number | null>(null);
   const [activitiesMode, setActivitiesMode] = useState<ActivitiesMode | null>(
     initialSection === "activities" ? initialActivitiesMode : null,
@@ -44,6 +45,7 @@ export function AdminEventsScreen({
     setSection(null);
     setSelectedEventId(null);
     setPosterEventId(null);
+    setFocusParticipants(false);
     setActivitiesMode(null);
     if (initialEventId) window.location.hash = "#/admin";
   };
@@ -79,8 +81,12 @@ export function AdminEventsScreen({
         posterEventId !== null
           ? <EventPosterEditor eventId={posterEventId} onBack={() => setPosterEventId(null)} />
           : selectedEventId === null
-            ? <EventsList onSelect={setSelectedEventId} onEditPoster={setPosterEventId} />
-            : <EventParticipantsPanel eventId={selectedEventId} onBack={() => { setSelectedEventId(null); if (initialEventId) window.location.hash = "#/admin"; }} />
+            ? <EventsList
+              onSelect={setSelectedEventId}
+              onEditPoster={setPosterEventId}
+              onOpenParticipants={(eventId) => { setFocusParticipants(true); setSelectedEventId(eventId); }}
+            />
+            : <EventParticipantsPanel eventId={selectedEventId} focusParticipants={focusParticipants} onBack={() => { setSelectedEventId(null); setFocusParticipants(false); if (initialEventId) window.location.hash = "#/admin"; }} />
       )}
       {section === "activities" && activitiesMode === null && (
         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>

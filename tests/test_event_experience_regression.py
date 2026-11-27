@@ -179,10 +179,11 @@ class MasterPromptStaticRegressionTests(unittest.TestCase):
         self.assertTrue(all(url and url.startswith("https://t.me/era_bot?start=faq_") for url in urls))
 
     def test_event_export_source_does_not_log_phone_numbers(self) -> None:
-        source = Path("app/api/v1/admin_event_operations.py").read_text(encoding="utf-8")
-        self.assertIn('participant.phone or ""', source)
-        self.assertNotIn("logger.", source)
-        self.assertNotIn("print(", source)
+        for path in ("app/api/v1/admin_event_operations.py", "app/services/event_participants_export.py"):
+            source = Path(path).read_text(encoding="utf-8")
+            self.assertNotIn("logger.", source)
+            self.assertNotIn("print(", source)
+        self.assertIn("participant.phone or", Path("app/services/event_participants_export.py").read_text(encoding="utf-8"))
 
     def test_frontend_has_no_silent_deep_link_home_fallback(self) -> None:
         source = Path("frontend/src/app/App.tsx").read_text(encoding="utf-8")
