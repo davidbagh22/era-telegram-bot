@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { TabKey } from "../components/FloatingNav";
 import { useAuth } from "../hooks/useAuth";
+import { useAccentSync } from "../theme/accentStore";
 import { AdminLayout } from "../layouts/AdminLayout";
 import { LeaderLayout } from "../layouts/LeaderLayout";
 import { UserLayout } from "../layouts/UserLayout";
@@ -287,6 +288,7 @@ function renderTab(
 
 export function App() {
   const auth = useAuth();
+  useAccentSync(auth.status === "ready");
   const [deepLink, setDeepLink] = useState<DeepLink | null>(() => parseDeepLink());
   const [activeTab, setActiveTab] = useState<TabKey>(deepLink?.tab ?? "home");
   const [inWorkspace, setInWorkspace] = useState(false);

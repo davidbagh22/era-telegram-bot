@@ -6,12 +6,16 @@ import { ToastProvider } from "./components/Toast";
 import { MotionPreferenceProvider } from "./motion/MotionPreference";
 import { AppShell } from "./layouts/AppShell";
 import { applyTelegramTheme, initTelegramBackNavigation } from "./telegram/webApp";
+import { initAccent } from "./theme/accentStore";
+import { installKeyboardAwareness } from "./telegram/keyboard";
 import "./theme/tokens.css";
 import "./theme/motion.css";
 import "./theme/layout-safety.css";
 
 // AURA×ORBIT dark chrome — apply before first paint.
 applyTelegramTheme();
+initAccent();
+installKeyboardAwareness();
 initTelegramBackNavigation();
 installProductAnalytics();
 

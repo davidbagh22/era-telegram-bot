@@ -47,8 +47,8 @@ export function VectorRadar({ values, index = null }: VectorRadarProps) {
       <svg viewBox="0 0 260 260" width="100%" height="auto" role="img" aria-label="Динамика вектора">
         <defs>
           <radialGradient id="era-vector-glow" cx="50%" cy="50%" r="55%">
-            <stop offset="0%" stopColor="rgba(188, 33, 132, 0.22)" />
-            <stop offset="100%" stopColor="rgba(188, 33, 132, 0)" />
+            <stop offset="0%" style={{ stopColor: "rgba(var(--era-accent-rgb), 0.22)" }} />
+            <stop offset="100%" style={{ stopColor: "rgba(var(--era-accent-rgb), 0)" }} />
           </radialGradient>
           <linearGradient id="era-vector-fill" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="rgba(13, 148, 136, 0.45)" />

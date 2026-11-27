@@ -25,11 +25,17 @@
   --era-on-primary: #ffffff;
   --era-on-cyan: #19091a;
 
+  /* Accent family. Defaults are the ERA brand colours; a personal colour
+     overrides all of these together from src/theme/accent.ts. */
   --era-primary: #bc2184;
   --era-primary-strong: #86209b;
+  --era-accent-deep: #512074;
+  --era-accent-rgb: 188, 33, 132;
+  --era-accent-text-rgb: 255, 165, 234;
+  --era-accent-deep-rgb: 134, 32, 155;
   --era-cyan: #ffa5ea;
   --era-focus: #ffd7f2;
-  --era-selected: rgba(188, 33, 132, 0.22);
+  --era-selected: rgba(var(--era-accent-rgb), 0.22);
 
   --era-border: rgba(231, 167, 213, 0.2);
   --era-border-strong: rgba(231, 167, 213, 0.38);
@@ -40,13 +46,13 @@
   --era-warning: #ffd38a;
   --era-error: #ff8da1;
 
-  --era-gradient: linear-gradient(135deg, #86209b 0%, #bc2184 100%);
-  --era-gradient-cool: linear-gradient(135deg, #512074 0%, #bc2184 100%);
-  --era-gradient-hot: linear-gradient(135deg, #86209b 0%, #ffa5ea 100%);
-  --era-gradient-signal: linear-gradient(135deg, #86209b 0%, #bc2184 100%);
+  --era-gradient: linear-gradient(135deg, var(--era-primary-strong) 0%, var(--era-primary) 100%);
+  --era-gradient-cool: linear-gradient(135deg, var(--era-accent-deep) 0%, var(--era-primary) 100%);
+  --era-gradient-hot: linear-gradient(135deg, var(--era-primary-strong) 0%, var(--era-cyan) 100%);
+  --era-gradient-signal: linear-gradient(135deg, var(--era-primary-strong) 0%, var(--era-primary) 100%);
   --era-hero-bg:
-    radial-gradient(80% 80% at 90% 15%, rgba(188, 33, 132, 0.22), transparent 65%),
-    radial-gradient(70% 60% at 0% 100%, rgba(255, 165, 234, 0.1), transparent 60%),
+    radial-gradient(80% 80% at 90% 15%, rgba(var(--era-accent-rgb), 0.22), transparent 65%),
+    radial-gradient(70% 60% at 0% 100%, rgba(var(--era-accent-text-rgb), 0.1), transparent 60%),
     #230d25;
   --era-scrim: rgba(25, 9, 26, 0.76);
 
@@ -55,9 +61,9 @@
   --era-shadow-floating: 0 12px 36px rgba(0, 0, 0, 0.24);
   --era-shadow-dock: 0 10px 32px rgba(0, 0, 0, 0.32);
   --era-shadow-overlay: 0 -16px 48px rgba(0, 0, 0, 0.3);
-  --era-shadow-red: 0 8px 24px rgba(188, 33, 132, 0.22);
+  --era-shadow-red: 0 8px 24px rgba(var(--era-accent-rgb), 0.22);
 
-  --era-glow-violet: 0 0 0 1px rgba(255, 165, 234, 0.16);
+  --era-glow-violet: 0 0 0 1px rgba(var(--era-accent-text-rgb), 0.16);
   --era-glow-hot: 0 0 0 1px rgba(255, 142, 219, 0.16);
   --era-tint-violet: var(--era-selected);
   --era-tint-red: var(--era-selected);
@@ -91,7 +97,7 @@
   --era-radius-pill: 999px;
   --era-radius-sheet: 26px;
 
-  --era-bottom-nav-clearance: calc(6.15rem + env(safe-area-inset-bottom, 0px));
+  --era-bottom-nav-clearance: calc(6.15rem + var(--era-safe-bottom));
   --era-page-bottom-safe: var(--era-bottom-nav-clearance);
   --era-content-max: 512px;
 
@@ -128,20 +134,20 @@
   --era-space-8: 32px;
 
   /* Orbit context accents (OrbitContext) */
-  --era-orbit-context: rgba(188, 33, 132, 0.18);
+  --era-orbit-context: rgba(var(--era-accent-rgb), 0.18);
 }
 
 :root[data-orbit-context="events"] {
-  --era-orbit-context: rgba(255, 165, 234, 0.16);
+  --era-orbit-context: rgba(var(--era-accent-text-rgb), 0.16);
 }
 :root[data-orbit-context="projects"] {
-  --era-orbit-context: rgba(134, 32, 155, 0.22);
+  --era-orbit-context: rgba(var(--era-accent-deep-rgb), 0.22);
 }
 :root[data-orbit-context="community"] {
   --era-orbit-context: rgba(255, 142, 219, 0.14);
 }
 :root[data-orbit-context="profile"] {
-  --era-orbit-context: rgba(255, 165, 234, 0.1);
+  --era-orbit-context: rgba(var(--era-accent-text-rgb), 0.1);
 }
 
 * {
@@ -159,8 +165,8 @@ body {
   min-width: 320px;
   min-height: 100vh;
   background:
-    radial-gradient(55% 36% at 100% -4%, rgba(188, 33, 132, 0.12), transparent 62%),
-    radial-gradient(48% 30% at 0% 0%, rgba(255, 165, 234, 0.06), transparent 68%),
+    radial-gradient(55% 36% at 100% -4%, rgba(var(--era-accent-rgb), 0.12), transparent 62%),
+    radial-gradient(48% 30% at 0% 0%, rgba(var(--era-accent-text-rgb), 0.06), transparent 68%),
     var(--era-bg);
   color: var(--era-text);
   font-family: var(--era-font-body);
@@ -177,7 +183,6 @@ body::before {
   pointer-events: none;
   opacity: var(--era-grain-opacity);
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
-  mix-blend-mode: soft-light;
   z-index: 9999;
 }
 
@@ -210,7 +215,7 @@ button {
 
 button:active:not(:disabled) { transform: scale(0.97); }
 button:disabled { opacity: 0.48; cursor: not-allowed; }
-button:focus-visible { outline: 2px solid rgba(255, 215, 242, 0.7); outline-offset: 2px; }
+button:focus-visible { outline: 2px solid var(--era-focus); outline-offset: 2px; }
 
 @media (hover: hover) and (pointer: fine) {
   button:hover:not(:disabled) {
@@ -218,7 +223,7 @@ button:focus-visible { outline: 2px solid rgba(255, 215, 242, 0.7); outline-offs
     background: var(--era-surface-2);
   }
   .era-btn-primary:hover:not(:disabled) {
-    box-shadow: 0 10px 24px rgba(188, 33, 132, 0.28);
+    box-shadow: 0 10px 24px rgba(var(--era-accent-rgb), 0.28);
   }
   .era-card[role="button"]:hover,
   button.era-card:hover {
@@ -248,8 +253,8 @@ textarea:focus,
 select:focus {
   outline: none;
   background: var(--era-surface);
-  border-color: rgba(255, 165, 234, 0.45);
-  box-shadow: 0 0 0 3px rgba(188, 33, 132, 0.18);
+  border-color: rgba(var(--era-accent-text-rgb), 0.45);
+  box-shadow: 0 0 0 3px rgba(var(--era-accent-rgb), 0.18);
 }
 input:disabled, textarea:disabled, select:disabled { opacity: 0.6; cursor: not-allowed; }
 input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--era-primary); cursor: pointer; flex-shrink: 0; }
@@ -284,7 +289,7 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
 .era-btn-signal {
   border: 1px solid transparent;
   background: var(--era-gradient-signal);
-  color: #fff;
+  color: var(--era-on-primary);
   box-shadow: var(--era-glow-violet);
 }
 .era-btn-signal:active:not(:disabled) { filter: brightness(0.96); }
@@ -327,8 +332,8 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
 
 .era-card-dark {
   background:
-    radial-gradient(120% 140% at 100% 0%, rgba(188, 33, 132, 0.28), transparent 55%),
-    radial-gradient(90% 100% at 0% 100%, rgba(255, 165, 234, 0.12), transparent 60%),
+    radial-gradient(120% 140% at 100% 0%, rgba(var(--era-accent-rgb), 0.28), transparent 55%),
+    radial-gradient(90% 100% at 0% 100%, rgba(var(--era-accent-text-rgb), 0.12), transparent 60%),
     var(--era-surface-dark);
   color: #fff6fc;
   border: 1px solid rgba(231, 167, 213, 0.16);
@@ -343,26 +348,32 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
+/* Entrance animations use fill-mode `backwards`, never `both`/`forwards`:
+   a retained `transform: translateY(0)` makes the element a containing block
+   for every `position: fixed` descendant (sheets, backdrops, sticky bars),
+   which then anchor to the page box instead of the viewport. The keyframes
+   `to` state equals the resting state, so nothing needs to be held. */
 .era-page {
-  animation: era-page-in var(--era-motion-screen) both;
+  animation: era-page-in var(--era-motion-screen) backwards;
   min-width: 0;
   max-width: var(--era-content-max);
   margin: 0 auto;
 }
+.era-page.era-stagger,
+.era-page.era-page--settled { animation: none; }
 
 @keyframes era-card-in {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 .era-stagger > * {
-  opacity: 0;
-  animation: era-card-in var(--era-motion-card) both;
+  animation: era-card-in var(--era-motion-card) backwards;
 }
 .era-stagger > *:nth-child(1) { animation-delay: 0ms; }
 .era-stagger > *:nth-child(2) { animation-delay: 30ms; }
 .era-stagger > *:nth-child(3) { animation-delay: 60ms; }
 .era-stagger > *:nth-child(4) { animation-delay: 90ms; }
-.era-stagger > *:nth-child(n+5) { opacity: 1; animation: none; }
+.era-stagger > *:nth-child(n+5) { animation: none; }
 
 @keyframes era-ambient {
   0%, 100% { background-position: 0% 50%; }
@@ -450,7 +461,7 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
   max-height: 280px;
   top: -8%;
   right: -6%;
-  background: radial-gradient(circle, rgba(188, 33, 132, 0.55), transparent 70%);
+  background: radial-gradient(circle, rgba(var(--era-accent-rgb), 0.55), transparent 70%);
   animation: era-orbit-drift var(--era-ambient-period) ease-in-out infinite;
 }
 .era-orbit-ambient__blob--b {
@@ -494,11 +505,11 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
 .era-orbit-navigator { position:relative; width:100%; aspect-ratio:1.04; max-height:370px; margin:0 auto; isolation:isolate; }
 .era-orbit-connections { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; stroke:url(#orbit-light); stroke-width:.45; opacity:.65; }
 .era-orbit-connections circle { stroke-width:.2; stroke-dasharray:1 4; opacity:.7; }
-.era-orbit-navigator__center { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:70px; height:70px; border-radius:46% 54% 50% 45%; display:grid; place-items:center; background:radial-gradient(circle at 30% 20%,rgba(255, 165, 234,.3),rgba(188, 33, 132,.25) 55%,rgba(25, 9, 26,.9)); border:1px solid rgba(231, 167, 213,.6); box-shadow:0 0 28px rgba(188, 33, 132,.35),inset 0 1px 14px rgba(255, 165, 234,.15); font-weight:800; font-size:22px; z-index:2; pointer-events:none; }
+.era-orbit-navigator__center { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:70px; height:70px; border-radius:46% 54% 50% 45%; display:grid; place-items:center; background:radial-gradient(circle at 30% 20%,rgba(var(--era-accent-text-rgb), .3),rgba(var(--era-accent-rgb), .25) 55%,rgba(25, 9, 26,.9)); border:1px solid rgba(231, 167, 213,.6); box-shadow:0 0 28px rgba(var(--era-accent-rgb), .35),inset 0 1px 14px rgba(var(--era-accent-text-rgb), .15); font-weight:800; font-size:22px; z-index:2; pointer-events:none; }
 .era-orbit-node { position:absolute; width:43%; aspect-ratio:1.08; min-width:88px; min-height:80px; max-width:172px; padding:16px 8px; border:0; border-radius:35%; background:transparent; box-shadow:none; color:var(--era-text); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; text-align:center; z-index:3; isolation:isolate; transition:color var(--era-motion-fast); }
 .era-orbit-node:hover:not(:disabled) { background:transparent; }
 .era-orbit-node:active:not(:disabled) { transform:none; }
-.era-orbit-node__shell { position:absolute; inset:0; border:1px solid rgba(231, 167, 213,.5); border-radius:var(--orbit-shape,45% 55% 40% 60%); background:radial-gradient(ellipse at 25% 15%,rgba(255, 165, 234,.35),transparent 55%),radial-gradient(ellipse at 75% 90%,rgba(188, 33, 132,.5),transparent 65%),rgba(50, 23, 49,.86); box-shadow:inset 0 1px 12px rgba(255, 165, 234,.22),0 10px 30px rgba(0,0,0,.22),0 0 22px rgba(188, 33, 132,.14); pointer-events:none; animation:era-orbit-node-breathe 9s ease-in-out infinite; z-index:-1; }
+.era-orbit-node__shell { position:absolute; inset:0; border:1px solid rgba(231, 167, 213,.5); border-radius:var(--orbit-shape,45% 55% 40% 60%); background:radial-gradient(ellipse at 25% 15%,rgba(var(--era-accent-text-rgb), .35),transparent 55%),radial-gradient(ellipse at 75% 90%,rgba(var(--era-accent-rgb), .5),transparent 65%),rgba(50, 23, 49,.86); box-shadow:inset 0 1px 12px rgba(var(--era-accent-text-rgb), .22),0 10px 30px rgba(0,0,0,.22),0 0 22px rgba(var(--era-accent-rgb), .14); pointer-events:none; animation:era-orbit-node-breathe 9s ease-in-out infinite; z-index:-1; }
 .era-orbit-node__shell::after { content:""; position:absolute; inset:5px; border-radius:inherit; border-top:1px solid rgba(255, 246, 252,.22); pointer-events:none; }
 .era-orbit-node:nth-of-type(even) .era-orbit-node__shell { animation-delay:-4.5s; }
 .era-orbit-node[data-paused="true"] .era-orbit-node__shell,.era-orbit-node:focus-visible .era-orbit-node__shell,.era-orbit-node:active .era-orbit-node__shell { animation-play-state:paused; }
@@ -521,8 +532,8 @@ input[type="checkbox"] { width: 1.25rem; height: 1.25rem; accent-color: var(--er
   border-radius: var(--era-radius-card);
   border: 1px solid var(--era-border);
   background:
-    radial-gradient(120% 100% at 100% 0%, rgba(188, 33, 132, 0.22), transparent 55%),
-    radial-gradient(90% 80% at 0% 100%, rgba(255, 165, 234, 0.1), transparent 60%),
+    radial-gradient(120% 100% at 100% 0%, rgba(var(--era-accent-rgb), 0.22), transparent 55%),
+    radial-gradient(90% 80% at 0% 100%, rgba(var(--era-accent-text-rgb), 0.1), transparent 60%),
     var(--era-surface);
   box-shadow: var(--era-shadow-soft);
   text-align: left;

@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { describeActionError, fetchMe, fetchProfile, nominateLeader, requestAccountDeletion } from "../api/client";
 import { ActionCell } from "../components/ActionCell";
+import { AppearanceSettings } from "../components/AppearanceSettings";
 import { Avatar } from "../components/Avatar";
 import { BottomSheet } from "../components/BottomSheet";
 import { Card } from "../components/Card";
@@ -10,7 +11,7 @@ import { Skeleton, SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
 import { useToast } from "../components/Toast";
 import { useAsync } from "../hooks/useAsync";
-import { useMotionPreference } from "../motion/MotionPreference";
+import { useEntranceClass } from "../motion/useEntrance";
 import { CareerPortfolioScreen } from "./CareerPortfolioScreen";
 import { ReferralScreen } from "./ReferralScreen";
 import type { PortfolioEntry } from "../types/profile";
@@ -59,9 +60,9 @@ interface ProfileScreenProps {
 }
 
 export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevelopment }: ProfileScreenProps = {}) {
-  const motion = useMotionPreference();
   const state = useAsync(fetchProfile, []);
   const me = useAsync(fetchMe, []);
+  const rootClass = useEntranceClass(state.status === "ready" && me.status === "ready");
   const toast = useToast();
   const [showPortfolio, setShowPortfolio] = useState(false);
   const [showReferral, setShowReferral] = useState(false);
@@ -152,7 +153,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
   }
 
   return (
-    <div className="era-page era-stagger" style={{ padding: "1.25rem 1rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+    <div className={rootClass} style={{ padding: "1.25rem 1rem var(--era-page-bottom-safe)", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
       <Card gradient>
         <div style={{ display: "flex", gap: "0.9rem", alignItems: "center" }}>
           <Avatar firstName={data.first_name} lastName={data.last_name} size="lg" />
@@ -168,11 +169,7 @@ export function ProfileScreen({ isAdmin, isLeader, onEnterWorkspace, onOpenDevel
         </div>
       </Card>
 
-      <Card>
-        <button type="button" aria-pressed={motion.liveBackground} onClick={motion.toggleLiveBackground} style={{ width: "100%", textAlign: "left" }}>
-          Живой фон · {motion.liveBackground ? "Включён" : "Выключен"}
-        </button>
-      </Card>
+      <AppearanceSettings />
       <section>
         <h2 style={{ margin: "0 0 0.7rem", fontSize: "var(--era-text-xl)" }}>Мой вклад и опыт</h2>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.6rem" }}>
