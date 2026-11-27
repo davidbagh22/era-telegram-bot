@@ -1,32 +1,37 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import type { TabKey } from "../components/FloatingNav";
 import { useAuth } from "../hooks/useAuth";
-import { AdminLayout } from "../layouts/AdminLayout";
-import { LeaderLayout } from "../layouts/LeaderLayout";
 import { UserLayout } from "../layouts/UserLayout";
-import { AdminScreen } from "../screens/AdminScreen";
-import { ActivityScreen } from "../screens/ActivityScreen";
 import { AuthErrorScreen } from "../screens/AuthErrorScreen";
 import { BlockedScreen } from "../screens/BlockedScreen";
-import { CommunityScreen, type CommunitySection } from "../screens/CommunityScreen";
-import { DevelopmentScreen, type DevelopmentRoute } from "../screens/DevelopmentScreen";
-import { EraProScreen } from "../screens/EraProScreen";
-import { EventsScreen } from "../screens/EventsScreen";
+import type { CommunitySection } from "../screens/CommunityScreen";
+import type { DevelopmentRoute } from "../screens/DevelopmentScreen";
 import { HomeScreen } from "../screens/HomeScreen";
-import { IdeasScreen } from "../screens/IdeasScreen";
-import { LeaderScreen } from "../screens/LeaderScreen";
 import { ObjectUnavailableScreen } from "../screens/ObjectUnavailableScreen";
 import { PendingScreen } from "../screens/PendingScreen";
-import { PeopleScreen } from "../screens/PeopleScreen";
-import { ProfileScreen } from "../screens/ProfileScreen";
-import { ProgressScreen } from "../screens/ProgressScreen";
-import { ProjectsScreen } from "../screens/ProjectsScreen";
-import { TasksScreen } from "../screens/TasksScreen";
-import { TeamsScreen } from "../screens/TeamsScreen";
-import { UserPublicProfileScreen } from "../screens/UserPublicProfileScreen";
-import { VectorHomeScreen } from "../screens/VectorHomeScreen";
-import { AdminEventsScreen } from "../screens/admin/AdminEventsScreen";
 import type { MiniAppUserSummary } from "../types/auth";
+
+const AdminLayout = lazy(() => import("../layouts/AdminLayout").then((m) => ({ default: m.AdminLayout })));
+const LeaderLayout = lazy(() => import("../layouts/LeaderLayout").then((m) => ({ default: m.LeaderLayout })));
+const AdminScreen = lazy(() => import("../screens/AdminScreen").then((m) => ({ default: m.AdminScreen })));
+const ActivityScreen = lazy(() => import("../screens/ActivityScreen").then((m) => ({ default: m.ActivityScreen })));
+const CommunityScreen = lazy(() => import("../screens/CommunityScreen").then((m) => ({ default: m.CommunityScreen })));
+const DevelopmentScreen = lazy(() => import("../screens/DevelopmentScreen").then((m) => ({ default: m.DevelopmentScreen })));
+const EraProScreen = lazy(() => import("../screens/EraProScreen").then((m) => ({ default: m.EraProScreen })));
+const EventsScreen = lazy(() => import("../screens/EventsScreen").then((m) => ({ default: m.EventsScreen })));
+const IdeasScreen = lazy(() => import("../screens/IdeasScreen").then((m) => ({ default: m.IdeasScreen })));
+const LeaderScreen = lazy(() => import("../screens/LeaderScreen").then((m) => ({ default: m.LeaderScreen })));
+const PeopleScreen = lazy(() => import("../screens/PeopleScreen").then((m) => ({ default: m.PeopleScreen })));
+const ProfileScreen = lazy(() => import("../screens/ProfileScreen").then((m) => ({ default: m.ProfileScreen })));
+const ProgressScreen = lazy(() => import("../screens/ProgressScreen").then((m) => ({ default: m.ProgressScreen })));
+const ProjectsScreen = lazy(() => import("../screens/ProjectsScreen").then((m) => ({ default: m.ProjectsScreen })));
+const TasksScreen = lazy(() => import("../screens/TasksScreen").then((m) => ({ default: m.TasksScreen })));
+const TeamsScreen = lazy(() => import("../screens/TeamsScreen").then((m) => ({ default: m.TeamsScreen })));
+const UserPublicProfileScreen = lazy(() => import("../screens/UserPublicProfileScreen").then((m) => ({ default: m.UserPublicProfileScreen })));
+const VectorHomeScreen = lazy(() => import("../screens/VectorHomeScreen").then((m) => ({ default: m.VectorHomeScreen })));
+const AdminEventsScreen = lazy(() => import("../screens/admin/AdminEventsScreen").then((m) => ({ default: m.AdminEventsScreen })));
+
+const RouteFallback = <div className="era-page era-discover-page" role="status">Загрузка раздела…</div>;
 
 type LegacyActivitySection = "events" | "tasks" | "calendar" | "history";
 type WorkspaceKind = "admin" | "leader";
@@ -246,9 +251,9 @@ function renderTab(
 ) {
   if (tab === "home") {
     if (isDeepLinkedTab && initialActivitySection === "tasks") {
-      return <TasksScreen initialItemId={initialItemId} onBack={() => navigateToTab("home")} />;
+      return <Suspense fallback={RouteFallback}><TasksScreen initialItemId={initialItemId} onBack={() => navigateToTab("home")} /></Suspense>;
     }
-    if (isDeepLinkedTab && initialActivitySection) return <ActivityScreen initialSection={initialActivitySection} initialItemId={initialItemId} />;
+    if (isDeepLinkedTab && initialActivitySection) return <Suspense fallback={RouteFallback}><ActivityScreen initialSection={initialActivitySection} initialItemId={initialItemId} /></Suspense>;
     return (
       <HomeScreen
         user={user}
@@ -267,22 +272,24 @@ function renderTab(
       />
     );
   }
-  if (tab === "projects") return <ProjectsScreen initialProjectId={initialProjectId} />;
+  if (tab === "projects") return <Suspense fallback={RouteFallback}><ProjectsScreen initialProjectId={initialProjectId} /></Suspense>;
   if (tab === "events") {
     if (isDeepLinkedTab && initialActivitySection && initialActivitySection !== "events") {
-      return <ActivityScreen initialSection={initialActivitySection} initialItemId={initialItemId} />;
+      return <Suspense fallback={RouteFallback}><ActivityScreen initialSection={initialActivitySection} initialItemId={initialItemId} /></Suspense>;
     }
     return (
-      <EventsScreen
-        canEdit={user.is_admin || user.permissions?.includes("events.manage")}
-        key={initialEventScope ?? "all"}
-        initialItemId={isDeepLinkedTab ? initialItemId : null}
-        initialScope={initialEventScope ?? undefined}
-      />
+      <Suspense fallback={RouteFallback}>
+        <EventsScreen
+          canEdit={user.is_admin || user.permissions?.includes("events.manage")}
+          key={initialEventScope ?? "all"}
+          initialItemId={isDeepLinkedTab ? initialItemId : null}
+          initialScope={initialEventScope ?? undefined}
+        />
+      </Suspense>
     );
   }
-  if (tab === "community") return <CommunityScreen initialSection={isDeepLinkedTab ? initialCommunitySection : null} initialItemId={isDeepLinkedTab ? initialItemId : null} initialMediaRoute={isDeepLinkedTab ? initialMediaRoute : null} />;
-  return <ProfileScreen onOpenDevelopment={() => navigateToRoute("development")} />;
+  if (tab === "community") return <Suspense fallback={RouteFallback}><CommunityScreen initialSection={isDeepLinkedTab ? initialCommunitySection : null} initialItemId={isDeepLinkedTab ? initialItemId : null} initialMediaRoute={isDeepLinkedTab ? initialMediaRoute : null} /></Suspense>;
+  return <Suspense fallback={RouteFallback}><ProfileScreen onOpenDevelopment={() => navigateToRoute("development")} /></Suspense>;
 }
 
 export function App() {
@@ -342,10 +349,12 @@ export function App() {
   if (deepLink?.userId) {
     return (
       <UserLayout activeTab="home" onTabChange={handleTabChange}>
-        <UserPublicProfileScreen
-          userId={deepLink.userId}
-          onBack={() => (window.history.length > 1 ? window.history.back() : navigateToRoute("people"))}
-        />
+        <Suspense fallback={RouteFallback}>
+          <UserPublicProfileScreen
+            userId={deepLink.userId}
+            onBack={() => (window.history.length > 1 ? window.history.back() : navigateToRoute("people"))}
+          />
+        </Suspense>
       </UserLayout>
     );
   }
@@ -353,30 +362,36 @@ export function App() {
   if (deepLink?.orbitCatalog === "people") {
     return (
       <UserLayout activeTab="home" onTabChange={handleTabChange}>
-        <PeopleScreen
-          onBack={() => navigateToTab("home")}
-          onOpenUser={(id) => navigateToRoute(`users/${id}`)}
-        />
+        <Suspense fallback={RouteFallback}>
+          <PeopleScreen
+            onBack={() => navigateToTab("home")}
+            onOpenUser={(id) => navigateToRoute(`users/${id}`)}
+          />
+        </Suspense>
       </UserLayout>
     );
   }
   if (deepLink?.orbitCatalog === "teams") {
     return (
       <UserLayout activeTab="home" onTabChange={handleTabChange}>
-        <TeamsScreen
-          onBack={() => navigateToTab("home")}
-          onOpenProject={(id) => navigateToRoute(`projects/${id}`)}
-        />
+        <Suspense fallback={RouteFallback}>
+          <TeamsScreen
+            onBack={() => navigateToTab("home")}
+            onOpenProject={(id) => navigateToRoute(`projects/${id}`)}
+          />
+        </Suspense>
       </UserLayout>
     );
   }
   if (deepLink?.orbitCatalog === "ideas") {
     return (
       <UserLayout activeTab="home" onTabChange={handleTabChange}>
-        <IdeasScreen
-          onBack={() => navigateToTab("home")}
-          onOpenProject={(id) => navigateToRoute(`projects/${id}`)}
-        />
+        <Suspense fallback={RouteFallback}>
+          <IdeasScreen
+            onBack={() => navigateToTab("home")}
+            onOpenProject={(id) => navigateToRoute(`projects/${id}`)}
+          />
+        </Suspense>
       </UserLayout>
     );
   }
@@ -384,12 +399,14 @@ export function App() {
   if (deepLink?.specialScreen === "progress") {
     return (
       <UserLayout activeTab="home" onTabChange={handleTabChange}>
-        <ProgressScreen
-          onBack={() => window.history.length > 1 ? window.history.back() : navigateToTab("home")}
-          onOpenProjects={() => navigateToTab("projects")}
-          onOpenTasks={() => navigateToRoute("tasks")}
-          onOpenEvents={() => navigateToTab("events")}
-        />
+        <Suspense fallback={RouteFallback}>
+          <ProgressScreen
+            onBack={() => window.history.length > 1 ? window.history.back() : navigateToTab("home")}
+            onOpenProjects={() => navigateToTab("projects")}
+            onOpenTasks={() => navigateToRoute("tasks")}
+            onOpenEvents={() => navigateToTab("events")}
+          />
+        </Suspense>
       </UserLayout>
     );
   }
@@ -398,18 +415,20 @@ export function App() {
     const developmentRoute = deepLink.developmentRoute ?? "home";
     return (
       <UserLayout activeTab="home" onTabChange={handleTabChange}>
-        {developmentRoute === "home" ? (
-          <VectorHomeScreen
-            onNavigate={(route) => navigateToRoute(`development/${route}`)}
-            onBack={() => window.history.length > 1 ? window.history.back() : navigateToTab("home")}
-          />
-        ) : (
-          <DevelopmentScreen
-            route={developmentRoute}
-            onNavigate={(route) => navigateToRoute(route === "home" ? "development" : `development/${route}`)}
-            onBack={() => window.history.length > 1 ? window.history.back() : navigateToTab("home")}
-          />
-        )}
+        <Suspense fallback={RouteFallback}>
+          {developmentRoute === "home" ? (
+            <VectorHomeScreen
+              onNavigate={(route) => navigateToRoute(`development/${route}`)}
+              onBack={() => window.history.length > 1 ? window.history.back() : navigateToTab("home")}
+            />
+          ) : (
+            <DevelopmentScreen
+              route={developmentRoute}
+              onNavigate={(route) => navigateToRoute(route === "home" ? "development" : `development/${route}`)}
+              onBack={() => window.history.length > 1 ? window.history.back() : navigateToTab("home")}
+            />
+          )}
+        </Suspense>
       </UserLayout>
     );
   }
@@ -417,7 +436,9 @@ export function App() {
   if (deepLink?.specialScreen === "era-pro") {
     return (
       <UserLayout activeTab="community" onTabChange={handleTabChange}>
-        <EraProScreen onBack={() => window.history.length > 1 ? window.history.back() : navigateToRoute("opportunities")} />
+        <Suspense fallback={RouteFallback}>
+          <EraProScreen onBack={() => window.history.length > 1 ? window.history.back() : navigateToRoute("opportunities")} />
+        </Suspense>
       </UserLayout>
     );
   }
@@ -426,21 +447,23 @@ export function App() {
   const leaderWorkspaceRequested = user.is_leader && (inWorkspace || deepLink?.workspace === "leader");
 
   if (adminWorkspaceRequested) {
-    return <AdminLayout onExitWorkspace={exitWorkspace}>{deepLink?.adminEventId ? <AdminEventsScreen initialEventId={deepLink.adminEventId} /> : initialProjectId ? <ProjectsScreen initialProjectId={initialProjectId} /> : <AdminScreen />}</AdminLayout>;
+    return <Suspense fallback={RouteFallback}><AdminLayout onExitWorkspace={exitWorkspace}>{deepLink?.adminEventId ? <AdminEventsScreen initialEventId={deepLink.adminEventId} /> : initialProjectId ? <ProjectsScreen initialProjectId={initialProjectId} /> : <AdminScreen />}</AdminLayout></Suspense>;
   }
   if (leaderWorkspaceRequested) {
-    return <LeaderLayout onExitWorkspace={exitWorkspace}>{initialProjectId ? <ProjectsScreen initialProjectId={initialProjectId} /> : <LeaderScreen />}</LeaderLayout>;
+    return <Suspense fallback={RouteFallback}><LeaderLayout onExitWorkspace={exitWorkspace}>{initialProjectId ? <ProjectsScreen initialProjectId={initialProjectId} /> : <LeaderScreen />}</LeaderLayout></Suspense>;
   }
 
   return (
     <UserLayout activeTab={activeTab} onTabChange={handleTabChange}>
       {activeTab === "profile" ? (
-        <ProfileScreen
-          isAdmin={user.is_admin}
-          isLeader={user.is_leader}
-          onEnterWorkspace={user.is_admin || user.is_leader ? () => setInWorkspace(true) : undefined}
-          onOpenDevelopment={() => navigateToRoute("development")}
-        />
+        <Suspense fallback={RouteFallback}>
+          <ProfileScreen
+            isAdmin={user.is_admin}
+            isLeader={user.is_leader}
+            onEnterWorkspace={user.is_admin || user.is_leader ? () => setInWorkspace(true) : undefined}
+            onOpenDevelopment={() => navigateToRoute("development")}
+          />
+        </Suspense>
       ) : renderTab(activeTab, user, initialProjectId, deepLink?.activitySection ?? null, deepLink?.eventScope ?? null, deepLink?.communitySection ?? null, deepLink?.itemId ?? null, deepLink?.mediaRoute ?? null, deepLink?.tab === activeTab)}
     </UserLayout>
   );
