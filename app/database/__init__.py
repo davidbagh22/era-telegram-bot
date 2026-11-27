@@ -109,3 +109,4 @@ __all__ = [
 ]
 
 import app.database.telegram_analytics  # noqa: F401
+import app.database.ui_preferences  # noqa: F401

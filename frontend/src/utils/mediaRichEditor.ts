@@ -79,7 +79,7 @@ export function openMediaRichEditor(initialValue: string): Promise<string | null
       inset: "0",
       zIndex: "10000",
       background: "rgba(0,0,0,.58)",
-      padding: "max(18px, env(safe-area-inset-top)) 14px max(18px, env(safe-area-inset-bottom))",
+      padding: "max(18px, var(--era-safe-top)) 14px max(18px, var(--era-safe-bottom))",
       display: "grid",
       placeItems: "center",
       overflow: "auto",
@@ -193,7 +193,7 @@ export function openMediaRichEditor(initialValue: string): Promise<string | null
       cursor: "pointer",
     }));
     Object.assign(cancel.style, { background: "var(--era-surface-2, #432040)", color: "inherit" });
-    Object.assign(publish.style, { background: "var(--era-primary, #bc2184)", color: "#fff" });
+    Object.assign(publish.style, { background: "var(--era-primary, #bc2184)", color: "var(--era-on-primary, #fff)" });
     actions.append(cancel, publish);
 
     const finish = (value: string | null) => {

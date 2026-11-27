@@ -67,10 +67,10 @@ const inputStyle = {
 
 const buttonStyle = {
   minHeight: "2.75rem",
-  border: "1px solid var(--era-red)",
+  border: "1px solid var(--era-primary)",
   borderRadius: "0.875rem",
-  background: "var(--era-red)",
-  color: "#fff",
+  background: "var(--era-primary)",
+  color: "var(--era-on-primary)",
   fontFamily: "var(--era-font-body)",
   fontWeight: 700,
 } satisfies CSSProperties;

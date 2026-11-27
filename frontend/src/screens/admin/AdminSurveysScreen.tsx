@@ -468,7 +468,7 @@ export function AdminSurveysScreen() {
                           {visibleRanking.map((item, index) => (
                             <div key={item.name} style={{ padding: "0.62rem 0.68rem", border: "1px solid var(--era-border)", borderRadius: "0.8rem", background: index < 3 ? "var(--era-tint-violet)" : "var(--era-surface)" }}>
                               <div style={{ display: "grid", gridTemplateColumns: "1.65rem minmax(0, 1fr) auto", alignItems: "center", gap: "0.48rem" }}>
-                                <span style={{ display: "grid", placeItems: "center", width: 26, height: 26, borderRadius: 999, background: index < 3 ? "var(--era-violet)" : "var(--era-bg)", color: index < 3 ? "#fff" : "var(--era-text-muted)", fontSize: "0.7rem", fontWeight: 850 }}>{index + 1}</span>
+                                <span style={{ display: "grid", placeItems: "center", width: 26, height: 26, borderRadius: 999, background: index < 3 ? "var(--era-primary)" : "var(--era-bg)", color: index < 3 ? "var(--era-on-primary)" : "var(--era-text-muted)", fontSize: "0.7rem", fontWeight: 850 }}>{index + 1}</span>
                                 <strong style={{ minWidth: 0, fontSize: "0.8rem", lineHeight: 1.3 }}>{item.name}</strong>
                                 <span style={{ whiteSpace: "nowrap", fontSize: "0.74rem", fontWeight: 800 }}>{item.votes} · {item.percent}%</span>
                               </div>

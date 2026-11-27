@@ -39,7 +39,7 @@ export function SegmentedTabs<T extends string>({ options, active, onChange }: S
               border: "none",
               borderRadius: "var(--era-radius-pill)",
               background: isActive ? "var(--era-gradient)" : "transparent",
-              color: isActive ? "#fff" : "var(--era-text-muted)",
+              color: isActive ? "var(--era-on-primary)" : "var(--era-text-muted)",
               fontSize: "0.8125rem",
               fontWeight: isActive ? 700 : 600,
               fontFamily: "var(--era-font-body)",

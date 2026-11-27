@@ -342,8 +342,8 @@ function OffersList({ initialItemId }: { initialItemId?: number | null }) {
       </div>
 
       <Card style={{ padding: "0.9rem" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.8rem" }}>
-          <div>
+        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", gap: "0.8rem" }}>
+          <div style={{ flex: "1 1 12rem", minWidth: 0 }}>
             <MonoLabel tone="violet">Открытые предложения</MonoLabel>
             <strong style={{ display: "block", marginTop: "0.3rem" }}>
               {activeQuick ? QUICK_STATES.find((item) => item.key === activeQuick)?.label : "Подборка"}

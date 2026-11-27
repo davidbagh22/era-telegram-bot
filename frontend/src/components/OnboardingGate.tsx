@@ -67,7 +67,7 @@ export function OnboardingGate({ children }: OnboardingGateProps) {
       className="era-page era-stagger"
       style={{
         minHeight: "100dvh",
-        padding: "calc(1.25rem + env(safe-area-inset-top, 0px)) 1rem calc(1.5rem + env(safe-area-inset-bottom, 0px))",
+        padding: "calc(1.25rem + var(--era-safe-top)) 1rem calc(1.5rem + var(--era-safe-bottom))",
         display: "flex",
         flexDirection: "column",
         gap: "1.5rem",

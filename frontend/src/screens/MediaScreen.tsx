@@ -53,8 +53,8 @@ type DeskView =
 
 const buttonStyle = (primary = false): React.CSSProperties => ({
   border: primary ? "1px solid transparent" : "1px solid var(--era-border)",
-  background: primary ? "var(--era-violet)" : "var(--era-surface-2)",
-  color: primary ? "#fff" : "var(--era-text)",
+  background: primary ? "var(--era-primary)" : "var(--era-surface-2)",
+  color: primary ? "var(--era-on-primary)" : "var(--era-text)",
   borderRadius: 14,
   padding: "0.75rem 0.9rem",
   fontWeight: 800,

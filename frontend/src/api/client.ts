@@ -269,7 +269,7 @@ async function authorizedGet<T>(path: string): Promise<T> {
 }
 
 async function authorizedSend<T>(
-  method: "POST" | "PATCH",
+  method: "POST" | "PATCH" | "PUT",
   path: string,
   body?: unknown,
 ): Promise<T> {
@@ -300,6 +300,19 @@ function authorizedPatch<T>(path: string, body: unknown): Promise<T> {
 
 export function fetchMe(): Promise<MiniAppUserSummary> {
   return authorizedGet<MiniAppUserSummary>("/api/v1/me");
+}
+
+export interface UiPreferences {
+  accent_color: string | null;
+  updated_at: string | null;
+}
+
+export function fetchUiPreferences(): Promise<UiPreferences> {
+  return authorizedGet<UiPreferences>("/api/v1/me/preferences");
+}
+
+export function saveUiPreferences(accentColor: string | null): Promise<UiPreferences> {
+  return authorizedSend<UiPreferences>("PUT", "/api/v1/me/preferences", { accent_color: accentColor });
 }
 
 export function fetchHome(): Promise<HomeSnapshot> {

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useAccent } from "../theme/accentStore";
 
 const animatedKeys = new Set<string>();
 
@@ -13,6 +14,7 @@ interface ProgressRingProps {
 
 export function ProgressRing({ percent, size = 92, trackColor, animationKey = "status-orbit" }: ProgressRingProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const accent = useAccent();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -32,7 +34,13 @@ export function ProgressRing({ percent, size = 92, trackColor, animationKey = "s
     const cx = size / 2;
     const cy = size / 2;
     const r = size / 2 - 8;
-    const cssTrack = getComputedStyle(document.documentElement).getPropertyValue("--era-ring-track").trim();
+    const rootStyle = getComputedStyle(document.documentElement);
+    const cssTrack = rootStyle.getPropertyValue("--era-ring-track").trim();
+    const stops = [
+      rootStyle.getPropertyValue("--era-accent-deep").trim() || "#512074",
+      rootStyle.getPropertyValue("--era-primary").trim() || "#bc2184",
+      rootStyle.getPropertyValue("--era-cyan").trim() || "#ffa5ea",
+    ];
     const track = trackColor ?? (cssTrack || "rgba(255,255,255,0.10)");
 
     function frame(p: number) {
@@ -45,9 +53,9 @@ export function ProgressRing({ percent, size = 92, trackColor, animationKey = "s
       ctx.stroke();
 
       const gradient = ctx.createLinearGradient(0, 0, size, size);
-      gradient.addColorStop(0, "#512074");
-      gradient.addColorStop(0.55, "#bc2184");
-      gradient.addColorStop(1, "#ffa5ea");
+      gradient.addColorStop(0, stops[0]);
+      gradient.addColorStop(0.55, stops[1]);
+      gradient.addColorStop(1, stops[2]);
       ctx.strokeStyle = gradient;
       const start = -Math.PI / 2;
       const end = start + Math.PI * 2 * p;
@@ -78,7 +86,7 @@ export function ProgressRing({ percent, size = 92, trackColor, animationKey = "s
     }
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [animationKey, percent, size, trackColor]);
+  }, [accent, animationKey, percent, size, trackColor]);
 
   return <canvas ref={canvasRef} aria-hidden="true" />;
 }

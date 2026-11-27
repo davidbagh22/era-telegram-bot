@@ -92,8 +92,8 @@ export function ContextHelp({ mode, topic: explicitTopic, inline = false }: Cont
   };
 
   const bottom = mode === "leader"
-    ? "calc(1rem + env(safe-area-inset-bottom, 0px))"
-    : "calc(5.5rem + env(safe-area-inset-bottom, 0px))";
+    ? "calc(1rem + var(--era-safe-bottom))"
+    : "calc(5.5rem + var(--era-safe-bottom))";
 
   const helpSheet = (
     <BottomSheet open={open} onClose={() => setOpen(false)} title={topic.title}>
@@ -164,7 +164,7 @@ export function ContextHelp({ mode, topic: explicitTopic, inline = false }: Cont
 
   return (
     <>
-      <div style={{ position: "fixed", right: "0.75rem", bottom, zIndex: 35, display: "flex", alignItems: "center", gap: "0.5rem", pointerEvents: "none" }}>
+      <div data-era-hide-on-keyboard style={{ position: "fixed", right: "0.75rem", bottom, zIndex: 35, display: "flex", alignItems: "center", gap: "0.5rem", pointerEvents: "none" }}>
         {showCoach && (
           <button
             type="button"

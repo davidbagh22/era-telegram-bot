@@ -83,7 +83,7 @@ export function MediaRequestButton({ sourceType, sourceId, defaultOpen = false }
           Для автора и редакции: фото, рилс или полный пакет. Не публикация в канал.
         </span>
       </summary>
-      <div style={{ display: "grid", gap: "0.65rem", padding: "0 0.95rem 0.95rem" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: "0.65rem", padding: "0 0.95rem 0.95rem", minWidth: 0 }}>
         <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.84rem", lineHeight: 1.45 }}>
           Выберите пакет → укажите срок → отправьте. Команда Медиа получит задачу и сделает материал.
         </p>
@@ -112,7 +112,7 @@ export function MediaRequestButton({ sourceType, sourceId, defaultOpen = false }
             ))}
           </div>
         </div>
-        <label style={{ display: "grid", gap: "0.3rem", fontSize: "0.78rem", color: "var(--era-text-muted)", fontWeight: 700 }}>
+        <label style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: "0.3rem", fontSize: "0.78rem", color: "var(--era-text-muted)", fontWeight: 700 }}>
           2. Срок для редакции
           <input
             type="datetime-local"
@@ -127,6 +127,8 @@ export function MediaRequestButton({ sourceType, sourceId, defaultOpen = false }
               color: "var(--era-text)",
               padding: "0.5rem 0.65rem",
               fontFamily: "var(--era-font-body)",
+              minWidth: 0,
+              maxWidth: "100%",
             }}
           />
         </label>

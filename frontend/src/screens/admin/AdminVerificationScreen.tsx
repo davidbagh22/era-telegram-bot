@@ -232,7 +232,7 @@ export function AdminVerificationScreen() {
       )}
 
       {selectedIds.length > 0 && (
-        <Card style={{ position: "sticky", bottom: "calc(5.5rem + env(safe-area-inset-bottom,0px))", zIndex: 10 }}>
+        <Card style={{ position: "sticky", bottom: "calc(5.5rem + var(--era-safe-bottom))", zIndex: 10 }}>
           <strong>{selectedIds.length} выбрано</strong>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".5rem", marginTop: ".7rem" }}>
             <button type="button" className="era-btn-secondary" disabled={busy} onClick={() => void runSelection("remind")}>Напомнить</button>

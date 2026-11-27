@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 interface ModalProps {
   open: boolean;
@@ -26,7 +27,8 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
     return null;
   }
 
-  return (
+  // Rendered at <body> so no ancestor transform/filter can re-anchor `position: fixed`.
+  return createPortal(
     <div
       className="era-overlay-backdrop"
       onClick={onClose}
@@ -55,6 +57,7 @@ export function Modal({ open, onClose, title, children }: ModalProps) {
         )}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

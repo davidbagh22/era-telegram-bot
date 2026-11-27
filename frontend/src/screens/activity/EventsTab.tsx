@@ -386,7 +386,7 @@ export function EventPoster({ event, compact = false }: { event: EventItem; comp
         border: "1px solid rgba(255,255,255,.14)",
       }}
     >
-      <span style={{ fontSize: compact ? "2rem" : "3rem", fontWeight: 900, opacity: 0.95, color: "#fff" }}>ЭРА</span>
+      <span style={{ fontSize: compact ? "2rem" : "3rem", fontWeight: 900, opacity: 0.95, color: "var(--era-on-primary)" }}>ЭРА</span>
     </div>
   );
 }
@@ -420,7 +420,7 @@ function EventDetail({ event, openSignup, pending, actionError, onRegister, onCa
   const bodyText = cleanedBody || summary;
 
   return (
-    <div className="era-page" style={{ display: "flex", flexDirection: "column", gap: "0.75rem", paddingBottom: "calc(10.25rem + env(safe-area-inset-bottom, 0px))" }}>
+    <div className="era-page" style={{ display: "flex", flexDirection: "column", gap: "0.75rem", paddingBottom: "calc(10.25rem + var(--era-safe-bottom))" }}>
       <button type="button" onClick={onBack} style={{ alignSelf: "flex-start" }}>← К событиям</button>
       <EventPoster event={event} />
 
@@ -455,7 +455,7 @@ function EventDetail({ event, openSignup, pending, actionError, onRegister, onCa
       )}
 
       {event.participant_value && (
-        <Card style={{ background: "linear-gradient(145deg, rgba(188, 33, 132,.14), rgba(255, 165, 234,.06))" }}>
+        <Card style={{ background: "linear-gradient(145deg, rgba(var(--era-accent-rgb), .14), rgba(var(--era-accent-text-rgb), .06))" }}>
           <strong>Что вы получите</strong>
           <p style={{ whiteSpace: "pre-wrap", margin: "0.45rem 0 0", lineHeight: 1.5 }}>{event.participant_value}</p>
         </Card>
@@ -529,11 +529,12 @@ function EventDetail({ event, openSignup, pending, actionError, onRegister, onCa
       {actionError && <p style={{ color: "var(--era-error)", margin: 0 }}>{actionError}</p>}
 
       <div
+        data-era-hide-on-keyboard
         style={{
           position: "fixed",
-          left: "max(1rem, env(safe-area-inset-left))",
-          right: "max(1rem, env(safe-area-inset-right))",
-          bottom: "calc(5.4rem + env(safe-area-inset-bottom))",
+          left: "max(1rem, var(--era-safe-left))",
+          right: "max(1rem, var(--era-safe-right))",
+          bottom: "calc(5.4rem + var(--era-safe-bottom))",
           zIndex: 20,
           padding: "0.55rem",
           border: "1px solid var(--era-nav-border, var(--era-border))",

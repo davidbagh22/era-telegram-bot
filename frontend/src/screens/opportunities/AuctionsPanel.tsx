@@ -65,7 +65,7 @@ function AuctionHeroCard({ auction, onOpen }: AuctionHeroCardProps) {
       <div
         style={{
           background: "var(--era-gradient)",
-          color: "#fff",
+          color: "var(--era-on-primary)",
           padding: "1rem",
           display: "flex",
           alignItems: "flex-start",
@@ -101,7 +101,7 @@ function AuctionHeroCard({ auction, onOpen }: AuctionHeroCardProps) {
               padding: "0.25rem 0.5rem",
               borderRadius: "var(--era-radius-pill)",
               background: countdown.urgent ? "var(--era-surface)" : "rgba(255,255,255,0.14)",
-              color: countdown.urgent ? "var(--era-warning)" : "#fff",
+              color: countdown.urgent ? "var(--era-warning)" : "var(--era-on-primary)",
               border: countdown.urgent ? "1px solid var(--era-border-strong)" : "1px solid transparent",
               whiteSpace: "nowrap",
             }}
