@@ -200,3 +200,90 @@ class GoogleCalendarOutboxTests(IsolatedAsyncioTestCase):
             )
             self.assertEqual(row.value["sync_status"], "pending")
             self.assertEqual(row.value["era_event_id"], 42)
+
+    async def test_restored_registration_closed_and_active_statuses_patch_confirmed(self):
+        sa = {
+            "client_email": "sa@era.test",
+            "private_key": "-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----",
+        }
+        cfg = settings(
+            google_calendar_sync_enabled=True,
+            google_calendar_id="primary",
+            google_calendar_service_account_json=json.dumps(sa),
+        )
+        for restored_status in (EventStatus.REGISTRATION_CLOSED, EventStatus.ACTIVE):
+            with self.subTest(restored_status=restored_status):
+                async with self.factory() as session:
+                    user = User(
+                        telegram_id=100 + len(restored_status.value),
+                        first_name="A",
+                        role=Role.ADMIN,
+                        application_status=ApplicationStatus.APPROVED,
+                    )
+                    session.add(user)
+                    await session.flush()
+                    ev = Event(
+                        title=f"ЭРА {restored_status.value}",
+                        description="d",
+                        event_date=date(2026, 12, 12),
+                        event_time=time(18, 0),
+                        location="Ереван",
+                        format="Очно",
+                        access_type="all",
+                        points_for_visit=0,
+                        selfie_required=False,
+                        created_by=user.id,
+                        status=restored_status,
+                    )
+                    session.add(ev)
+                    await session.flush()
+                    session.add(
+                        EventExperience(
+                            event_id=ev.id,
+                            short_description="d",
+                            full_description="d",
+                            end_time=time(20, 0),
+                            is_complete=True,
+                        )
+                    )
+                    session.add(
+                        AppSetting(
+                            key=sync._setting_key(ev.id),
+                            value={
+                                "google_event_id": f"gcal-{ev.id}",
+                                "era_event_id": ev.id,
+                                "sync_status": "synced",
+                                "attempts": 0,
+                            },
+                        )
+                    )
+                    await sync.enqueue_calendar_sync(session, ev.id)
+                    await session.commit()
+                    event_id = ev.id
+
+                token_resp = MagicMock()
+                token_resp.raise_for_status = MagicMock()
+                token_resp.json.return_value = {"access_token": "tok"}
+                patch_resp = MagicMock()
+                patch_resp.raise_for_status = MagicMock()
+                patch_resp.json.return_value = {"id": f"gcal-{event_id}"}
+
+                client = AsyncMock()
+                client.post = AsyncMock(return_value=token_resp)
+                client.patch = AsyncMock(return_value=patch_resp)
+                client.__aenter__ = AsyncMock(return_value=client)
+                client.__aexit__ = AsyncMock(return_value=None)
+
+                with patch.object(sync.httpx, "AsyncClient", return_value=client), patch.object(
+                    sync.jwt, "encode", return_value="assertion"
+                ):
+                    await sync.process_pending_calendar_syncs(cfg, self.factory)
+
+                client.patch.assert_awaited_once()
+                self.assertEqual(client.patch.await_args.kwargs["json"]["status"], "confirmed")
+                async with self.factory() as session:
+                    from sqlalchemy import select
+                    row = await session.scalar(
+                        select(AppSetting).where(AppSetting.key == sync._setting_key(event_id))
+                    )
+                    self.assertEqual(row.value["sync_status"], "synced")

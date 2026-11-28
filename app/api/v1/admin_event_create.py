@@ -14,9 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.api.deps import get_bot, get_current_user, get_session, get_settings
 from app.config import Settings
 from app.database.event_experience import EventExperience
-from app.database.models import Event, EventRegistration, User
+from app.database.models import AuditLog, Event, EventRegistration, User
 from app.services.audit_service import audit
-from app.services.authorization_service import can_manage_events
+from app.services.authorization_service import can_manage_events, is_full_admin
 from app.services.event_poster_security import normalized_event_poster_mime
 from app.services.event_topic_lifecycle import utc_aware
 from app.services.notification_service import broadcast_detailed
@@ -44,6 +44,28 @@ async def require_event_manager(
     if not can_manage_events(user, settings, user.telegram_id):
         raise HTTPException(status_code=403, detail="event_reviewer_access_required")
     return user
+
+
+async def require_full_admin(
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    if not is_full_admin(user, settings, user.telegram_id):
+        raise HTTPException(status_code=403, detail="admin_access_required")
+    return user
+
+
+_RESTORABLE_EVENT_STATUSES = {
+    EventStatus.DRAFT.value,
+    EventStatus.PENDING_APPROVAL.value,
+    EventStatus.APPROVED.value,
+    EventStatus.PUBLISHED.value,
+    EventStatus.REGISTRATION_OPEN.value,
+    EventStatus.REGISTRATION_CLOSED.value,
+    EventStatus.ACTIVE.value,
+    EventStatus.COMPLETED.value,
+    EventStatus.REPORT_SUBMITTED.value,
+}
 
 
 class EventScoringPresetOut(BaseModel):
@@ -772,7 +794,7 @@ async def publish_event(
 @router.post("/{event_id}/cancel", response_model=EventDraftOut)
 async def cancel_event(
     event_id: int,
-    admin: User = Depends(require_event_manager),
+    admin: User = Depends(require_full_admin),
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
     bot: Bot | None = Depends(get_bot),
@@ -781,7 +803,12 @@ async def cancel_event(
     experience = await _experience(session, event)
     if event.status == EventStatus.CANCELLED:
         return await _draft_out(session, event, experience)
-    was_public = event.status != EventStatus.DRAFT
+    previous_status = str(event.status)
+    was_public = event.status not in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}
+    notify_cancellation = was_public and event.status not in {
+        EventStatus.COMPLETED,
+        EventStatus.REPORT_SUBMITTED,
+    }
     event.status = EventStatus.CANCELLED
     await session.flush()
     await audit(
@@ -790,15 +817,85 @@ async def cancel_event(
         action="event.cancelled",
         entity_type="event",
         entity_id=event.id,
+        old_value={
+            "status": previous_status,
+            "title": event.title,
+        },
+        new_value={"status": str(event.status)},
     )
     if was_public:
         from app.services.google_calendar_sync_service import enqueue_calendar_sync
         await enqueue_calendar_sync(session, event.id)
     result = await _draft_out(session, event, experience)
     await session.commit()
-    if was_public:
+    if notify_cancellation:
         try:
             await _notify_changed_event(bot, settings, session, event, ["Мероприятие отменено"])
         except Exception:
             logger.exception("Event %s cancelled; notification failed", event.id)
+    return result
+
+
+@router.post("/{event_id}/restore", response_model=EventDraftOut)
+async def restore_event(
+    event_id: int,
+    admin: User = Depends(require_full_admin),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    bot: Bot | None = Depends(get_bot),
+) -> EventDraftOut:
+    event = await _managed_event(session, event_id)
+    experience = await _experience(session, event)
+    if event.status != EventStatus.CANCELLED:
+        raise HTTPException(status_code=409, detail="event_not_cancelled")
+
+    last_cancel = await session.scalar(
+        select(AuditLog)
+        .where(
+            AuditLog.entity_type == "event",
+            AuditLog.entity_id == event.id,
+            AuditLog.action == "event.cancelled",
+        )
+        .order_by(AuditLog.id.desc())
+        .limit(1)
+    )
+    old_data = last_cancel.old_value if last_cancel and isinstance(last_cancel.old_value, dict) else {}
+    recorded_status = old_data.get("status")
+    if isinstance(recorded_status, str) and recorded_status in _RESTORABLE_EVENT_STATUSES:
+        restored_status = recorded_status
+    elif experience.is_complete:
+        restored_status = (
+            EventStatus.REGISTRATION_OPEN.value
+            if experience.registration_required
+            else EventStatus.PUBLISHED.value
+        )
+    else:
+        restored_status = EventStatus.DRAFT.value
+
+    event.status = EventStatus(restored_status)
+    is_public = event.status not in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}
+    notify_restoration = is_public and event.status not in {
+        EventStatus.COMPLETED,
+        EventStatus.REPORT_SUBMITTED,
+    }
+    await session.flush()
+    await audit(
+        session,
+        actor_id=admin.id,
+        action="event.restored",
+        entity_type="event",
+        entity_id=event.id,
+        old_value={"status": str(EventStatus.CANCELLED)},
+        new_value={"status": str(event.status)},
+    )
+    if is_public:
+        from app.services.google_calendar_sync_service import enqueue_calendar_sync
+        await enqueue_calendar_sync(session, event.id)
+    result = await _draft_out(session, event, experience)
+    await session.commit()
+    if notify_restoration:
+        try:
+            await _notify_changed_event(bot, settings, session, event, ["Мероприятие восстановлено"])
+        except Exception:
+            logger.exception("Event %s restored; notification failed", event.id)
     return result
