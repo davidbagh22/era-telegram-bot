@@ -1,3 +1,4 @@
+from aiogram.exceptions import TelegramBadRequest
 from app.services.leaders_workspace import deadline_label
 from aiogram import F, Bot, Router
 from aiogram.fsm.context import FSMContext
@@ -7,8 +8,8 @@ from sqlalchemy import select
 
 from app.config import Settings
 from app.database.models import Task, TaskSubmission, User
-from app.keyboards.participant import open_app_button, tasks_keyboard
-from app.services import task_service
+from app.keyboards.participant import open_app_button
+from app.services import task_presentation_service, task_service
 from app.services.notification_service import (
     notify_admins,
     safe_answer_media,
@@ -18,7 +19,7 @@ from app.services.notification_service import (
 )
 from app.states.growth import TaskSubmissionStates
 from app.utils import texts, ux_texts
-from app.utils.constants import ApplicationStatus, TASK_STATUS_LABELS
+from app.utils.constants import ApplicationStatus
 from app.utils.validators import clean_text
 
 router = Router(name="participant_task_block2")
@@ -70,18 +71,31 @@ async def tasks_root(call: CallbackQuery, user: User | None) -> None:
     await call.message.answer(ux_texts.TASKS_MENU, reply_markup=_task_menu())
 
 
-@router.callback_query(F.data.in_({"tasks:list:active", "tasks:list:open", "tasks:list:archive"}))
-async def tasks_list(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
-    await call.answer()
-    if not _approved(user):
-        await call.message.answer(texts.APPLICATION_PENDING)
-        return
-    mode = call.data.rsplit(":", 1)[-1]
+async def _render_tasks_list(
+    session: AsyncSession,
+    user: User,
+    mode: str,
+    *,
+    page: int = 0,
+) -> tuple[str, InlineKeyboardMarkup]:
     all_tasks = await task_service.list_for_user(session, user)
     joined_ids = await task_service.joined_task_ids(session, user, all_tasks)
     completed_ids = await task_service.completed_task_ids(session, user, all_tasks)
-    if mode == "archive":
-        tasks = [
+    participated_ids = joined_ids | completed_ids
+    buckets = {
+        "open": [
+            task
+            for task in all_tasks
+            if task.id not in completed_ids
+            and task_service.is_open_public_task(task, participated_ids, user)
+        ],
+        "active": [
+            task
+            for task in all_tasks
+            if task.status not in ARCHIVE_STATUSES
+            and task_service.is_joined_or_assigned(task, joined_ids, user)
+        ],
+        "archive": [
             task
             for task in all_tasks
             if (
@@ -89,35 +103,59 @@ async def tasks_list(call: CallbackQuery, user: User | None, session: AsyncSessi
                 and task_service.is_joined_or_assigned(task, joined_ids, user)
             )
             or task.id in completed_ids
-        ]
-        title = "🗂 Архив задач"
-        empty = ux_texts.TASKS_EMPTY_ARCHIVE
-    elif mode == "open":
-        tasks = [
-            task
-            for task in all_tasks
-            if task.id not in completed_ids
-            and task_service.is_open_public_task(task, joined_ids, user)
-        ]
-        title = "🌐 Общие задачи"
-        empty = "Сейчас нет открытых общих задач. Как только команда опубликует набор, он появится здесь."
-    else:
-        tasks = [
-            task
-            for task in all_tasks
-            if task.status not in ARCHIVE_STATUSES
-            and task_service.is_joined_or_assigned(task, joined_ids, user)
-        ]
-        title = "🟢 Задачи в работе"
-        empty = ux_texts.TASKS_EMPTY_ACTIVE
-    body = "\n".join(
-        f"• {task.title} — {'Выполнено' if task.id in completed_ids else TASK_STATUS_LABELS.get(task.status, task.status)}, до {deadline_label(task.deadline, '%d.%m.%Y')} · {task.points} баллов"
-        for task in tasks
-    ) or empty
-    await call.message.answer(
-        f"{title}\n\n{body}",
-        reply_markup=tasks_keyboard(tasks, joined_ids | completed_ids) if tasks else _task_menu(),
+        ],
+    }
+    selected = buckets.get(mode, buckets["open"])
+    contexts = await task_presentation_service.resolve_task_contexts(
+        session, selected, completed_ids=completed_ids
     )
+    counts = {key: len(items) for key, items in buckets.items()}
+    return task_presentation_service.render_bot_task_list_page(
+        mode,
+        selected,
+        counts=counts,
+        contexts=contexts,
+        joined_ids=joined_ids,
+        completed_ids=completed_ids,
+        page=page,
+    )
+
+
+@router.callback_query(F.data.in_({"tasks:list:active", "tasks:list:open", "tasks:list:archive"}))
+async def tasks_list(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
+    await call.answer()
+    if not _approved(user):
+        await call.message.answer(texts.APPLICATION_PENDING)
+        return
+    mode = call.data.rsplit(":", 1)[-1]
+    body, markup = await _render_tasks_list(session, user, mode, page=0)
+    await call.message.answer(body, reply_markup=markup)
+
+
+@router.callback_query(F.data.regexp(r"^tasks:list:(active|open|archive):page:\d+$"))
+async def tasks_list_page(call: CallbackQuery, user: User | None, session: AsyncSession) -> None:
+    await call.answer()
+    if not _approved(user):
+        await call.message.answer(texts.APPLICATION_PENDING)
+        return
+    parts = call.data.split(":")
+    mode = parts[2]
+    page = int(parts[4])
+    body, markup = await _render_tasks_list(session, user, mode, page=page)
+    edit_text = getattr(call.message, "edit_text", None)
+    if callable(edit_text):
+        try:
+            await edit_text(body, reply_markup=markup)
+            return
+        except TelegramBadRequest as exc:
+            if "message is not modified" in str(exc).lower():
+                return
+    await call.message.answer(body, reply_markup=markup)
+
+
+@router.callback_query(F.data == "tasks:noop")
+async def tasks_noop(call: CallbackQuery) -> None:
+    await call.answer()
 
 
 @router.callback_query(F.data.startswith("task:join:"))
@@ -166,19 +204,32 @@ async def task_view(call: CallbackQuery, user: User | None, session: AsyncSessio
     membership = await task_service.get_membership(session, task.id, user.id)
     rows = []
     completed = bool(membership and membership.status == "completed")
+    contexts = await task_presentation_service.resolve_task_contexts(
+        session, [task], completed_ids={task.id} if completed else set()
+    )
+    ctx = contexts[task.id]
     if completed:
         rows.append([InlineKeyboardButton(text="✅ Результат принят", callback_data="tasks:list:archive")])
     elif await task_service.can_submit(session, task, user) and task.status not in ARCHIVE_STATUSES:
         rows.append([InlineKeyboardButton(text="📤 Отправить результат", callback_data=f"task:result:{task.id}")])
     elif membership and membership.status == "pending":
         rows.append([InlineKeyboardButton(text="⏳ Заявка на рассмотрении", callback_data="tasks:hub")])
-    elif task.task_type == "challenge" and task.status == "published":
+    elif task.task_type == "challenge" and ctx.effective_status == "published":
         rows.append([InlineKeyboardButton(text="🙌 Хочу помочь", callback_data=f"task:join:{task.id}")])
     if task.chat_url and await task_service.can_submit(session, task, user):
         rows.append([InlineKeyboardButton(text="💬 Чат команды", url=task.chat_url)])
     rows.append([InlineKeyboardButton(text="← Мои задачи", callback_data="tasks:hub")])
+    context_line = ""
+    if ctx.group_title and ctx.group_kind != "general":
+        context_line = f"{task_presentation_service.group_heading(ctx)}\n"
+    status_label = task_presentation_service.task_status_label(task, completed=completed)
     await call.message.answer(
-        f"✅ {task.title}\n\n{task.description}\n\nСрок: {deadline_label(task.deadline, '%d.%m.%Y %H:%M')}\nНаграда: {task.points} баллов\nСтатус: {'Выполнено' if completed else TASK_STATUS_LABELS.get(task.status, task.status)}",
+        f"✅ {ctx.display_title}\n\n"
+        f"{context_line}"
+        f"{task.description}\n\n"
+        f"Срок: {deadline_label(task.deadline, '%d.%m.%Y %H:%M')}\n"
+        f"Награда: {task_presentation_service.plural_points(task.points)}\n"
+        f"Статус: {status_label}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
     )
     await _send_task_file(call, task)

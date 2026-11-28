@@ -12,3 +12,4 @@
 - #582: owner-approved shared-read for media-hub; writes area-scoped (documented + tests).
 - Still blocked for full VERIFIED: E14 device/role evidence, E13 #364 legal human, #616 expert platform, GCal credentials. Do not invent legal or device acceptance.
 - Campaign/media DM flags remain off unless separately enabled.
+- Bot + Mini App task list tidy: expired tasks excluded from open lists & claims with deadline-aware `overdue` status; template media tasks resolve and store real event/project titles & dates; grouped paginated lists in Bot (`cabinet:tasks` / `tasks:list:*`) and Mini App (`TasksTab`).

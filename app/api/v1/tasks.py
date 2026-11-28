@@ -20,7 +20,12 @@ from app.services.community_mission_service import (
     launched_template_ids,
     list_mission_templates,
 )
-from app.utils.constants import PRIVILEGED_ROLES, TaskStatus
+from app.services.task_presentation_service import (
+    TaskContext,
+    resolve_task_contexts,
+    sort_tasks_for_display,
+)
+from app.utils.constants import PRIVILEGED_ROLES
 from app.utils.deep_links import task_submit_deep_link
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -29,6 +34,11 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 class TaskOut(BaseModel):
     id: int
     title: str
+    short_title: str | None = None
+    group_key: str | None = None
+    group_kind: str | None = None
+    group_title: str | None = None
+    group_date: str | None = None
     description: str
     deadline: str
     points: int
@@ -110,6 +120,7 @@ async def _to_task_out(
     can_submit: bool | None = None,
     squad: Any = _UNSET,
     squad_size: int | None = None,
+    context: TaskContext | None = None,
 ) -> TaskOut:
     if joined_ids is None:
         joined_ids = await task_service.joined_task_ids(session, user, [task])
@@ -118,6 +129,10 @@ async def _to_task_out(
     completed = task.id in completed_ids
     if can_submit is None:
         can_submit = await task_service.can_submit(session, task, user)
+    if context is None:
+        context = (
+            await resolve_task_contexts(session, [task], completed_ids=completed_ids)
+        )[task.id]
     meta = _mission_meta(task)
     if squad is _UNSET:
         squad = (
@@ -142,11 +157,16 @@ async def _to_task_out(
             )
     return TaskOut(
         id=task.id,
-        title=task.title,
+        title=context.display_title,
+        short_title=context.short_title,
+        group_key=context.group_key,
+        group_kind=context.group_kind,
+        group_title=context.group_title,
+        group_date=context.group_date,
         description=task.description,
         deadline=(task.deadline.isoformat() if task.deadline else ""),
         points=task.points,
-        status=TaskStatus.COMPLETED if completed else task.status,
+        status=context.effective_status,
         task_type=task.task_type,
         is_joined_or_assigned=completed or task_service.is_joined_or_assigned(task, joined_ids, user),
         can_submit=can_submit,
@@ -334,6 +354,8 @@ async def read_tasks(
             if mission_ids
             else {}
         )
+        contexts = await resolve_task_contexts(session, tasks, completed_ids=completed_ids)
+        ordered_tasks = sort_tasks_for_display(tasks, contexts)
         return [
             await _to_task_out(
                 session,
@@ -348,8 +370,9 @@ async def read_tasks(
                 ),
                 squad=squads.get(task.id),
                 squad_size=squad_sizes.get(task.id, 0),
+                context=contexts[task.id],
             )
-            for task in tasks
+            for task in ordered_tasks
         ]
     return [await _to_task_out(session, task, user, settings) for task in tasks]
 

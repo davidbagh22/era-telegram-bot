@@ -535,6 +535,7 @@ async def create_content(
     body: str | None,
     kind: Literal["text", "poll"] = "text",
     scheduled_at: datetime | None = None,
+    title: str | None = None,
     rubric: str | None = None,
     poll_question: str | None = None,
     poll_options: list[str] | None = None,
@@ -548,6 +549,7 @@ async def create_content(
         source_key=f"{source_kind}:{creator_id}:{now_key}",
         source_type=source_type,
         source_id=source_id,
+        title=title.strip() if title else None,
         rubric=rubric,
         kind=kind,
         body=body.strip() if body else None,
@@ -609,6 +611,25 @@ def media_task_display_title(task_kind: str, rubric: str | None) -> str:
     return template.format(rubric=label)
 
 
+MEDIA_TASK_TITLE_MAX_LENGTH = 255
+
+
+def media_task_storage_title(task_kind: str, rubric: str | None) -> str:
+    """Title persisted on Task.title, bounded to the column limit.
+
+    Only the stored title is shortened; the full source title stays in
+    reward_json["source_title"] and is shown in full by read-time presentation.
+    """
+    title = media_task_display_title(task_kind, rubric)
+    if len(title) <= MEDIA_TASK_TITLE_MAX_LENGTH:
+        return title
+    template = _MEDIA_TASK_TITLE_TEMPLATES[task_kind]
+    base_length = len(template.format(rubric=""))
+    keep = MEDIA_TASK_TITLE_MAX_LENGTH - base_length - 1
+    label = ((rubric or "").strip() or "публикации ЭРА")[:keep].rstrip()
+    return template.format(rubric=f"{label}…")
+
+
 def rewrite_formulaic_media_title(title: str) -> str | None:
     """Rewrite only unambiguous auto titles. Author titles stay untouched."""
     match = _FORMULAIC_MEDIA_TITLE.match((title or "").strip())
@@ -646,6 +667,27 @@ async def rewrite_formulaic_media_task_titles(session: AsyncSession) -> int:
     return changed
 
 
+async def _resolve_content_target_title(
+    session: AsyncSession,
+    item: MediaContentItem,
+    *,
+    explicit_title: str | None = None,
+) -> str | None:
+    if explicit_title and explicit_title.strip():
+        return explicit_title.strip()
+    if item.title and item.title.strip():
+        return item.title.strip()
+    if item.source_type == "event" and item.source_id:
+        event = await session.get(Event, item.source_id)
+        if event and event.title and event.title.strip():
+            return event.title.strip()
+    if item.source_type == "project" and item.source_id:
+        project = await session.get(Project, item.source_id)
+        if project and project.title and project.title.strip():
+            return project.title.strip()
+    return item.rubric
+
+
 async def create_content_tasks(
     session: AsyncSession,
     item: MediaContentItem,
@@ -653,6 +695,7 @@ async def create_content_tasks(
     creator_id: int,
     task_kinds: tuple[str, ...] | list[str],
     task_deadline: datetime | None = None,
+    source_title: str | None = None,
 ) -> list[MediaContentTask]:
     links: list[MediaContentTask] = []
     if task_deadline is not None:
@@ -663,6 +706,9 @@ async def create_content_tasks(
         # Give the team a buffer before publication whenever the item is still in
         # the future, but never create a deadline in the past.
         deadline = max(datetime.now(timezone.utc) + timedelta(hours=4), deadline - timedelta(hours=24))
+    target_title = await _resolve_content_target_title(
+        session, item, explicit_title=source_title
+    )
     for task_kind in task_kinds:
         if task_kind not in MEDIA_TASK_KINDS:
             raise ValueError("invalid_media_task_kind")
@@ -675,8 +721,19 @@ async def create_content_tasks(
         if existing:
             links.append(existing)
             continue
+        reward: dict[str, Any] = {
+            "media_task": True,
+            "media_content_id": item.id,
+            "media_task_kind": task_kind,
+            "counts_toward": ["media"],
+        }
+        if item.source_type and item.source_id:
+            reward["source_type"] = item.source_type
+            reward["source_id"] = item.source_id
+        if target_title and target_title not in {"События ЭРА", "Проекты ЭРА"}:
+            reward["source_title"] = target_title
         task = Task(
-            title=media_task_display_title(task_kind, item.rubric),
+            title=media_task_storage_title(task_kind, target_title),
             description=(
                 "Подготовь материал для редакции ЭРА. Результат отправляется "
                 "через стандартную сдачу задачи и после проверки учитывается в Медиа."
@@ -687,12 +744,7 @@ async def create_content_tasks(
             status=TaskStatus.PUBLISHED,
             task_type="challenge",
             audience_filter_json={},
-            reward_json={
-                "media_task": True,
-                "media_content_id": item.id,
-                "media_task_kind": task_kind,
-                "counts_toward": ["media"],
-            },
+            reward_json=reward,
             chat_url=None,
             max_participants=1,
         )
@@ -706,22 +758,40 @@ async def create_content_tasks(
 
 
 async def media_tasks_for_user(
-    session: AsyncSession, user_id: int, *, mine: bool
+    session: AsyncSession, user_id: int, *, mine: bool, now: datetime | None = None
 ) -> list[Task]:
     from app.database.models import TaskParticipant
+    from app.services.task_service import is_task_expired
 
+    current = now or datetime.now(timezone.utc)
+    if mine:
+        stmt = (
+            select(Task)
+            .join(MediaContentTask, MediaContentTask.task_id == Task.id)
+            .join(TaskParticipant, TaskParticipant.task_id == Task.id)
+            .where(
+                Task.status.in_(
+                    [
+                        TaskStatus.PUBLISHED,
+                        TaskStatus.IN_PROGRESS,
+                        TaskStatus.REVIEW,
+                        TaskStatus.OVERDUE,
+                    ]
+                ),
+                TaskParticipant.user_id == user_id,
+                TaskParticipant.status.in_(["pending", "accepted", "joined"]),
+            )
+            .order_by(Task.deadline, Task.id)
+        )
+        return list((await session.scalars(stmt)).unique().all())
     stmt = (
         select(Task)
         .join(MediaContentTask, MediaContentTask.task_id == Task.id)
-        .where(Task.status.in_([TaskStatus.PUBLISHED, TaskStatus.IN_PROGRESS, TaskStatus.REVIEW]))
+        .where(Task.status == TaskStatus.PUBLISHED)
         .order_by(Task.deadline, Task.id)
     )
-    if mine:
-        stmt = stmt.join(TaskParticipant, TaskParticipant.task_id == Task.id).where(
-            TaskParticipant.user_id == user_id,
-            TaskParticipant.status.in_(["pending", "accepted", "joined"]),
-        )
-    return list((await session.scalars(stmt)).unique().all())
+    tasks = list((await session.scalars(stmt)).unique().all())
+    return [task for task in tasks if not is_task_expired(task, now=current)]
 
 
 async def request_media_package(
@@ -780,6 +850,7 @@ async def request_media_package(
         body=f"Медиа-пакет для {source_type}: {source_title}",
         kind="text",
         scheduled_at=scheduled_at,
+        title=source_title,
         rubric="Проекты ЭРА" if source_type == "project" else "События ЭРА",
         source_kind="request",
         source_type=source_type,
@@ -805,6 +876,7 @@ async def request_media_package(
         creator_id=requester.id,
         task_kinds=MEDIA_PACKAGES[package_type],
         task_deadline=due_at,
+        source_title=source_title,
     )
     if bot is not None:
         await _notify_media_request_brief(
