@@ -142,6 +142,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "event-topic-auto-close",
                 "event-lifecycle-notifications",
                 "event-certificates",
+                "post-event-certificate-review",
                 "event-announcement-recovery",
                 "google-calendar-sync",
                 "event-registration-notice-recovery",

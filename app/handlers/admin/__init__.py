@@ -94,6 +94,8 @@ from app.handlers.staff_operations import router as staff_operations_router
 project_review_router.include_router(staff_operations_router)
 from app.handlers.certificates import router as certificates_router
 project_review_router.include_router(certificates_router)
+from app.handlers.post_event_certificates import router as post_event_certificates_router
+project_review_router.include_router(post_event_certificates_router)
 from app.handlers.ranking_seasons import router as ranking_seasons_router
 project_review_router.include_router(ranking_seasons_router)
 
