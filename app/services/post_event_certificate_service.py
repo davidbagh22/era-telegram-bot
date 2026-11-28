@@ -252,11 +252,21 @@ async def set_hidden(session, actor, settings, event_id: int, hidden: bool) -> A
     return row
 
 
+async def _ensure_still_over(session, event: Event, settings) -> None:
+    """A request made before a reschedule or cancellation must not issue anything."""
+    if event.status in EXCLUDED_EVENT_STATUSES:
+        raise ReviewError("Мероприятие отменено или не опубликовано, выдача недоступна.")
+    experience = await session.get(EventExperience, event.id)
+    if event_ends_at(event, experience, settings.timezone) > datetime.now(timezone.utc):
+        raise ReviewError("Мероприятие ещё не закончилось: дата или время изменились, выдача недоступна.")
+
+
 async def confirm(session, actor, settings, event_id: int, rev: int) -> ConfirmResult:
     """Issue to the confirmed selection once; a repeated or outdated press issues nothing."""
-    _event, row = await _authorized_review(session, actor, settings, event_id)
+    event, row = await _authorized_review(session, actor, settings, event_id)
     if int(row.value.get("rev") or 0) != rev:
         raise StaleReview("Список уже изменился или выдача уже подтверждена. Откройте его заново.")
+    await _ensure_still_over(session, event, settings)
     selected = list(row.value.get("selected") or [])
     if not selected:
         raise ReviewError("Никто не выбран.")

@@ -445,3 +445,83 @@ def test_approval_after_delivery_already_happened_sends_nothing_more():
         finally:
             await engine.dispose()
     run(scenario())
+
+
+def test_confirm_refuses_event_rescheduled_to_future_or_cancelled():
+    async def scenario(change):
+        engine, factory = await make_db()
+        try:
+            async with factory() as session:
+                d = await seed(session)
+                await service.ensure_review(session, d.ended, source="test")
+                await service.change_selection(session, d.owner, d.settings, d.ended.id, "toggle", d.boris.id)
+                rev = (await service.load_review(session, d.ended.id)).value["rev"]
+                await session.commit()
+            async with factory() as session:
+                change(await session.get(Event, d.ended.id))
+                await session.commit()
+            async with factory() as session:
+                owner = await session.get(User, d.owner.id)
+                with pytest.raises(service.ReviewError):
+                    await service.confirm(session, owner, d.settings, d.ended.id, rev)
+            async with factory() as session:
+                assert await session.scalar(select(func.count()).select_from(CertificateIssue)) == 0
+        finally:
+            await engine.dispose()
+
+    def reschedule(event):
+        event.event_date = date(2099, 1, 1)
+
+    def cancel(event):
+        event.status = EventStatus.CANCELLED
+
+    run(scenario(reschedule))
+    run(scenario(cancel))
+
+
+def test_owner_issue_before_attendance_confirmation_does_not_break_it():
+    from app.services import event_attendance_service
+
+    async def scenario():
+        engine, factory = await make_db()
+        try:
+            async with factory() as session:
+                manager = User(telegram_id=9201, first_name="Менеджер", role=Role.ADMIN,
+                               application_status=ApplicationStatus.APPROVED)
+                participant = User(telegram_id=9202, first_name="Участник", role=Role.PARTICIPANT,
+                                   application_status=ApplicationStatus.APPROVED)
+                session.add_all([manager, participant])
+                await session.flush()
+                event = Event(title="Тест посещения", description="Тест", event_date=date(2026, 11, 20),
+                              event_time=time(10), location="Ереван", format="offline", responsible_id=manager.id,
+                              participant_limit=30, points_for_visit=25, selfie_required=True,
+                              status=EventStatus.REGISTRATION_CLOSED, created_by=manager.id)
+                session.add(event)
+                await session.flush()
+                session.add(EventExperience(event_id=event.id, issue_certificate=True))
+                session.add(EventRegistration(event_id=event.id, user_id=participant.id,
+                                              status=RegistrationStatus.REGISTERED))
+                await session.commit()
+
+                await event_attendance_service.start_event(session, event.id, actor_user_id=manager.id,
+                                                           bot=None, miniapp_url="")
+                completed = await event_attendance_service.complete_event(session, event.id,
+                                                                          actor_user_id=manager.id, bot=None,
+                                                                          miniapp_url="")
+                code = completed.session.attendance_code
+                issue, created = await certificate_service.issue_post_event_certificate(
+                    session, manager, user_id=participant.id, event_id=event.id)
+                await session.commit()
+                assert created is True
+
+                result = await event_attendance_service.confirm_attendance(session, event.id, participant.id, code)
+                await session.commit()
+                assert result.points_awarded == 25
+
+            async with factory() as session:
+                keys = list(await session.scalars(select(AppSetting.key).where(
+                    AppSetting.key.like("event-certificate:%"))))
+                assert keys == [f"event-certificate:pending:{issue.id}"]
+        finally:
+            await engine.dispose()
+    run(scenario())
