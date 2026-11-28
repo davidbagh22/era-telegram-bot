@@ -4,13 +4,13 @@ import logging
 from dataclasses import dataclass
 
 from aiogram import Bot
-from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.event_experience import EventExperience
 from app.database.models import AttendanceProof, Event, EventRegistration, User
-from app.services.notification_service import safe_send, safe_send_document
+from app.services.notification_service import safe_send
 from app.services.points_service import add_points, add_portfolio_item
 from app.utils import texts
 from app.utils.constants import RegistrationStatus
@@ -88,23 +88,19 @@ async def approve_proof(
     if event is not None and (experience is None or experience.issue_certificate is not False):
         try:
             async with session.begin_nested():
-                from app.services.certificate_pdf_service import build_certificate_pdf
-                from app.services.certificate_service import auto_issue_participation_certificate
+                from app.services.certificate_service import (
+                    auto_issue_participation_certificate,
+                    enqueue_certificate_delivery,
+                )
 
                 issue = await auto_issue_participation_certificate(
                     session, reviewer, user_id=proof.user_id, event_id=proof.event_id
                 )
                 cert_note = f"\n\n📄 Сертификат участника: {issue.document_number}"
-                if bot is not None and target is not None:
-                    pdf = build_certificate_pdf(
-                        issue.snapshot, number=issue.document_number, issued_at=issue.issued_at
-                    )
+                # Same per-certificate outbox as the post-event flow: a certificate that is
+                # already queued or delivered is never sent a second time from here.
+                if await enqueue_certificate_delivery(session, issue.id) and bot is not None and target is not None:
                     await safe_send(bot, target.telegram_id, "Ваш сертификат участника ЭРА готов.")
-                    await safe_send_document(
-                        bot,
-                        target.telegram_id,
-                        BufferedInputFile(pdf, filename=f"ERA_certificate_{issue.document_number}.pdf"),
-                    )
         except Exception as exc:  # noqa: BLE001 — approval must not roll back
             logger.exception("auto certificate failed: %s", exc)
             cert_note = "\n\n(Сертификат будет выдан отдельно — обратитесь к команде ЭРА.)"

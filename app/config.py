@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     # verified chairman account (ERA_CHAIR_USER_ID). Never inferred from ADMIN_IDS.
     event_registration_owner_telegram_id: int | None = Field(default=None, gt=0)
     event_registration_owner_excel_enabled: bool = True
+    # After an event ends the same owner (and the event's responsible person) is
+    # asked who gets a certificate. Participants receive nothing until confirmed.
+    post_event_certificate_review_enabled: bool = True
 
     # One feature-flag mechanism for participant-facing optional modules.
     # Valid values: OFF / TESTERS / ALL. Testers are explicit and never

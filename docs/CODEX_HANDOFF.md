@@ -12,3 +12,4 @@
 - #582: owner-approved shared-read for media-hub; writes area-scoped (documented + tests).
 - Still blocked for full VERIFIED: E14 device/role evidence, E13 #364 legal human, #616 expert platform, GCal credentials. Do not invent legal or device acceptance.
 - Campaign/media DM flags remain off unless separately enabled.
+- Post-event certificates (owner request): after an event ends (≤3 days), owner + responsible get a bot notice and choose recipients in `/event_certificates`; nothing is issued or sent until confirmed. Flag `POST_EVENT_CERTIFICATE_REVIEW_ENABLED` (default on). Older past events: one-time backfill (marker `post-event-certs:backfill:v1`) opens the same requests and sends the owner one summary; each event still needs confirmation. **CODE COMPLETE**, real owner acceptance open.
