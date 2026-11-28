@@ -24,4 +24,20 @@ export default defineConfig({
     trace: "retain-on-failure",
     viewport: { width: 390, height: 844 }, // matches the Mini App's mobile-only reality
   },
+  projects: [
+    {
+      name: "chromium",
+      use: { browserName: "chromium" },
+    },
+    {
+      name: "webkit-ios",
+      testMatch: /home_motion_ios\.spec\.ts/,
+      use: {
+        browserName: "webkit",
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+        isMobile: true,
+      },
+    },
+  ],
 });

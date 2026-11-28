@@ -11,12 +11,18 @@ import { getTelegramWebApp } from "../telegram/webApp";
 
 const STORAGE_KEY = "era.orbit.liveBackground";
 
+export type MotionPauseReason = "none" | "user" | "reduced-motion" | "inactive";
+
 type MotionPreferenceValue = {
   /** User wants animated ambient (local setting). */
   liveBackground: boolean;
   setLiveBackground: (value: boolean) => void;
+  /** OS/browser prefers-reduced-motion: reduce is active. */
+  reducedMotion: boolean;
   /** Effective: paused when reduced motion, hidden tab, or user off. */
   motionAllowed: boolean;
+  /** Why motion is currently stopped, for explicit UI messaging. */
+  pauseReason: MotionPauseReason;
   toggleLiveBackground: () => void;
 };
 
@@ -43,10 +49,16 @@ export function MotionPreferenceProvider({ children }: { children: ReactNode }) 
   const [documentVisible, setDocumentVisible] = useState(
     typeof document === "undefined" ? true : document.visibilityState !== "hidden",
   );
-  const [telegramActive, setTelegramActive] = useState(() => getTelegramWebApp()?.isActive !== false);
+  // Start active when the document is visible; Telegram iOS can report `isActive: false`
+  // transiently during sheet launch or miss the initial `activated` event before mount.
+  // Preloaded/hidden WebViews remain paused via `documentVisible` until revealed.
+  const [telegramActive, setTelegramActive] = useState(true);
 
   const setLiveBackground = useCallback((value: boolean) => {
     setLiveBackgroundState(value);
+    if (value && (typeof document === "undefined" || document.visibilityState !== "hidden")) {
+      setTelegramActive(true);
+    }
     try {
       localStorage.setItem(STORAGE_KEY, value ? "1" : "0");
     } catch {
@@ -63,34 +75,90 @@ export function MotionPreferenceProvider({ children }: { children: ReactNode }) 
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     const onChange = () => setReducedMotion(mq.matches);
     onChange();
-    mq.addEventListener?.("change", onChange);
-    return () => mq.removeEventListener?.("change", onChange);
+    if (typeof mq.addEventListener === "function") {
+      mq.addEventListener("change", onChange);
+      return () => mq.removeEventListener("change", onChange);
+    }
+    // Legacy iOS WebKit fallback.
+    mq.addListener?.(onChange);
+    return () => mq.removeListener?.(onChange);
   }, []);
 
   useEffect(() => {
-    const onVisibility = () => setDocumentVisible(document.visibilityState !== "hidden");
-    document.addEventListener("visibilitychange", onVisibility);
     const webApp = getTelegramWebApp();
+    const syncFromHost = () => {
+      const visible = document.visibilityState !== "hidden";
+      setDocumentVisible(visible);
+      if (webApp?.isActive !== false) {
+        setTelegramActive(true);
+      }
+    };
+    const onVisibility = () => {
+      const visible = document.visibilityState !== "hidden";
+      setDocumentVisible(visible);
+      // Recover on iOS Telegram WebView if `activated` was missed after returning to foreground.
+      if (visible) setTelegramActive(true);
+    };
+    const onForegroundSignal = () => {
+      if (document.visibilityState === "hidden") return;
+      setDocumentVisible(true);
+      setTelegramActive(true);
+    };
     const onDeactivated = () => setTelegramActive(false);
     const onActivated = () => setTelegramActive(true);
+    const onViewportChanged = () => {
+      if (document.visibilityState !== "hidden" && getTelegramWebApp()?.isActive !== false) {
+        setTelegramActive(true);
+      }
+    };
+
+    syncFromHost();
+    const rafId = window.requestAnimationFrame(syncFromHost);
+
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("focus", onForegroundSignal);
+    window.addEventListener("pageshow", onForegroundSignal);
+    document.addEventListener("pointerdown", onForegroundSignal, { passive: true, capture: true });
+    document.addEventListener("keydown", onForegroundSignal, { passive: true, capture: true });
     try {
       webApp?.onEvent?.("deactivated", onDeactivated);
       webApp?.onEvent?.("activated", onActivated);
+      webApp?.onEvent?.("viewportChanged", onViewportChanged);
     } catch {
       /* older clients */
     }
     return () => {
+      window.cancelAnimationFrame(rafId);
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("focus", onForegroundSignal);
+      window.removeEventListener("pageshow", onForegroundSignal);
+      document.removeEventListener("pointerdown", onForegroundSignal, true);
+      document.removeEventListener("keydown", onForegroundSignal, true);
       webApp?.offEvent?.("deactivated", onDeactivated);
       webApp?.offEvent?.("activated", onActivated);
+      webApp?.offEvent?.("viewportChanged", onViewportChanged);
     };
   }, []);
 
   const motionAllowed = liveBackground && !reducedMotion && documentVisible && telegramActive;
+  const pauseReason: MotionPauseReason = reducedMotion
+    ? "reduced-motion"
+    : !liveBackground
+      ? "user"
+      : !documentVisible || !telegramActive
+        ? "inactive"
+        : "none";
 
   const value = useMemo(
-    () => ({ liveBackground, setLiveBackground, motionAllowed, toggleLiveBackground }),
-    [liveBackground, setLiveBackground, motionAllowed, toggleLiveBackground],
+    () => ({
+      liveBackground,
+      setLiveBackground,
+      reducedMotion,
+      motionAllowed,
+      pauseReason,
+      toggleLiveBackground,
+    }),
+    [liveBackground, setLiveBackground, reducedMotion, motionAllowed, pauseReason, toggleLiveBackground],
   );
 
   return (
@@ -103,10 +171,13 @@ export function MotionPreferenceProvider({ children }: { children: ReactNode }) 
 export function useMotionPreference(): MotionPreferenceValue {
   const ctx = useContext(MotionPreferenceContext);
   if (!ctx) {
+    const reduced = systemPrefersReducedMotion();
     return {
       liveBackground: true,
       setLiveBackground: () => undefined,
-      motionAllowed: !systemPrefersReducedMotion(),
+      reducedMotion: reduced,
+      motionAllowed: !reduced,
+      pauseReason: reduced ? "reduced-motion" : "none",
       toggleLiveBackground: () => undefined,
     };
   }

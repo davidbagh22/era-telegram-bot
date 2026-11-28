@@ -61,9 +61,13 @@
 /* Ambient/orbit layers animate transform and opacity only; keep them on their
    own compositor layers so they never trigger layout or repaint of the page. */
 .era-orbit-node__shell,
+.era-orbit-node__content,
+.era-orbit-navigator__ring,
+.era-orbit-navigator__center::after,
 .era-orbit-ambient__arc {
   will-change: transform, opacity;
   backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 /* Reduced motion: no ambient drift or breathing at all (not merely paused
@@ -71,7 +75,10 @@
 @media (prefers-reduced-motion: reduce) {
   .era-orbit-ambient__blob,
   .era-orbit-ambient__arc,
+  .era-orbit-navigator__ring,
+  .era-orbit-navigator__center::after,
   .era-orbit-node__shell,
+  .era-orbit-node__content,
   .era-premium-ambient,
   .era-gradient-drift {
     animation: none !important;

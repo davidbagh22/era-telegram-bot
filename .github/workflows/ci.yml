@@ -231,7 +231,7 @@ jobs:
         run: npm run build
       - name: Install Playwright browsers
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium webkit
       - name: Verify FSM survives client restart on real Redis
         env:
           FSM_TEST_REDIS_URL: redis://127.0.0.1:6379/0
