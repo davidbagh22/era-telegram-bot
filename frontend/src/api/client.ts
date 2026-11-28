@@ -26,6 +26,8 @@ import type {
   ChatHealthResult,
   ChatRegistryItem,
   DashboardData,
+  DecisionMutationResult,
+  DecisionQueueData,
   DepartmentStructureItem,
   EventActivityAdmin,
   EventDecisionAction,
@@ -183,6 +185,13 @@ const ACTION_ERROR_MESSAGES: Record<string, string> = {
   task_full: "Набор помощников на эту задачу уже завершён.",
   already_joined: "Вы уже откликнулись на эту задачу.",
   task_not_found: "Задача не найдена — возможно, её уже удалили.",
+  task_already_cancelled: "Задача уже отменена и убрана из очереди.",
+  task_already_completed: "Выполненную задачу нельзя удалить из очереди решений.",
+  task_not_deleted: "Эту задачу нельзя восстановить — она не была удалена.",
+  pending_submission_exists: "Нельзя удалить задачу, пока по ней есть непроверенный ответ участника.",
+  decision_not_found: "Пункт решения не найден — возможно, он уже обновлён.",
+  decision_already_deleted: "Этот пункт уже удалён из очереди решений.",
+  decision_not_deleted: "Этот пункт не был удалён.",
   rate_limited: "Слишком много попыток подряд — подождите немного и попробуйте снова.",
   reward_unavailable: "Эта возможность уже недоступна.",
   already_requested: "Заявка на эту возможность уже отправлена.",
@@ -270,7 +279,7 @@ async function authorizedGet<T>(path: string): Promise<T> {
 }
 
 async function authorizedSend<T>(
-  method: "POST" | "PATCH" | "PUT",
+  method: "POST" | "PATCH" | "PUT" | "DELETE",
   path: string,
   body?: unknown,
 ): Promise<T> {
@@ -699,6 +708,34 @@ export function fetchAdminDashboard(): Promise<DashboardData> {
 
 export function fetchRecentRegistrations(limit = 5): Promise<RecentRegistration[]> {
   return authorizedGet<RecentRegistration[]>(`/api/v1/admin/events/recent-registrations?limit=${limit}`);
+}
+
+export function fetchAdminDecisionQueue(): Promise<DecisionQueueData> {
+  return authorizedGet<DecisionQueueData>("/api/v1/admin/decision-queue");
+}
+
+export function deleteAdminDecisionItem(itemId: number, reason = ""): Promise<DecisionMutationResult> {
+  return authorizedSend<DecisionMutationResult>(
+    "DELETE",
+    `/api/v1/admin/decision-queue/decisions/${itemId}`,
+    reason.trim() ? { reason: reason.trim() } : {},
+  );
+}
+
+export function restoreAdminDecisionItem(itemId: number): Promise<DecisionMutationResult> {
+  return authorizedPost<DecisionMutationResult>(`/api/v1/admin/decision-queue/decisions/${itemId}/restore`);
+}
+
+export function deleteAdminDecisionTask(taskId: number, reason = ""): Promise<DecisionMutationResult> {
+  return authorizedSend<DecisionMutationResult>(
+    "DELETE",
+    `/api/v1/admin/decision-queue/tasks/${taskId}`,
+    reason.trim() ? { reason: reason.trim() } : {},
+  );
+}
+
+export function restoreAdminDecisionTask(taskId: number): Promise<DecisionMutationResult> {
+  return authorizedPost<DecisionMutationResult>(`/api/v1/admin/decision-queue/tasks/${taskId}/restore`);
 }
 
 export function fetchRecentActivity(): Promise<ActivityFeedEntry[]> {
@@ -1393,6 +1430,12 @@ export async function workWrite(path:string,payload:unknown){
  const response=await fetch(`${API_BASE_URL}/api/v1/workcenter/${path}`,{method:"POST",headers:{Authorization:`Bearer ${sessionToken}`,"Content-Type":"application/json"},body:JSON.stringify(payload)});
  if(!response.ok)throw new ApiError(response.status,await parseErrorDetail(response));
  return response.json();
+}
+export function deleteWorkDecision(itemId:number,reason=""){
+ return authorizedSend<{id:number;status:string;deleted:boolean;reversible:boolean}>("DELETE",`/api/v1/workcenter/decisions/${itemId}`,reason.trim()?{reason:reason.trim()}:{});
+}
+export function restoreWorkDecision(itemId:number){
+ return authorizedPost<{id:number;status:string;restored:boolean}>(`/api/v1/workcenter/decisions/${itemId}/restore`);
 }
 
 export const fetchBookAnalytics=()=>authorizedGet<{subscribers:number;responses:number;respondents:number}>("/api/v1/workcenter/book-club/analytics");

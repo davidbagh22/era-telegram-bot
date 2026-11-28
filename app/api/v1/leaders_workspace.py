@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
 from typing import Literal
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from app.api.deps import get_session, get_settings, get_bot, get_current_user
@@ -9,9 +9,11 @@ from app.api.v1.admin_executive_export import require_admin
 from app.api.v1.leader import enforce_leader_action_rate_limit
 from app.database.models import User, Task, TaskDelivery, TaskSubmission, LeadershipAttentionItem, AuditLog, Broadcast
 from app.services import leaders_workspace as service
+from app.services import leadership_report_service
 from app.services import leaders_access_service as access
 from app.services import leaders_campaign_service as campaigns
 from app.services.leaders_workcenter_service import sync_one_card
+from app.utils.constants import AttentionItemStatus
 router=APIRouter(prefix='/workcenter',tags=['leaders-workcenter'])
 
 
@@ -181,7 +183,12 @@ async def action(task_id:int,payload:TaskAction,admin:User=Depends(require_workc
 
 @router.get('/decisions')
 async def decisions(admin:User=Depends(require_admin),session=Depends(get_session)):
-    items=(await session.scalars(select(LeadershipAttentionItem).order_by(LeadershipAttentionItem.created_at.desc()).limit(200))).all()
+    items=(await session.scalars(
+        select(LeadershipAttentionItem)
+        .where(LeadershipAttentionItem.status != AttentionItemStatus.DISMISSED)
+        .order_by(LeadershipAttentionItem.created_at.desc())
+        .limit(200)
+    )).all()
     return [{'id':i.id,'type':i.type,'owner_id':i.owner_id,'responsible_id':i.responsible_id,'status':i.status,
         'text':i.resolution or 'Запрос требует внимания','task_id':i.scope_id if i.scope_type=='task' else None} for i in items]
 
@@ -190,6 +197,10 @@ class DecisionAction(BaseModel):
     status:Literal['open','in_progress','resolved','deferred']
     responsible_id:int|None=None
     comment:str=Field(default='',max_length=2000)
+
+
+class DecisionDeletePayload(BaseModel):
+    reason:str=Field(default='',max_length=500)
 
 
 @router.post('/decisions/{item_id}',dependencies=[Depends(enforce_leader_action_rate_limit)])
@@ -211,6 +222,37 @@ async def decide(item_id:int,payload:DecisionAction,admin:User=Depends(require_a
         await send_bot_notification(bot,owner.telegram_id,title='По вашему вопросу есть решение',body=payload.comment or payload.status,
             settings=settings,delivery_key=f'decision:{item.id}:{item.updated_at.isoformat()}',notification_type='leaders_decision')
     return {'id':item.id,'status':item.status}
+
+
+@router.delete('/decisions/{item_id}',dependencies=[Depends(enforce_leader_action_rate_limit)])
+async def delete_decision(
+    item_id:int,
+    payload:DecisionDeletePayload|None=Body(default=None),
+    admin:User=Depends(require_admin),
+    session=Depends(get_session),
+):
+    item=await session.get(LeadershipAttentionItem,item_id)
+    if not item: raise HTTPException(404,'decision_not_found')
+    if str(item.status)==AttentionItemStatus.DISMISSED: raise HTTPException(409,'decision_already_deleted')
+    await leadership_report_service.dismiss_attention_item(
+        session, item, actor_id=admin.id, reason=payload.reason if payload else None
+    )
+    await session.commit()
+    return {'id':item.id,'status':str(item.status),'deleted':True,'reversible':True}
+
+
+@router.post('/decisions/{item_id}/restore',dependencies=[Depends(enforce_leader_action_rate_limit)])
+async def restore_decision(
+    item_id:int,
+    admin:User=Depends(require_admin),
+    session=Depends(get_session),
+):
+    item=await session.get(LeadershipAttentionItem,item_id)
+    if not item: raise HTTPException(404,'decision_not_found')
+    if str(item.status)!=AttentionItemStatus.DISMISSED: raise HTTPException(409,'decision_not_deleted')
+    await leadership_report_service.restore_attention_item(session, item, actor_id=admin.id)
+    await session.commit()
+    return {'id':item.id,'status':str(item.status),'restored':True}
 
 
 @router.get('/announcements')

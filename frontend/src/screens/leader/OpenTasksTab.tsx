@@ -62,11 +62,11 @@ const APPLICATION_STATUS_LABELS: Record<string, string> = {
   rejected: "отклонён",
 };
 
-export function OpenTasksTab() {
+export function OpenTasksTab({ initialOpenCreate = false }: { initialOpenCreate?: boolean } = {}) {
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(fetchLeaderOpenTasks, [refreshKey]);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(initialOpenCreate);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");

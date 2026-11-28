@@ -71,12 +71,23 @@ test("admin overview is a simple leader control surface", async ({ page }) => {
 
   await expect(page.getByText("Пульт руководителя", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Что происходит в ЭРА" })).toBeVisible();
+
+  const quick = page.getByTestId("admin-quick-actions");
+  await expect(quick.getByRole("button", { name: /Рассылка/ })).toBeVisible();
+  await expect(quick.getByRole("button", { name: /Задание/ })).toBeVisible();
+  await expect(quick.getByRole("button", { name: /Мероприятие/ })).toBeVisible();
+
+  const analytics = page.getByTestId("admin-analytics-summary");
+  await expect(analytics.getByRole("button", { name: /Участники/ })).toBeVisible();
+  await expect(analytics.getByRole("button", { name: /Активные/ })).toBeVisible();
+  await expect(analytics.getByRole("button", { name: /Аналитика/ })).toBeVisible();
+
   const primary = page.getByTestId("admin-primary-actions");
   await expect(primary.getByRole("button")).toHaveCount(3);
   await expect(primary.getByRole("button", { name: /^Мероприятия/ })).toBeVisible();
   await expect(primary.getByRole("button", { name: /^Заявки/ })).toBeVisible();
   await expect(primary.getByRole("button", { name: /^Задачи/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "＋ Создать мероприятие" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Очередь решений/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Списки участников", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Последние записи" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Решить сегодня" })).toHaveCount(0);
@@ -85,7 +96,6 @@ test("admin overview is a simple leader control surface", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Решить сегодня" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Быстро сделать" })).toBeVisible();
   await expect(page.getByText("Регистрация и состав", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Аналитика/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Контроль" })).toHaveCount(0);
 });
 
@@ -105,9 +115,12 @@ test("overview shows pending applications count and the latest registrations", a
   await expect(items.first()).toContainText("Мок-встреча");
 });
 
-test("overview shows task and support queues and opens their native resolver", async ({ page }) => {
+test("overview shows task and support queues and opens their resolvers", async ({ page }) => {
   await page.route("**/api/v1/admin/dashboard", route => route.fulfill({ json: {
     metrics: { current_roster: 69, tasks_attention: 7, questions: 1 }, attention_total: 8,
+  } }));
+  await page.route("**/api/v1/admin/decision-queue", route => route.fulfill({ json: {
+    tasks: [], decisions: [], total: 0,
   } }));
   await enterAdminWorkspace(page);
   // The Telegram SDK exists in the test browser, but has no native host.
@@ -118,17 +131,94 @@ test("overview shows task and support queues and opens their native resolver", a
     };
     window.Telegram.WebApp.close = () => { document.body.dataset.nativeQueueClosed = "true"; };
   });
-  await expect(page.getByText("8 требуют внимания", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /8 требуют внимания/ })).toBeVisible();
   await openMoreTools(page);
   await expect(page.getByText("Очередь чистая ✓", { exact: true })).toHaveCount(0);
-  for (const [title, payload] of [
-    ["7 · Задачи требуют внимания", "admin_task_attention"],
-    ["1 · Обращения ждут ответа", "admin_question_attention"],
-  ]) {
-    await page.getByRole("button", { name: new RegExp(title) }).click();
-    await expect(page.locator("body")).toHaveAttribute("data-native-queue-url", `https://t.me/ERA_1bot?start=${payload}`);
-    await expect(page.locator("body")).toHaveAttribute("data-native-queue-closed", "true");
+
+  await page.getByRole("button", { name: /1 · Обращения ждут ответа/ }).click();
+  await expect(page.locator("body")).toHaveAttribute("data-native-queue-url", "https://t.me/ERA_1bot?start=admin_question_attention");
+  await expect(page.locator("body")).toHaveAttribute("data-native-queue-closed", "true");
+
+  await page.getByRole("button", { name: /7 · Задачи требуют внимания/ }).click();
+  await expect(page.getByRole("heading", { name: "Пункты, требующие решения" })).toBeVisible();
+  await page.getByRole("button", { name: "Открыть в боте", exact: true }).click();
+  await expect(page.locator("body")).toHaveAttribute("data-native-queue-url", "https://t.me/ERA_1bot?start=admin_task_attention");
+});
+
+test("command center quick actions jump directly to broadcast, task creation, and event creation", async ({ page }) => {
+  await page.route("**/api/v1/admin/broadcast/options", (route) => route.fulfill({ json: { departments: [], directions: [] } }));
+  await page.route("**/api/v1/admin/broadcast/preview-count**", (route) => route.fulfill({ json: { count: 0 } }));
+  await page.route("**/api/v1/leader/open-tasks", (route) => route.fulfill({ json: [] }));
+
+  await enterAdminWorkspace(page);
+  await page.getByTestId("admin-quick-actions").getByRole("button", { name: /Рассылка/ }).click();
+  await expect(page.getByRole("heading", { name: "Рассылки" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Обзор", exact: true }).click();
+  await page.getByTestId("admin-quick-actions").getByRole("button", { name: /Задание/ }).click();
+  await expect(page.getByRole("heading", { name: "Создать задание" })).toBeVisible();
+  await expect(page.getByPlaceholder("Название")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Опубликовать", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Обзор", exact: true }).click();
+  for (const width of [320, 430]) {
+    await page.setViewportSize({ width, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }
+  await page.getByTestId("admin-quick-actions").getByRole("button", { name: /Мероприятие/ }).click();
+  await expect(page.getByRole("heading", { name: "Создать мероприятие" })).toBeVisible();
+});
+
+test("decision queue confirms deletion with audit undo and updates list", async ({ page }) => {
+  let deletedDecision = false;
+  let deletedTask = false;
+  await page.route("**/api/v1/admin/decision-queue", (route) => route.fulfill({
+    json: {
+      decisions: deletedDecision ? [] : [{
+        id: 701, type: "pulse_help", severity: "high", status: "open",
+        text: "Тестовая эскалация на удаление", owner_name: "Лидер Тест",
+        scope_type: "pulse", scope_id: 1, task_id: null, created_at: "2026-11-20T10:00:00Z",
+      }],
+      tasks: deletedTask ? [] : [{
+        id: 801, title: "Просроченное тестовое задание", status: "in_progress",
+        deadline: "2026-11-10T10:00:00Z", assignee_name: "Участник Тест",
+        points: 50, reasons: ["overdue"], pending_submissions_count: 0, can_delete: true,
+      }],
+      total: (deletedDecision ? 0 : 1) + (deletedTask ? 0 : 1),
+    },
+  }));
+  await page.route("**/api/v1/admin/decision-queue/decisions/701", async (route) => {
+    expect(route.request().method()).toBe("DELETE");
+    deletedDecision = true;
+    await route.fulfill({ json: { kind: "decision", id: 701, status: "dismissed", deleted: true, restored: false, reversible: true } });
+  });
+  await page.route("**/api/v1/admin/decision-queue/decisions/701/restore", async (route) => {
+    deletedDecision = false;
+    await route.fulfill({ json: { kind: "decision", id: 701, status: "open", deleted: false, restored: true, reversible: true } });
+  });
+  await page.route("**/api/v1/admin/decision-queue/tasks/801", async (route) => {
+    expect(route.request().method()).toBe("DELETE");
+    deletedTask = true;
+    await route.fulfill({ json: { kind: "task", id: 801, status: "cancelled", deleted: true, restored: false, reversible: true } });
+  });
+
+  await enterAdminWorkspace(page);
+  await page.getByRole("button", { name: /^Очередь решений/ }).click();
+  await expect(page.getByText("Тестовая эскалация на удаление")).toBeVisible();
+  await expect(page.getByText("Просроченное тестовое задание")).toBeVisible();
+
+  await page.getByTestId("decision-queue-items").getByRole("button", { name: "Удалить" }).click();
+  await expect(page.getByText("Удалить из очереди решений?")).toBeVisible();
+  await page.getByRole("button", { name: "Подтвердить удаление" }).click();
+  await expect(page.getByText("Тестовая эскалация на удаление")).toHaveCount(1); // shown in undo banner
+  await expect(page.getByTestId("decision-queue-items")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Вернуть" }).click();
+  await expect(page.getByTestId("decision-queue-items").getByText("Тестовая эскалация на удаление")).toBeVisible();
+
+  await page.getByTestId("decision-queue-tasks").getByRole("button", { name: "Удалить" }).click();
+  await page.getByRole("button", { name: "Подтвердить удаление" }).click();
+  await expect(page.getByTestId("decision-queue-tasks")).toHaveCount(0);
 });
 
 test("Решить сегодня opens event and project resolvers, not section menus", async ({ page }) => {
@@ -220,7 +310,6 @@ test("appoint leader keeps selected person after search clears", async ({ page }
 
 test("analytics expands from overview instead of a separate control hub", async ({ page }) => {
   await enterAdminWorkspace(page);
-  await openMoreTools(page);
   await page.getByRole("button", { name: /Аналитика/ }).click();
 
   await expect(page.getByRole("heading", { name: "ЭРА одним взглядом" })).toBeVisible();
@@ -318,7 +407,6 @@ test("analytics shows observed zero counters and excludes personal-list shortcut
 
 test("overview KPI opens exact underlying rows", async ({ page }) => {
   await enterAdminWorkspace(page);
-  await openMoreTools(page);
 
   const currentRoster = page.getByRole("button", { name: /Участники.*Открыть состав/ });
   await expect(currentRoster).toBeVisible();

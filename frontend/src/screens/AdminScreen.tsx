@@ -16,8 +16,8 @@ import { AdminAttendanceProofsScreen } from "./admin/AdminAttendanceProofsScreen
 import { AdminOverviewScreen } from "./admin/AdminOverviewScreen";
 import { AdminProjectsScreen } from "./admin/AdminProjectsScreen";
 import { AdminSurveysScreen } from "./admin/AdminSurveysScreen";
-import { AdminTasksScreen } from "./admin/AdminTasksScreen";
-import { AdminToolsScreen } from "./admin/AdminToolsScreen";
+import { AdminTasksScreen, type TasksSection } from "./admin/AdminTasksScreen";
+import { AdminToolsScreen, type ToolsSection } from "./admin/AdminToolsScreen";
 import { AdminUsersScreen } from "./admin/AdminUsersScreen";
 import { AdminVerificationScreen } from "./admin/AdminVerificationScreen";
 
@@ -26,12 +26,19 @@ type WorkSection = "pulse" | "projects" | "events" | "tasks" | "offers";
 type CommsSection = "surveys" | "tools";
 type EventsLaunch = { section: "moderation" | "activities" | "operations" | "create"; activitiesMode?: "review" | "manage" };
 type ProjectsLaunch = { section: "create" | "moderation" | "team-posts" };
+type TasksLaunch = { section: TasksSection; openCreate?: boolean };
+type ToolsLaunch = { section: ToolsSection };
 type SectionOption<T extends string> = { value: T; label: string; description: string };
 type MetricDetail = { metric: AdminMetricKey; total: number };
 
 type InitialAdminRoute = {
   peopleSection: PeopleSection | null;
   workSection: WorkSection | null;
+  commsSection: CommsSection | null;
+  toolsLaunch: ToolsLaunch | null;
+  tasksLaunch: TasksLaunch | null;
+  eventsLaunch: EventsLaunch | null;
+  overviewView: "home" | "decisions";
   applicationId: number | null;
 };
 
@@ -68,14 +75,32 @@ function positiveId(value: string | null): number | null {
 function initialAdminRoute(): InitialAdminRoute {
   const query = new URLSearchParams(window.location.search);
   const section = query.get("adminSection");
-  const people = (peopleSection: PeopleSection, applicationId: number | null = null): InitialAdminRoute => ({ peopleSection, workSection: null, applicationId });
+  const base: InitialAdminRoute = {
+    peopleSection: null,
+    workSection: null,
+    commsSection: null,
+    toolsLaunch: null,
+    tasksLaunch: null,
+    eventsLaunch: null,
+    overviewView: "home",
+    applicationId: null,
+  };
+  const people = (peopleSection: PeopleSection, applicationId: number | null = null): InitialAdminRoute => ({
+    ...base,
+    peopleSection,
+    applicationId,
+  });
   if (section === "applications") return people("applications", positiveId(query.get("applicationId")));
   if (section === "team-tasks") return people("leaders-chat");
   if (section === "offices") return people("offices");
   if (section === "appoint-leader") return people("appoint-leader");
-  if (section === "events") return { peopleSection: null, workSection: "events", applicationId: null };
-  if (section === "tasks") return { peopleSection: null, workSection: "tasks", applicationId: null };
-  return { peopleSection: null, workSection: null, applicationId: null };
+  if (section === "events") return { ...base, workSection: "events" };
+  if (section === "create-event") return { ...base, workSection: "events", eventsLaunch: { section: "create" } };
+  if (section === "tasks") return { ...base, workSection: "tasks" };
+  if (section === "create-task") return { ...base, workSection: "tasks", tasksLaunch: { section: "create", openCreate: true } };
+  if (section === "broadcast") return { ...base, commsSection: "tools", toolsLaunch: { section: "broadcast" } };
+  if (section === "decisions") return { ...base, overviewView: "decisions" };
+  return base;
 }
 
 function SectionMenu<T extends string>({ title, description, options, onOpen }: { title: string; description: string; options: SectionOption<T>[]; onOpen: (value: T) => void }) {
@@ -104,13 +129,23 @@ function SectionHeader({ title, onBack }: { title: string; onBack: () => void })
 
 export function AdminScreen() {
   const [launchRoute] = useState<InitialAdminRoute>(() => initialAdminRoute());
-  const [group, setGroup] = useState<AdminGroup>(launchRoute.peopleSection ? "people" : launchRoute.workSection ? "work" : "overview");
+  const [group, setGroup] = useState<AdminGroup>(
+    launchRoute.peopleSection
+      ? "people"
+      : launchRoute.workSection
+        ? "work"
+        : launchRoute.commsSection
+          ? "comms"
+          : "overview",
+  );
   const [peopleSection, setPeopleSection] = useState<PeopleSection | null>(launchRoute.peopleSection);
   const [workSection, setWorkSection] = useState<WorkSection | null>(launchRoute.workSection);
   const [offersInitialSection, setOffersInitialSection] = useState<OffersSection>("applications");
-  const [eventsLaunch, setEventsLaunch] = useState<EventsLaunch | null>(null);
+  const [eventsLaunch, setEventsLaunch] = useState<EventsLaunch | null>(launchRoute.eventsLaunch);
   const [projectsLaunch, setProjectsLaunch] = useState<ProjectsLaunch | null>(null);
-  const [commsSection, setCommsSection] = useState<CommsSection | null>(null);
+  const [tasksLaunch, setTasksLaunch] = useState<TasksLaunch | null>(launchRoute.tasksLaunch);
+  const [commsSection, setCommsSection] = useState<CommsSection | null>(launchRoute.commsSection);
+  const [toolsLaunch, setToolsLaunch] = useState<ToolsLaunch | null>(launchRoute.toolsLaunch);
   const [metricDetail, setMetricDetail] = useState<MetricDetail | null>(null);
   const [showAttendanceProofs, setShowAttendanceProofs] = useState(false);
 
@@ -122,6 +157,8 @@ export function AdminScreen() {
     setShowAttendanceProofs(false);
     setEventsLaunch(null);
     setProjectsLaunch(null);
+    setTasksLaunch(null);
+    setToolsLaunch(null);
   };
 
   const changeGroup = (next: AdminGroup) => {
@@ -137,7 +174,7 @@ export function AdminScreen() {
   const openWork = (
     section: WorkSection,
     offersSection: OffersSection = "applications",
-    launch?: { events?: EventsLaunch | null; projects?: ProjectsLaunch | null },
+    launch?: { events?: EventsLaunch | null; projects?: ProjectsLaunch | null; tasks?: TasksLaunch | null },
   ) => {
     setGroup("work");
     clearSections();
@@ -145,11 +182,13 @@ export function AdminScreen() {
     if (section === "offers") setOffersInitialSection(offersSection);
     if (section === "events") setEventsLaunch(launch?.events ?? null);
     if (section === "projects") setProjectsLaunch(launch?.projects ?? null);
+    if (section === "tasks") setTasksLaunch(launch?.tasks ?? null);
   };
-  const openCommsSection = (section: CommsSection) => {
+  const openCommsSection = (section: CommsSection, launch?: { tools?: ToolsLaunch | null }) => {
     setGroup("comms");
     clearSections();
     setCommsSection(section);
+    if (section === "tools") setToolsLaunch(launch?.tools ?? null);
   };
   const openMetric = (metric: AdminMetricKey, total: number) => {
     setGroup("overview");
@@ -157,6 +196,7 @@ export function AdminScreen() {
     setMetricDetail({ metric, total });
   };
   const openComms = () => openCommsSection("tools");
+  const openBroadcast = () => openCommsSection("tools", { tools: { section: "broadcast" } });
   const openMetricEntity = (entityType: string) => {
     if (entityType === "user") openPeople("participants");
     else if (entityType === "project") openWork("projects");
@@ -190,9 +230,13 @@ export function AdminScreen() {
             onOpenActivityResults={() => openWork("events", "applications", { events: { section: "activities", activitiesMode: "review" } })}
             onOpenAttendanceProofs={() => { clearSections(); setGroup("overview"); setShowAttendanceProofs(true); }}
             onOpenTasks={() => openWork("tasks")}
+            onOpenTaskCreate={() => openWork("tasks", "applications", { tasks: { section: "create", openCreate: true } })}
+            onOpenTaskReview={() => openWork("tasks", "applications", { tasks: { section: "review" } })}
             onOpenOffers={() => openWork("offers", "rewards")}
+            onOpenBroadcast={openBroadcast}
             onOpenComms={openComms}
             onOpenMetric={openMetric}
+            initialView={launchRoute.overviewView}
           />
         )}
 
@@ -227,7 +271,13 @@ export function AdminScreen() {
                 initialActivitiesMode={eventsLaunch?.activitiesMode ?? null}
               />
             )}
-            {workSection === "tasks" && <AdminTasksScreen />}
+            {workSection === "tasks" && (
+              <AdminTasksScreen
+                key={`${tasksLaunch?.section ?? "menu"}:${tasksLaunch?.openCreate ? "open" : "closed"}`}
+                initialSection={tasksLaunch?.section ?? null}
+                initialOpenCreate={Boolean(tasksLaunch?.openCreate)}
+              />
+            )}
             {workSection === "offers" && <AdminOffersScreen key={offersInitialSection} initialSection={offersInitialSection} />}
           </div>
         )}
@@ -237,7 +287,12 @@ export function AdminScreen() {
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <SectionHeader title={COMMS_SECTIONS.find((item) => item.value === commsSection)?.label ?? "Связь"} onBack={() => setCommsSection(null)} />
             {commsSection === "surveys" && <AdminSurveysScreen />}
-            {commsSection === "tools" && <AdminToolsScreen />}
+            {commsSection === "tools" && (
+              <AdminToolsScreen
+                key={toolsLaunch?.section ?? "menu"}
+                initialSection={toolsLaunch?.section ?? null}
+              />
+            )}
           </div>
         )}
       </div>

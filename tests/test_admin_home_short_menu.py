@@ -162,10 +162,14 @@ class AdminHomeContractTests(unittest.TestCase):
         more = self.overview[more_start:]
         before_more = self.overview[:more_start]
         self.assertIn('aria-controls="admin-more-tools"', before_more)
+        self.assertIn('data-testid="admin-quick-actions"', before_more)
+        self.assertIn('data-testid="admin-analytics-summary"', before_more)
+        for marker in ("Рассылка", "Задание", "Мероприятие", "Аналитика", "СЕЙЧАС"):
+            self.assertIn(marker, before_more, marker)
         for marker in (
-            "Быстро сделать", "Решить сегодня", "Регистрация и состав", "Аналитика", "Сейчас",
+            "Быстро сделать", "Решить сегодня", "Регистрация и состав",
             'title="Мероприятие"', 'title="Редактировать мероприятие"', 'title="Рассылка"',
-            'title="Проект"', 'title="Участники"', "onOpenVerification", "onOpenAnalytics",
+            'title="Проект"', 'title="Участники"', "onOpenVerification",
         ):
             self.assertIn(marker, more, marker)
 

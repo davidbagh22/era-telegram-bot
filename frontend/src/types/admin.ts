@@ -3,6 +3,46 @@ export interface DashboardData {
   attention_total: number;
 }
 
+export interface DecisionQueueTask {
+  id: number;
+  title: string;
+  status: string;
+  deadline: string | null;
+  assignee_name: string | null;
+  points: number;
+  reasons: string[];
+  pending_submissions_count: number;
+  can_delete: boolean;
+}
+
+export interface DecisionQueueItem {
+  id: number;
+  type: string;
+  severity: string;
+  status: string;
+  text: string;
+  owner_name: string | null;
+  scope_type: string;
+  scope_id: number | null;
+  task_id: number | null;
+  created_at: string | null;
+}
+
+export interface DecisionQueueData {
+  tasks: DecisionQueueTask[];
+  decisions: DecisionQueueItem[];
+  total: number;
+}
+
+export interface DecisionMutationResult {
+  kind: "task" | "decision";
+  id: number;
+  status: string;
+  deleted: boolean;
+  restored: boolean;
+  reversible: boolean;
+}
+
 export interface RecentRegistration {
   registration_id: number;
   event_id: number;
