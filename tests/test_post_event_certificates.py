@@ -12,9 +12,9 @@ from app.config import Settings
 from app.database.base import Base
 from app.database.certificate_models import CertificateIssue
 from app.database.event_experience import EventExperience
-from app.database.models import AppSetting, Event, EventRegistration, PermissionGrant, PortfolioItem, User
+from app.database.models import AppSetting, AttendanceProof, Event, EventRegistration, PermissionGrant, PortfolioItem, User
 from app.handlers import post_event_certificates as handlers
-from app.services import certificate_service
+from app.services import attendance_proof_service, certificate_service
 from app.services import post_event_certificate_service as service
 from app.services.notification_service import NotificationDeliveryResult
 from app.utils.constants import ApplicationStatus, EventStatus, RegistrationStatus, Role
@@ -359,6 +359,89 @@ def test_handlers_deny_outsiders_and_double_confirm_sends_once():
                 labels = [row[0].text for row in markup.inline_keyboard if row[0].callback_data.startswith("pec:t:")]
                 assert labels == ["🎓 Анна Был · выдан", "🎓 Борис Записан · выдан", "🚫 Дина Заблокирована · недоступен"]
                 assert "Зарегистрировались: 3" in text
+        finally:
+            await engine.dispose()
+    run(scenario())
+
+
+async def _pdf_sends(factory, settings, chat_id):
+    send = AsyncMock(return_value=sent())
+    with patch("app.services.notification_service.safe_send_once", send):
+        await certificate_service.deliver_requested_certificates(SimpleNamespace(), settings, factory)
+    return [c for c in send.await_args_list if c.args[2] == chat_id]
+
+
+def test_certificate_is_sent_once_whatever_the_order_of_owner_issue_and_proof_approval():
+    async def scenario(order):
+        bot = AsyncMock()
+        engine, factory = await make_db()
+        try:
+            async with factory() as session:
+                d = await seed(session)
+                proof = AttendanceProof(event_id=d.ended.id, user_id=d.boris.id, photo_file_id="tg-photo",
+                                        status="pending")
+                session.add(proof)
+                await session.commit()
+                await session.refresh(proof)
+                await service.ensure_review(session, d.ended, source="test")
+                await service.change_selection(session, d.owner, d.settings, d.ended.id, "toggle", d.boris.id)
+                rev = (await service.load_review(session, d.ended.id)).value["rev"]
+                await session.commit()
+
+                async def owner_issue():
+                    async with factory() as s:
+                        owner = await s.get(User, d.owner.id)
+                        await service.confirm(s, owner, d.settings, d.ended.id, rev)
+                        await s.commit()
+
+                async def approve():
+                    async with factory() as s:
+                        reviewer = await s.get(User, d.owner.id)
+                        live = await s.get(AttendanceProof, proof.id)
+                        with patch("app.services.attendance_proof_service.safe_send", AsyncMock()):
+                            await attendance_proof_service.approve_proof(s, live, reviewer=reviewer, bot=bot)
+                        await s.commit()
+
+                steps = [owner_issue, approve] if order == "owner_first" else [approve, owner_issue]
+                for step in steps:
+                    await step()
+                first = await _pdf_sends(factory, d.settings, d.boris.telegram_id)
+                again = await _pdf_sends(factory, d.settings, d.boris.telegram_id)
+            assert len(first) == 1 and again == []
+            bot.send_document.assert_not_awaited()
+            assert first[0].kwargs["delivery_key"].startswith("event-certificate:")
+            async with factory() as session:
+                issues = list(await session.scalars(select(CertificateIssue).where(CertificateIssue.user_id == d.boris.id)))
+                assert len(issues) == 1 and issues[0].status == "issued"
+        finally:
+            await engine.dispose()
+    run(scenario("owner_first"))
+    run(scenario("proof_first"))
+
+
+def test_approval_after_delivery_already_happened_sends_nothing_more():
+    async def scenario():
+        bot = AsyncMock()
+        engine, factory = await make_db()
+        try:
+            async with factory() as session:
+                d = await seed(session)
+                await service.ensure_review(session, d.ended, source="test")
+                await service.change_selection(session, d.owner, d.settings, d.ended.id, "toggle", d.boris.id)
+                rev = (await service.load_review(session, d.ended.id)).value["rev"]
+                await service.confirm(session, d.owner, d.settings, d.ended.id, rev)
+                session.add(AttendanceProof(event_id=d.ended.id, user_id=d.boris.id, photo_file_id="tg-photo",
+                                            status="pending"))
+                await session.commit()
+            assert len(await _pdf_sends(factory, d.settings, d.boris.telegram_id)) == 1
+            async with factory() as session:
+                proof = await session.scalar(select(AttendanceProof).where(AttendanceProof.user_id == d.boris.id))
+                reviewer = await session.get(User, d.owner.id)
+                with patch("app.services.attendance_proof_service.safe_send", AsyncMock()):
+                    await attendance_proof_service.approve_proof(session, proof, reviewer=reviewer, bot=bot)
+                await session.commit()
+            assert await _pdf_sends(factory, d.settings, d.boris.telegram_id) == []
+            bot.send_document.assert_not_awaited()
         finally:
             await engine.dispose()
     run(scenario())
