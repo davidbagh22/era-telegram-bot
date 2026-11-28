@@ -149,13 +149,17 @@ test("admin Работа → Мероприятия formats date cleanly, keeps 
     const hideBtn1 = await actions1.getByRole("button", { name: "Скрыть из общей афиши" }).boundingBox();
     const editBtn1 = await actions1.getByRole("button", { name: "Редактировать мероприятие" }).boundingBox();
     const posterBtn1 = await actions1.getByRole("button", { name: "Изменить афишу" }).boundingBox();
+    const removeBtn1 = await actions1.getByRole("button", { name: "Убрать", exact: true }).boundingBox();
     expect(participantsBtn1).not.toBeNull();
     expect(hideBtn1).not.toBeNull();
     expect(editBtn1).not.toBeNull();
     expect(posterBtn1).not.toBeNull();
+    expect(removeBtn1).not.toBeNull();
 
     expect(Math.abs(participantsBtn1!.x - hideBtn1!.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(participantsBtn1!.width - hideBtn1!.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(participantsBtn1!.x - removeBtn1!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(participantsBtn1!.width - removeBtn1!.width)).toBeLessThanOrEqual(1);
     expect(Math.abs(participantsBtn1!.x - editBtn1!.x)).toBeLessThanOrEqual(1);
     expect(Math.abs(editBtn1!.width - posterBtn1!.width)).toBeLessThanOrEqual(2);
 

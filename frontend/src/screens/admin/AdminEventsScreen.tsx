@@ -85,6 +85,7 @@ export function AdminEventsScreen({
               onSelect={setSelectedEventId}
               onEditPoster={setPosterEventId}
               onOpenParticipants={(eventId) => { setFocusParticipants(true); setSelectedEventId(eventId); }}
+              canRemove
             />
             : <EventParticipantsPanel eventId={selectedEventId} focusParticipants={focusParticipants} onBack={() => { setSelectedEventId(null); setFocusParticipants(false); if (initialEventId) window.location.hash = "#/admin"; }} />
       )}

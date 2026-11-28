@@ -215,6 +215,10 @@ export function cancelAdminEvent(eventId: number): Promise<AdminEventDraft> {
   return requestJson<AdminEventDraft>(`/api/v1/admin/events/${eventId}/cancel`, { method: "POST" });
 }
 
+export function restoreAdminEvent(eventId: number): Promise<AdminEventDraft> {
+  return requestJson<AdminEventDraft>(`/api/v1/admin/events/${eventId}/restore`, { method: "POST" });
+}
+
 export async function uploadEventPoster(eventId: number, file: File): Promise<AdminEventDraft> {
   const body = new FormData();
   body.append("file", file);
