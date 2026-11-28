@@ -337,6 +337,92 @@ class AdminDecisionQueueApiTests(unittest.IsolatedAsyncioTestCase):
             metrics = await dashboard_metrics(session)
             self.assertEqual(metrics.values["tasks_attention"], 2)
 
+    async def test_open_task_remove_and_restore_updates_leader_open_tasks_list(self) -> None:
+        data = await self._seed()
+        client = self._client(data["admin"])
+        now = datetime.now(timezone.utc)
+        async with self.factory() as session:
+            open_task = Task(
+                title="Запиши видео «Почему я с ЭРА»",
+                description="Короткое видео про участие",
+                creator_id=data["admin"].id,
+                assignee_id=None,
+                deadline=now + timedelta(days=3),
+                points=50,
+                task_type="challenge",
+                status=TaskStatus.PUBLISHED,
+                max_participants=20,
+            )
+            guarded_open_task = Task(
+                title="Задание с непроверенным ответом",
+                description="Есть ответ участника",
+                creator_id=data["admin"].id,
+                assignee_id=None,
+                deadline=now + timedelta(days=3),
+                points=80,
+                task_type="challenge",
+                status=TaskStatus.PUBLISHED,
+                max_participants=5,
+            )
+            session.add_all([open_task, guarded_open_task])
+            await session.flush()
+            session.add(
+                TaskSubmission(
+                    task_id=guarded_open_task.id,
+                    user_id=data["participant"].id,
+                    status="pending",
+                )
+            )
+            await session.commit()
+            open_task_id = open_task.id
+            guarded_id = guarded_open_task.id
+
+        # Non-admin cannot remove the open task.
+        for non_admin in (data["leader"], data["participant"]):
+            forbidden = await asyncio.to_thread(
+                self._client(non_admin).delete, f"/api/v1/admin/decision-queue/tasks/{open_task_id}"
+            )
+            self.assertEqual(forbidden.status_code, 403)
+
+        # Open task with pending submission is blocked (409) and stays in open-tasks list.
+        blocked = await asyncio.to_thread(
+            client.delete, f"/api/v1/admin/decision-queue/tasks/{guarded_id}"
+        )
+        self.assertEqual(blocked.status_code, 409)
+        self.assertEqual(blocked.json()["detail"], "pending_submission_exists")
+
+        listed_before = await asyncio.to_thread(client.get, "/api/v1/leader/open-tasks")
+        self.assertEqual(listed_before.status_code, 200)
+        before_ids = [row["id"] for row in listed_before.json()]
+        self.assertIn(open_task_id, before_ids)
+        self.assertIn(guarded_id, before_ids)
+
+        # Admin soft-deletes open task -> disappears from open-tasks list and writes AuditLog.
+        removed = await asyncio.to_thread(
+            client.request,
+            "DELETE",
+            f"/api/v1/admin/decision-queue/tasks/{open_task_id}",
+            json={"reason": "Неактуально"},
+        )
+        self.assertEqual(removed.status_code, 200)
+        self.assertEqual(removed.json()["status"], TaskStatus.CANCELLED)
+
+        listed_after = await asyncio.to_thread(client.get, "/api/v1/leader/open-tasks")
+        self.assertEqual(listed_after.status_code, 200)
+        after_ids = [row["id"] for row in listed_after.json()]
+        self.assertNotIn(open_task_id, after_ids)
+        self.assertIn(guarded_id, after_ids)
+
+        # Restore brings it back with published status.
+        restored = await asyncio.to_thread(
+            client.post, f"/api/v1/admin/decision-queue/tasks/{open_task_id}/restore"
+        )
+        self.assertEqual(restored.status_code, 200)
+        self.assertEqual(restored.json()["status"], TaskStatus.PUBLISHED)
+
+        listed_restored = await asyncio.to_thread(client.get, "/api/v1/leader/open-tasks")
+        self.assertIn(open_task_id, [row["id"] for row in listed_restored.json()])
+
     async def test_workcenter_delete_decision_endpoint_soft_deletes_and_audits(self) -> None:
         data = await self._seed()
         client = self._client(data["admin"])

@@ -133,6 +133,7 @@ test("leader opens the separate workspace and creates a new open task", async ({
   await page.locator('input[type="datetime-local"]').fill(futureDeadline);
   await page.getByRole("button", { name: "Опубликовать" }).click();
   await expect(page.getByText(taskTitle)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Убрать", exact: true })).toHaveCount(0);
 });
 
 test("leader Пульс недели keeps system facts separate and persists subjective weekly assessment", async ({ page }) => {

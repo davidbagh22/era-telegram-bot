@@ -50,7 +50,7 @@ export function AdminTasksScreen({
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       <button type="button" onClick={() => setSection(null)} style={{ alignSelf: "flex-start" }}>← К заданиям</button>
       <h2 style={{ margin: 0, fontSize: "var(--era-text-2xl)" }}>{section === "create" ? "Создать задание" : section === "review" ? "Проверить результаты" : "Задачи сообщества"}</h2>
-      {section === "create" && <OpenTasksTab initialOpenCreate={initialOpenCreate} />}
+      {section === "create" && <OpenTasksTab initialOpenCreate={initialOpenCreate} canRemove />}
       {section === "review" && <TaskSubmissionReview />}
       {section === "missions" && <MissionTemplatesPanel />}
     </div>

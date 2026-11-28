@@ -24,7 +24,7 @@ from app.database.models import (
 from app.keyboards.participant import open_app_button
 from app.services.audit_service import audit
 from app.services.notification_service import safe_send
-from app.utils.constants import ApplicationStatus, Role
+from app.utils.constants import ApplicationStatus, Role, TaskStatus
 from app.utils.deep_links import miniapp_task_url
 
 OPEN_TASK_TYPE = "challenge"
@@ -355,7 +355,11 @@ async def list_open_tasks_with_applications(
 ) -> list[OpenTaskWithApplications]:
     tasks = await session.scalars(
         select(Task)
-        .where(Task.creator_id == user.id, Task.task_type == OPEN_TASK_TYPE)
+        .where(
+            Task.creator_id == user.id,
+            Task.task_type == OPEN_TASK_TYPE,
+            Task.status != TaskStatus.CANCELLED,
+        )
         .order_by(Task.deadline)
     )
     result: list[OpenTaskWithApplications] = []

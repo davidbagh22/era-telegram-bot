@@ -3,8 +3,10 @@ import type { CSSProperties } from "react";
 import {
   createLeaderOpenTask,
   decideLeaderApplication,
+  deleteAdminDecisionTask,
   describeActionError,
   fetchLeaderOpenTasks,
+  restoreAdminDecisionTask,
   retryTaskDelivery,
 } from "../../api/client";
 import { BottomSheet } from "../../components/BottomSheet";
@@ -62,7 +64,13 @@ const APPLICATION_STATUS_LABELS: Record<string, string> = {
   rejected: "отклонён",
 };
 
-export function OpenTasksTab({ initialOpenCreate = false }: { initialOpenCreate?: boolean } = {}) {
+export function OpenTasksTab({
+  initialOpenCreate = false,
+  canRemove = false,
+}: {
+  initialOpenCreate?: boolean;
+  canRemove?: boolean;
+} = {}) {
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(fetchLeaderOpenTasks, [refreshKey]);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
@@ -76,6 +84,9 @@ export function OpenTasksTab({ initialOpenCreate = false }: { initialOpenCreate?
   const [actionError, setActionError] = useState<string | null>(null);
   const [destinations, setDestinations] = useState<TaskDestinationKey[]>([]);
   const [showDestinationSheet, setShowDestinationSheet] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<{ id: number; title: string } | null>(null);
+  const [removeReason, setRemoveReason] = useState("");
+  const [undoTask, setUndoTask] = useState<{ id: number; title: string } | null>(null);
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
@@ -153,6 +164,40 @@ export function OpenTasksTab({ initialOpenCreate = false }: { initialOpenCreate?
     },
     [refresh],
   );
+
+  const handleConfirmRemove = useCallback(async () => {
+    if (!confirmRemove) return;
+    const target = confirmRemove;
+    setPendingKey(`remove:${target.id}`);
+    setActionError(null);
+    try {
+      await deleteAdminDecisionTask(target.id, removeReason.trim() || undefined);
+      setConfirmRemove(null);
+      setRemoveReason("");
+      setUndoTask(target);
+      refresh();
+    } catch (error) {
+      setActionError(describeActionError(error));
+      setConfirmRemove(null);
+    } finally {
+      setPendingKey(null);
+    }
+  }, [confirmRemove, removeReason, refresh]);
+
+  const handleUndoRemove = useCallback(async () => {
+    if (!undoTask) return;
+    setPendingKey(`restore:${undoTask.id}`);
+    setActionError(null);
+    try {
+      await restoreAdminDecisionTask(undoTask.id);
+      setUndoTask(null);
+      refresh();
+    } catch (error) {
+      setActionError(describeActionError(error));
+    } finally {
+      setPendingKey(null);
+    }
+  }, [undoTask, refresh]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
@@ -264,7 +309,25 @@ export function OpenTasksTab({ initialOpenCreate = false }: { initialOpenCreate?
       </BottomSheet>
 
       {actionError && (
-        <p style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
+        <p role="alert" style={{ color: "var(--era-error)", fontSize: "0.8125rem", margin: 0 }}>{actionError}</p>
+      )}
+
+      {undoTask && (
+        <Card style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
+          <div style={{ minWidth: 0 }}>
+            <strong style={{ display: "block", fontSize: "0.875rem" }}>Задача убрана</strong>
+            <span style={{ color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
+              {undoTask.title} · записано в аудит
+            </span>
+          </div>
+          <button
+            type="button"
+            disabled={pendingKey === `restore:${undoTask.id}`}
+            onClick={() => void handleUndoRemove()}
+          >
+            {pendingKey === `restore:${undoTask.id}` ? "Возвращаем…" : "Вернуть"}
+          </button>
+        </Card>
       )}
 
       {state.status === "loading" && <p style={{ color: "var(--era-text-muted)" }}>Загрузка…</p>}
@@ -350,8 +413,66 @@ export function OpenTasksTab({ initialOpenCreate = false }: { initialOpenCreate?
                 })}
               </div>
             )}
+            {canRemove && (
+              <div style={{ marginTop: "0.625rem", display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  data-testid={`open-task-remove-${task.id}`}
+                  disabled={pendingKey === `remove:${task.id}`}
+                  onClick={() => {
+                    setActionError(null);
+                    setRemoveReason("");
+                    setConfirmRemove({ id: task.id, title: task.title });
+                  }}
+                >
+                  Убрать
+                </button>
+              </div>
+            )}
           </Card>
         ))}
+
+      <BottomSheet
+        open={confirmRemove !== null}
+        onClose={() => {
+          if (!pendingKey?.startsWith("remove:")) setConfirmRemove(null);
+        }}
+        title="Убрать задачу?"
+      >
+        {confirmRemove && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            <strong style={{ fontSize: "0.95rem" }}>{confirmRemove.title}</strong>
+            <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.85rem" }}>
+              Задача исчезнет из списка и у участников. Действие запишется в журнал аудита, его можно сразу отменить.
+              Задачу с непроверенными ответами участников убрать нельзя.
+            </p>
+            <input
+              value={removeReason}
+              onChange={(event) => setRemoveReason(event.target.value)}
+              placeholder="Причина (необязательно)"
+              maxLength={500}
+              style={inputStyle}
+            />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "0.5rem" }}>
+              <button
+                type="button"
+                disabled={pendingKey === `remove:${confirmRemove.id}`}
+                onClick={() => setConfirmRemove(null)}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="era-btn-primary"
+                disabled={pendingKey === `remove:${confirmRemove.id}`}
+                onClick={() => void handleConfirmRemove()}
+              >
+                {pendingKey === `remove:${confirmRemove.id}` ? "Убираем…" : "Убрать задачу"}
+              </button>
+            </div>
+          </div>
+        )}
+      </BottomSheet>
     </div>
   );
 }

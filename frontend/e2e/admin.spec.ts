@@ -447,3 +447,35 @@ test("leaders workcenter creates a task and confirms a separate leader status", 
   await page.getByRole("tab", { name: "Рассылки", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Сообщение команде" })).toBeVisible();
 });
+
+test("admin can remove an open task in Работа → Задания with confirmation and undo", async ({ page }) => {
+  await enterAdminWorkspace(page);
+  await page.getByRole("button", { name: "Работа", exact: true }).click();
+  await page.getByRole("button", { name: /Задания.*Создание задач/ }).click();
+  await page.getByRole("button", { name: /Создать задание/ }).click();
+
+  await page.getByRole("button", { name: "Новая открытая задача" }).click();
+  const taskTitle = `E2E убрать задачу ${Date.now()}`;
+  await page.getByPlaceholder("Название").fill(taskTitle);
+  await page.getByPlaceholder("Описание").fill("Временная тестовая задача для проверки удаления.");
+  const futureDeadline = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16);
+  await page.locator('input[type="datetime-local"]').fill(futureDeadline);
+  await page.getByRole("button", { name: "Опубликовать" }).click();
+
+  const card = page
+    .locator(".era-card")
+    .filter({ hasText: taskTitle })
+    .filter({ has: page.getByRole("button", { name: "Убрать", exact: true }) });
+  await expect(card).toBeVisible();
+  await card.getByRole("button", { name: "Убрать", exact: true }).click();
+
+  await expect(page.getByRole("heading", { name: "Убрать задачу?" })).toBeVisible();
+  await page.getByPlaceholder("Причина (необязательно)").fill("Неактуально");
+  await page.getByRole("button", { name: "Убрать задачу", exact: true }).click();
+
+  await expect(card).toHaveCount(0);
+  await expect(page.getByText("Задача убрана", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Вернуть", exact: true }).click();
+  await expect(card).toBeVisible();
+});
