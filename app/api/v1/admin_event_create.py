@@ -841,6 +841,8 @@ async def restore_event(
     event_id: int,
     admin: User = Depends(require_full_admin),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    bot: Bot | None = Depends(get_bot),
 ) -> EventDraftOut:
     event = await _managed_event(session, event_id)
     experience = await _experience(session, event)
@@ -871,6 +873,11 @@ async def restore_event(
         restored_status = EventStatus.DRAFT.value
 
     event.status = EventStatus(restored_status)
+    is_public = event.status not in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}
+    notify_restoration = is_public and event.status not in {
+        EventStatus.COMPLETED,
+        EventStatus.REPORT_SUBMITTED,
+    }
     await session.flush()
     await audit(
         session,
@@ -881,9 +888,14 @@ async def restore_event(
         old_value={"status": str(EventStatus.CANCELLED)},
         new_value={"status": str(event.status)},
     )
-    if event.status not in {EventStatus.DRAFT, EventStatus.PENDING_APPROVAL}:
+    if is_public:
         from app.services.google_calendar_sync_service import enqueue_calendar_sync
         await enqueue_calendar_sync(session, event.id)
     result = await _draft_out(session, event, experience)
     await session.commit()
+    if notify_restoration:
+        try:
+            await _notify_changed_event(bot, settings, session, event, ["Мероприятие восстановлено"])
+        except Exception:
+            logger.exception("Event %s restored; notification failed", event.id)
     return result

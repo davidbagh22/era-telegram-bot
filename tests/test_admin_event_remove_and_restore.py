@@ -290,10 +290,13 @@ class AdminEventRemoveAndRestoreTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await session.get(AttendanceProof, proof_id)).status, "approved")
             self.assertEqual((await session.get(CertificateIssue, cert_id)).status, "issued")
 
-        # Undo via restore_event restores exact previous status and re-exposes the event.
-        async with self.sessions() as session:
-            restored = await restore_event(event_id, self.admin, session)
+        # Undo via restore_event restores exact previous status, re-exposes the event, and sends a restoration notice.
+        with patch("app.api.v1.admin_event_create._notify_changed_event", new=AsyncMock()) as restore_notify_mock:
+            async with self.sessions() as session:
+                restored = await restore_event(event_id, self.admin, session, self.settings, object())
             self.assertEqual(restored.status, EventStatus.REGISTRATION_OPEN)
+            restore_notify_mock.assert_awaited_once()
+            self.assertEqual(restore_notify_mock.await_args.args[4], ["Мероприятие восстановлено"])
 
         async with self.sessions() as session:
             admin_ids = [ev.id for ev in await list_operational_events(session)]
@@ -316,7 +319,7 @@ class AdminEventRemoveAndRestoreTests(unittest.IsolatedAsyncioTestCase):
 
             # Second restore fails with 409 because event is no longer cancelled.
             with self.assertRaises(HTTPException) as ctx:
-                await restore_event(event_id, self.admin, session)
+                await restore_event(event_id, self.admin, session, self.settings, None)
             self.assertEqual(ctx.exception.status_code, 409)
             self.assertEqual(ctx.exception.detail, "event_not_cancelled")
 
@@ -328,9 +331,12 @@ class AdminEventRemoveAndRestoreTests(unittest.IsolatedAsyncioTestCase):
         with patch("app.api.v1.admin_event_create._notify_changed_event", new=AsyncMock()):
             async with self.sessions() as session:
                 await cancel_event(event_id, self.admin, session, self.settings, object())
-        async with self.sessions() as session:
-            restored = await restore_event(event_id, self.admin, session)
+        with patch("app.api.v1.admin_event_create._notify_changed_event", new=AsyncMock()) as restore_notify_mock:
+            async with self.sessions() as session:
+                restored = await restore_event(event_id, self.admin, session, self.settings, object())
             self.assertEqual(restored.status, EventStatus.REGISTRATION_CLOSED)
+            restore_notify_mock.assert_awaited_once()
+            self.assertEqual(restore_notify_mock.await_args.args[4], ["Мероприятие восстановлено"])
 
     async def test_completed_event_cancel_skips_cancellation_notice_and_restores_completed(self):
         event_id = await self._create_published_event(
@@ -343,9 +349,11 @@ class AdminEventRemoveAndRestoreTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(cancelled.status, EventStatus.CANCELLED)
             notify_mock.assert_not_awaited()
 
-        async with self.sessions() as session:
-            restored = await restore_event(event_id, self.admin, session)
+        with patch("app.api.v1.admin_event_create._notify_changed_event", new=AsyncMock()) as restore_notify_mock:
+            async with self.sessions() as session:
+                restored = await restore_event(event_id, self.admin, session, self.settings, object())
             self.assertEqual(restored.status, EventStatus.COMPLETED)
+            restore_notify_mock.assert_not_awaited()
 
     async def test_restore_falls_back_cleanly_when_no_prior_audit_snapshot(self):
         event_id = await self._create_published_event(title="Архивное событие")
@@ -353,9 +361,12 @@ class AdminEventRemoveAndRestoreTests(unittest.IsolatedAsyncioTestCase):
             ev = await session.get(Event, event_id)
             ev.status = EventStatus.CANCELLED
             await session.commit()
-        async with self.sessions() as session:
-            restored = await restore_event(event_id, self.admin, session)
+        with patch("app.api.v1.admin_event_create._notify_changed_event", new=AsyncMock()) as restore_notify_mock:
+            async with self.sessions() as session:
+                restored = await restore_event(event_id, self.admin, session, self.settings, object())
             self.assertEqual(restored.status, EventStatus.REGISTRATION_OPEN)
+            restore_notify_mock.assert_awaited_once()
+            self.assertEqual(restore_notify_mock.await_args.args[4], ["Мероприятие восстановлено"])
 
 
 if __name__ == "__main__":

@@ -27,7 +27,16 @@ SETTING_PREFIX = "google_calendar:event:"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 SCOPE = "https://www.googleapis.com/auth/calendar"
 API = "https://www.googleapis.com/calendar/v3"
-SYNCABLE = {EventStatus.PUBLISHED, EventStatus.REGISTRATION_OPEN, EventStatus.CANCELLED}
+SYNCABLE = {
+    EventStatus.APPROVED,
+    EventStatus.PUBLISHED,
+    EventStatus.REGISTRATION_OPEN,
+    EventStatus.REGISTRATION_CLOSED,
+    EventStatus.ACTIVE,
+    EventStatus.COMPLETED,
+    EventStatus.REPORT_SUBMITTED,
+    EventStatus.CANCELLED,
+}
 MAX_ATTEMPTS = 8
 
 
@@ -89,8 +98,7 @@ def _payload_for(event, experience) -> dict[str, Any] | None:
         body = build_calendar_payload(event, end_time=end_time)
     except ValueError:
         return None
-    if event.status == EventStatus.CANCELLED:
-        body["status"] = "cancelled"
+    body["status"] = "cancelled" if event.status == EventStatus.CANCELLED else "confirmed"
     return body
 
 
