@@ -163,6 +163,23 @@ class EditorialTests(IsolatedAsyncioTestCase):
         async with self.sessions() as session:
             assert (await editorial_settings(session))['paused']
 
+    async def test_editorial_queue_uses_yerevan_day_key_across_moscow_midnight_boundary(self):
+        item = await self.draft(approve=True)
+        await self.enable(hour=20, minute=0)
+        # 20:30 UTC is 23:30 Europe/Moscow (Oct 17) and 00:30 Asia/Yerevan (Oct 18).
+        boundary_now = datetime(2026, 10, 17, 20, 30, tzinfo=timezone.utc)
+        key = self.scheduled_approval(item, date(2026, 10, 18))
+        with patch.object(club, 'APPROVED_SCHEDULED_EDITORIAL_PUBLICATIONS', frozenset({key})):
+            await run_editorial_queue(self.bot, self.settings, self.sessions, now=boundary_now)
+        assert self.bot.send_message.await_count == 2
+        async with self.sessions() as session:
+            assert await session.scalar(select(AppSetting).where(
+                AppSetting.key == 'book-club-editorial-day:2026-10-18'
+            )) is not None
+            assert await session.scalar(select(AppSetting).where(
+                AppSetting.key == 'book-club-editorial-day:2026-10-17'
+            )) is None
+
 
 def test_editorial_structure_and_html_escaping_are_verified_before_save():
     assert '&lt;память&gt;' in render_editorial(parse_editorial_text(MATERIAL.replace('памяти', '<память>')))

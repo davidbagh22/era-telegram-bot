@@ -86,6 +86,42 @@ async def series_issue_is_approved(
     )
 
 
+async def configured_start_date(session: AsyncSession) -> date:
+    """Read-only lookup of configured series start date, falling back to PROGRAM_START."""
+    start_row = await session.scalar(select(AppSetting).where(AppSetting.key == 'book_club_start_date'))
+    if start_row and isinstance(start_row.value, dict) and isinstance(start_row.value.get('date'), str):
+        try:
+            return date.fromisoformat(start_row.value['date'])
+        except ValueError:
+            pass
+    return PROGRAM_START
+
+
+async def literature_topic_health(session: AsyncSession, settings: Settings) -> dict:
+    """Inspect general chat 'literature' topic binding without mutating Telegram."""
+    chat_id = settings.general_chat_id
+    if not chat_id:
+        return {'state': 'no_chat', 'thread_id': None}
+    row = await session.scalar(
+        select(AppSetting).where(AppSetting.key == f'general_forum:{chat_id}:literature')
+    )
+    if row is None:
+        return {'state': 'uninitialized', 'thread_id': None}
+    try:
+        data = json.loads(row.value) if isinstance(row.value, str) else row.value
+    except (TypeError, ValueError):
+        data = None
+    thread_id = data.get('thread_id') if isinstance(data, dict) else None
+    if type(thread_id) is str:
+        try:
+            thread_id = int(thread_id)
+        except ValueError:
+            thread_id = None
+    if type(thread_id) is int and thread_id > 0:
+        return {'state': 'ready', 'thread_id': thread_id}
+    return {'state': 'needs_reconciliation', 'thread_id': None}
+
+
 async def approve_series_issue(
     session: AsyncSession,
     *,
@@ -94,8 +130,11 @@ async def approve_series_issue(
     number: int,
     actor_id: int,
 ) -> dict:
+    if not chat_id:
+        raise ValueError('general_chat_not_configured')
     get_issue(number)
-    if publication_number(on_date) != number:
+    start_day = await configured_start_date(session)
+    if publication_number(on_date, start_day) != number:
         raise ValueError('issue_date_mismatch')
     day_key, chat_key, digest = scheduled_literature_issue_approval_key(on_date, chat_id, number)
     setting_key = series_approval_setting_key(on_date, chat_id)
@@ -162,9 +201,13 @@ async def series_status(
     """Editor-facing status for the daily 48-issue series (Yerevan calendar)."""
     day = on_date or yerevan_today()
     chat_id = settings.general_chat_id
-    number = publication_number(day)
-    start_row = await session.scalar(select(AppSetting).where(AppSetting.key == 'book_club_start_date'))
-    start_day = date.fromisoformat(start_row.value['date']) if start_row else PROGRAM_START
+    start_day = await configured_start_date(session)
+    number = publication_number(day, start_day)
+    topic = await literature_topic_health(session, settings)
+    subscribed_count = int(await session.scalar(select(func.count(User.id)).where(
+        User.book_club_subscribed.is_(True), User.is_blocked.is_(False),
+        User.is_archived.is_(False), User.application_status == ApplicationStatus.APPROVED,
+    )) or 0)
     if number is None:
         if day < start_day:
             return {
@@ -172,6 +215,11 @@ async def series_status(
                 'reason': f'Серия начинается {start_day.isoformat()}',
                 'number': None, 'date': day.isoformat(), 'chat_id': chat_id,
                 'approved': False, 'published': False, 'action': 'none',
+                'would_public_send': False,
+                'editorial_blocks_series': False,
+                'topic_state': topic['state'],
+                'topic_thread_id': topic['thread_id'],
+                'subscribed_count': subscribed_count,
                 'preview': '',
             }
         return {
@@ -179,6 +227,11 @@ async def series_status(
             'reason': 'Все 48 выпусков по календарю уже прошли. Накопленные выпуски автоматически не рассылаются.',
             'number': 48, 'date': day.isoformat(), 'chat_id': chat_id,
             'approved': False, 'published': False, 'action': 'none',
+            'would_public_send': False,
+            'editorial_blocks_series': False,
+            'topic_state': topic['state'],
+            'topic_thread_id': topic['thread_id'],
+            'subscribed_count': subscribed_count,
             'preview': render_issue(48)[:500],
         }
     if not chat_id:
@@ -187,6 +240,11 @@ async def series_status(
             'reason': 'Не настроен general_chat_id — публиковать некуда.',
             'number': number, 'date': day.isoformat(), 'chat_id': chat_id,
             'approved': False, 'published': False, 'action': 'none',
+            'would_public_send': False,
+            'editorial_blocks_series': False,
+            'topic_state': topic['state'],
+            'topic_thread_id': None,
+            'subscribed_count': subscribed_count,
             'preview': render_issue(number)[:900],
         }
     approved = await series_issue_is_approved(session, day, chat_id, number)
@@ -197,6 +255,7 @@ async def series_status(
     # run_editorial_queue returns True and the 48-issue series is skipped.
     editorial = await editorial_settings(session)
     editorial_blocks_series = bool(editorial.get('enabled'))
+    topic_broken = topic['state'] == 'needs_reconciliation'
     if published:
         label, reason, action = 'Опубликован', f'Доставка в чат: {receipt.status}', 'none'
     elif uncertain:
@@ -204,6 +263,12 @@ async def series_status(
             'Нужна проверка',
             f'Исход отправки неизвестен ({receipt.status}). Повтор остановлен до сверки.',
             'none',
+        )
+    elif approved and topic_broken:
+        label, reason, action = (
+            'Нужна проверка',
+            'Тема «Литература» в общем чате требует ручной привязки (обнаружена повреждённая или незавершённая запись).',
+            'revoke',
         )
     elif approved and editorial_blocks_series:
         paused = ' (на паузе)' if editorial.get('paused') else ''
@@ -228,6 +293,13 @@ async def series_status(
             'Плановая отправка блокируется, пока редактор не одобрит точный текст и дату.',
             'approve',
         )
+    would_public_send = bool(
+        approved
+        and not published
+        and not uncertain
+        and not editorial_blocks_series
+        and not topic_broken
+    )
     return {
         'label': label,
         'reason': reason,
@@ -237,7 +309,11 @@ async def series_status(
         'approved': approved,
         'published': published,
         'action': action,
+        'would_public_send': would_public_send,
         'editorial_blocks_series': editorial_blocks_series,
+        'topic_state': topic['state'],
+        'topic_thread_id': topic['thread_id'],
+        'subscribed_count': subscribed_count,
         'title': get_issue(number).title,
         'preview': render_issue(number),
         'receipt_status': getattr(receipt, 'status', None),
@@ -312,12 +388,13 @@ async def daily_job(bot: Bot, settings: Settings, session_factory) -> None:
     if await run_editorial_queue(bot, settings, session_factory):
         return
     local_day = datetime.now(ZoneInfo('Asia/Yerevan')).date()
-    candidate = publication_number(local_day)
-    # Only today's calendar slot — never catch up missed days after downtime.
-    if not settings.general_chat_id or candidate is None:
+    if not settings.general_chat_id:
         return
     async with session_factory() as session:
-        if not await series_issue_is_approved(
+        configured_day = await configured_start_date(session)
+        candidate = publication_number(local_day, configured_day)
+        # Only today's calendar slot — never catch up missed days after downtime.
+        if candidate is None or not await series_issue_is_approved(
             session, local_day, settings.general_chat_id, candidate
         ):
             return
@@ -336,11 +413,13 @@ async def daily_job(bot: Bot, settings: Settings, session_factory) -> None:
             User.book_club_subscribed.is_(True), User.is_blocked.is_(False),
             User.is_archived.is_(False), User.application_status == ApplicationStatus.APPROVED,
         ))).all()
-    await send_general_topic(
+    topic_delivered = await send_general_topic(
         bot, settings, 'literature', render_issue(number),
         delivery_key=f'issue:{start_day.isoformat()}:{number}',
         parse_mode='HTML',
     )
+    if not topic_delivered:
+        return
     for user_id in ids:
         async with session_factory() as session:
             # Serialize against unsubscribe; no stale audience snapshot may send
@@ -579,6 +658,7 @@ async def run_editorial_queue(bot, settings, session_factory, *, now=None) -> bo
     from datetime import timezone
     from app.database.autocontent_models import GeneralCustomContent
     now = (now or datetime.now(timezone.utc)).astimezone(ZoneInfo('Europe/Moscow'))
+    publication_date = now.astimezone(ZoneInfo('Asia/Yerevan')).date()
     async with session_factory() as session:
         await session.scalar(select(AppSetting).where(AppSetting.key == EDITORIAL_SETTINGS_KEY).with_for_update()
                              .execution_options(populate_existing=True))
@@ -587,7 +667,7 @@ async def run_editorial_queue(bot, settings, session_factory, *, now=None) -> bo
             return False
         if config['paused'] or (now.hour, now.minute) < (config['hour'], config['minute']):
             return True
-        day_key = f'book-club-editorial-day:{now.date().isoformat()}'
+        day_key = f'book-club-editorial-day:{publication_date.isoformat()}'
         if session.bind.dialect.name == 'postgresql':
             import hashlib
             from sqlalchemy import text
@@ -601,14 +681,14 @@ async def run_editorial_queue(bot, settings, session_factory, *, now=None) -> bo
             item = await session.scalar(select(GeneralCustomContent).where(
                 GeneralCustomContent.content_type == 'literature', GeneralCustomContent.is_enabled.is_(True),
                 GeneralCustomContent.is_skipped.is_(False)).order_by(GeneralCustomContent.id).limit(1))
-        if item and item.is_enabled:
-            publication_date = now.astimezone(ZoneInfo('Asia/Yerevan')).date()
+        if item and item.is_enabled and not item.is_skipped:
             if not await editorial_schedule_is_approved(
                 session, publication_date, settings.general_chat_id, item.content_id, item.text
             ):
                 return True
             if not day:
                 await _insert_setting(session, key=day_key, value={'item_id': item.id})
+                await session.commit()
             await publish_editorial_item(
                 bot, settings, session, item.id, editorial_revision(item),
                 scheduled_on_date=publication_date,
