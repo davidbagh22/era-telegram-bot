@@ -1,7 +1,8 @@
 # ERA bot and Mini App handoff
 
-- LIVE tip = `d2a8112` (#730 handoff). Prior activation tip = `af43751` (#729). `/health` + `/ready` ok (Europe/Moscow check 2026-11-25 ~09:19 on `af43751`).
-- Shipped on that tip chain (not VERIFIED unless noted):
+- LIVE tip = `399ce84` (#746 short bot menu + light admin home, after #742–#745). `/health` + `/ready` ok; single Alembic head `0070_user_ui_preferences`.
+- Current PR (`cursor/admin-command-center-6c4a`, no DB migration): Admin Command Center on Mini App admin home (top quick actions: Рассылка → BroadcastPanel, Задание → open task form, Мероприятие → create event; immediate KPI & analytics summary with drill-down; in-app Decision Queue with server-side admin-only soft-delete, confirmation, AuditLog, and undo/restore) plus bot admin hub quick `📨 Рассылка` / `📊 Статистика` buttons and live KPI summary.
+- Shipped on prior tip chain (not VERIFIED unless noted):
   - #725 feedback eligibility (#585)
   - #726 activity proof commit-before-notice (#529)
   - #727 waitlist points (#513)

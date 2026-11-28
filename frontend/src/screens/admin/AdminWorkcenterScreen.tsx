@@ -1,6 +1,6 @@
 import {useRef, useState} from 'react';
 import {fetchWorkTasks, fetchWorkRoster, fetchWorkDecisions, fetchWorkScopes, fetchWorkTeam,
-  fetchWorkCampaigns, workWrite, describeActionError, type WorkTask, type WorkPerson, type WorkScope} from '../../api/client';
+  fetchWorkCampaigns, workWrite, deleteWorkDecision, describeActionError, type WorkTask, type WorkPerson, type WorkScope} from '../../api/client';
 import {useAsync} from '../../hooks/useAsync';
 import {Card} from '../../components/Card';
 import {AdminPulseScreen} from './AdminPulseScreen';
@@ -19,6 +19,7 @@ export function AdminWorkcenterScreen(){
  const [filter,setFilter]=useState('active'),[showForm,setShowForm]=useState(false),[title,setTitle]=useState(''),[description,setDescription]=useState('');
  const [assignee,setAssignee]=useState(''),[deadline,setDeadline]=useState(''),[scope,setScope]=useState(''),[points,setPoints]=useState(0),[urgent,setUrgent]=useState(false),[taskPreview,setTaskPreview]=useState(false);
  const [selected,setSelected]=useState<WorkTask|null>(null),[comment,setComment]=useState(''),[target,setTarget]=useState(''),[newDeadline,setNewDeadline]=useState('');
+ const [confirmDeleteDecisionId,setConfirmDeleteDecisionId]=useState<number|null>(null);
  const tasks=useAsync(fetchWorkTasks,[refresh]),roster=useAsync(fetchWorkRoster,[refresh]),decisions=useAsync(fetchWorkDecisions,[refresh]),scopes=useAsync(fetchWorkScopes,[refresh]);
  const [query,setQuery]=useState(''),[search,setSearch]=useState(''),[page,setPage]=useState(0),[candidates,setCandidates]=useState(false);
  const team=useAsync(()=>fetchWorkTeam(search,page,candidates),[search,page,candidates,refresh]);
@@ -83,7 +84,7 @@ export function AdminWorkcenterScreen(){
    {campaigns.status==='error'&&<p>Не удалось загрузить историю рассылок.</p>}{campaigns.status==='ready'&&campaigns.data.map(c=><Card key={c.id}><strong>№{c.id} · {campaignLabels[c.status]??'Статус обновлён'}</strong><p style={{whiteSpace:'pre-wrap'}}>{c.text}</p><p>Аккаунтов: {c.recipients} · Отправок: {c.sent} · Ознакомились: {c.read}</p>{!!c.uncertain&&<p>Нужна сверка: {c.uncertain}</p>}{!!c.unreachable&&<p>Недоступны: {c.unreachable}</p>}{(c.status==='sending'||c.status==='paused')&&<><button disabled={busy} onClick={()=>run(()=>workWrite(`campaigns/${c.id}/action`,{action:c.status==='paused'?'resume':'pause'}))}>{c.status==='paused'?'Продолжить':'Пауза'}</button><button disabled={busy} onClick={()=>{if(window.confirm('Отменить оставшиеся отправки?'))void run(()=>workWrite(`campaigns/${c.id}/action`,{action:'cancel'}));}}>Отменить оставшиеся</button></>}</Card>)}
   </>}
   {tab==='pulse'&&<><AdminPulseScreen/>
-   <details><summary>Требует решения</summary>{decisions.status==='ready'&&decisions.data.filter(d=>d.status!=='resolved').map(d=><Card key={d.id}><p>{d.text}</p><label>Решение<textarea style={inputStyle} value={comment} onChange={e=>setComment(e.target.value)}/></label><label>Ответственный<select value={target} onChange={e=>setTarget(e.target.value)}><option value="">Не выбран</option>{people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>{[['in_progress','В работу'],['resolved','Решено'],['deferred','Отложить']].map(([v,l])=><button disabled={busy} key={v} onClick={()=>run(()=>workWrite(`decisions/${d.id}`,{status:v,comment,responsible_id:target?Number(target):null}))}>{l}</button>)}</Card>)}</details>
+   <details><summary>Требует решения</summary>{decisions.status==='ready'&&decisions.data.filter(d=>d.status!=='resolved').map(d=><Card key={d.id}><p>{d.text}</p><label>Решение<textarea style={inputStyle} value={comment} onChange={e=>setComment(e.target.value)}/></label><label>Ответственный<select value={target} onChange={e=>setTarget(e.target.value)}><option value="">Не выбран</option>{people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><div style={{display:'flex',gap:8,flexWrap:'wrap'}}>{[['in_progress','В работу'],['resolved','Решено'],['deferred','Отложить']].map(([v,l])=><button disabled={busy} key={v} onClick={()=>run(()=>workWrite(`decisions/${d.id}`,{status:v,comment,responsible_id:target?Number(target):null}))}>{l}</button>)}{confirmDeleteDecisionId===d.id?<><button disabled={busy} onClick={()=>run(async()=>{await deleteWorkDecision(d.id,comment);setConfirmDeleteDecisionId(null);setNotice('Пункт удалён из очереди решений.');})}>Подтвердить удаление</button><button disabled={busy} onClick={()=>setConfirmDeleteDecisionId(null)}>Отмена</button></>:<button disabled={busy} onClick={()=>setConfirmDeleteDecisionId(d.id)}>Удалить</button>}</div></Card>)}</details>
   </>}
   <button disabled={busy} onClick={()=>setRefresh(v=>v+1)}>Обновить</button>
  </div>;

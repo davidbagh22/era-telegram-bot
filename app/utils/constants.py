@@ -70,6 +70,7 @@ class LeadershipReportStatus(StrEnum):
 class AttentionItemStatus(StrEnum):
     OPEN = "open"
     RESOLVED = "resolved"
+    DISMISSED = "dismissed"
 
 
 class AttentionItemSeverity(StrEnum):

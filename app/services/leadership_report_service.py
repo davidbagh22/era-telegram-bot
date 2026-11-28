@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import (
+    AuditLog,
     LeadershipAttentionItem,
     LeadershipGoal,
     LeadershipReport,
@@ -214,10 +215,13 @@ async def list_attention_items(
     scope_type: str | None = None,
     scope_id: int | None = None,
     responsible_id: int | None = None,
+    include_dismissed: bool = False,
 ) -> list[LeadershipAttentionItem]:
     conditions = []
     if status is not None:
         conditions.append(LeadershipAttentionItem.status == status)
+    elif not include_dismissed:
+        conditions.append(LeadershipAttentionItem.status != AttentionItemStatus.DISMISSED)
     if scope_type is not None:
         conditions.append(LeadershipAttentionItem.scope_type == scope_type)
     if scope_id is not None:
@@ -249,6 +253,79 @@ async def resolve_attention_item(
         entity_id=item.id,
         old_value=None,
         new_value={"status": item.status},
+    )
+    return item
+
+
+async def dismiss_attention_item(
+    session: AsyncSession,
+    item: LeadershipAttentionItem,
+    *,
+    actor_id: int,
+    reason: str | None = None,
+) -> LeadershipAttentionItem:
+    """Soft-delete a decision queue item so it leaves active queues while
+    staying reversible and fully recorded in AuditLog."""
+    clean_reason = (reason or "").strip()[:500] or None
+    old_value = {
+        "status": str(item.status),
+        "responsible_id": item.responsible_id,
+        "resolution": item.resolution,
+        "resolved_at": item.resolved_at.isoformat() if item.resolved_at else None,
+        "scope_type": item.scope_type,
+        "scope_id": item.scope_id,
+        "type": item.type,
+    }
+    item.status = AttentionItemStatus.DISMISSED
+    item.resolved_at = datetime.now(timezone.utc)
+    await audit(
+        session,
+        actor_id=actor_id,
+        action="leadership_attention_item.deleted",
+        entity_type="leadership_attention_item",
+        entity_id=item.id,
+        old_value=old_value,
+        new_value={"status": str(item.status), "reason": clean_reason},
+    )
+    return item
+
+
+async def restore_attention_item(
+    session: AsyncSession,
+    item: LeadershipAttentionItem,
+    *,
+    actor_id: int,
+) -> LeadershipAttentionItem:
+    snapshot = await session.scalar(
+        select(AuditLog)
+        .where(
+            AuditLog.entity_type == "leadership_attention_item",
+            AuditLog.entity_id == item.id,
+            AuditLog.action == "leadership_attention_item.deleted",
+        )
+        .order_by(AuditLog.id.desc())
+        .limit(1)
+    )
+    old_data = snapshot.old_value if snapshot and isinstance(snapshot.old_value, dict) else {}
+    restored_status = str(old_data.get("status") or AttentionItemStatus.OPEN)
+    if restored_status in (AttentionItemStatus.DISMISSED, ""):
+        restored_status = AttentionItemStatus.OPEN
+    restored_resolved_at = None
+    raw_resolved_at = old_data.get("resolved_at")
+    if isinstance(raw_resolved_at, str):
+        restored_resolved_at = datetime.fromisoformat(raw_resolved_at)
+
+    old_status = str(item.status)
+    item.status = restored_status
+    item.resolved_at = restored_resolved_at
+    await audit(
+        session,
+        actor_id=actor_id,
+        action="leadership_attention_item.restored",
+        entity_type="leadership_attention_item",
+        entity_id=item.id,
+        old_value={"status": old_status},
+        new_value={"status": str(item.status)},
     )
     return item
 

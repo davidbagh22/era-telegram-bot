@@ -10,7 +10,7 @@ import { GoalsPanel } from "./tools/GoalsPanel";
 import { GreetingsPanel } from "./tools/GreetingsPanel";
 import { StructurePanel } from "./tools/StructurePanel";
 
-type ToolsSection = "goals" | "contacts" | "structure" | "chats" | "greetings" | "broadcast" | "channel" | "autocontent";
+export type ToolsSection = "goals" | "contacts" | "structure" | "chats" | "greetings" | "broadcast" | "channel" | "autocontent";
 type ToolGroup = "team" | "communication";
 
 const SECTIONS: { value: ToolsSection; group: ToolGroup; label: string; description: string; icon: string }[] = [
@@ -29,8 +29,8 @@ const GROUP_LABELS: Record<ToolGroup, { title: string; description: string }> = 
   communication: { title: "Коммуникации", description: "Что, кому и где говорит ЭРА" },
 };
 
-export function AdminToolsScreen() {
-  const [section, setSection] = useState<ToolsSection | null>(null);
+export function AdminToolsScreen({ initialSection = null }: { initialSection?: ToolsSection | null } = {}) {
+  const [section, setSection] = useState<ToolsSection | null>(initialSection);
 
   if (!section) {
     return (

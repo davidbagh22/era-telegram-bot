@@ -164,10 +164,8 @@ def help_hub_keyboard(
 def admin_hub_keyboard(
     miniapp_url: str = "", *, pending: int | None = None, expanded: bool = False,
 ) -> InlineKeyboardMarkup:
-    """Light admin hub: «Мероприятия», «Заявки · N», «Задачи» and «Ещё».
-
-    «Ещё» swaps the keyboard for the secondary tools (nothing was removed:
-    statistics and the full Mini App admin moved there)."""
+    """Admin command hub: quick broadcast & stats at top, events, tasks,
+    applications (with count), and «Ещё» for secondary tools."""
     applications = "📥 Заявки" if not pending else f"📥 Заявки · {pending}"
     if expanded:
         rows = [
@@ -189,10 +187,18 @@ def admin_hub_keyboard(
     else:
         events_button = InlineKeyboardButton(text="🎉 Мероприятия", callback_data="events:list")
     rows = [
-        [events_button],
-        [InlineKeyboardButton(text=applications, callback_data="admin:applications")],
-        [InlineKeyboardButton(text="✅ Задачи", callback_data="admin:tasks")],
-        [InlineKeyboardButton(text="⋯ Ещё", callback_data="admin:hub:more")],
+        [
+            InlineKeyboardButton(text="📨 Рассылка", callback_data="admin:campaign:new"),
+            InlineKeyboardButton(text="📊 Статистика", callback_data="admin:management:open"),
+        ],
+        [
+            events_button,
+            InlineKeyboardButton(text="✅ Задачи", callback_data="admin:tasks"),
+        ],
+        [
+            InlineKeyboardButton(text=applications, callback_data="admin:applications"),
+            InlineKeyboardButton(text="⋯ Ещё", callback_data="admin:hub:more"),
+        ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

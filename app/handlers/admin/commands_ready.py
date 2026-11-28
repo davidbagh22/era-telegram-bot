@@ -239,10 +239,23 @@ def _hub_time(value, timezone_name: str) -> str:
 
 async def admin_hub_text(session: AsyncSession, settings: Settings) -> tuple[str, int]:
     from html import escape
-    from app.services.admin_dashboard_service import pending_applications_count
+    from app.services.admin_dashboard_service import dashboard_metrics
     from app.services.event_registration_service import recent_registrations
-    pending = await pending_applications_count(session)
-    lines = ['<b>⚙️ Админ ЭРА</b>', '', f'📥 Заявок на рассмотрении: <b>{pending}</b>', '', '<b>Последние записи на мероприятия</b>']
+    metrics = await dashboard_metrics(session)
+    vals = metrics.values
+    pending = int(vals.get('users_pending', 0))
+    roster = int(vals.get('current_roster', vals.get('users_total', 0)))
+    active = int(vals.get('active_base', 0))
+    events_live = int(vals.get('events_live', 0))
+    lines = [
+        '<b>⚙️ Админ ЭРА</b>',
+        '',
+        f'👥 Участников: <b>{roster}</b> · активных (14д): <b>{active}</b>',
+        f'📅 Событий: <b>{events_live}</b> · ⚡ Требуют решения: <b>{metrics.attention_total}</b>',
+        f'📥 Заявок на рассмотрении: <b>{pending}</b>',
+        '',
+        '<b>Последние записи на мероприятия</b>',
+    ]
     recent = await recent_registrations(session, limit=3)
     if not recent:
         lines.append('Пока никто не записался.')

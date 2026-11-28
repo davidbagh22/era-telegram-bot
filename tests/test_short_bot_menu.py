@@ -73,13 +73,19 @@ def test_help_hub_keeps_every_old_reply_entry_as_inline_buttons():
     assert "anniversary:menu" in {b.callback_data for b in _inline(help_hub_keyboard(URL, anniversary=True))}
 
 
-def test_admin_hub_has_three_primary_actions_and_more():
+def test_admin_hub_has_quick_actions_and_more():
     buttons = _inline(admin_hub_keyboard(URL, pending=4))
-    assert [b.text for b in buttons] == ["🎉 Мероприятия", "📥 Заявки · 4", "✅ Задачи", "⋯ Ещё"]
-    assert buttons[0].web_app and "adminSection=events" in buttons[0].web_app.url
-    assert [b.callback_data for b in buttons[1:]] == ["admin:applications", "admin:tasks", "admin:hub:more"]
-    assert [b.text for b in _inline(admin_hub_keyboard(URL))][1] == "📥 Заявки"
-    assert [b.text for b in _inline(admin_hub_keyboard(URL, pending=0))][1] == "📥 Заявки"
+    assert [b.text for b in buttons] == [
+        "📨 Рассылка", "📊 Статистика",
+        "🎉 Мероприятия", "✅ Задачи",
+        "📥 Заявки · 4", "⋯ Ещё",
+    ]
+    assert buttons[0].callback_data == "admin:campaign:new"
+    assert buttons[1].callback_data == "admin:management:open"
+    assert buttons[2].web_app and "adminSection=events" in buttons[2].web_app.url
+    assert [b.callback_data for b in buttons[3:]] == ["admin:tasks", "admin:applications", "admin:hub:more"]
+    assert [b.text for b in _inline(admin_hub_keyboard(URL))][4] == "📥 Заявки"
+    assert [b.text for b in _inline(admin_hub_keyboard(URL, pending=0))][4] == "📥 Заявки"
 
 
 def test_admin_hub_more_keeps_all_previous_tools():
