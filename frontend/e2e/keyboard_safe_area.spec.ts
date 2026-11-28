@@ -47,6 +47,7 @@ test("on-screen keyboard: bottom bars step aside and the focused field stays vis
   const nav = page.getByRole("navigation", { name: "Основная навигация" });
   await expect(nav).toBeVisible();
 
+  await page.getByRole("button", { name: "Изменить" }).click();
   const hex = page.getByLabel("Код цвета");
   await hex.scrollIntoViewIfNeeded();
   await hex.focus();

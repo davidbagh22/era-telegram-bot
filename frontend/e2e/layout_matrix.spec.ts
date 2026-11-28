@@ -139,6 +139,10 @@ for (const width of WIDTHS) {
       await expect(page.getByRole("heading", { name: "Оформление" })).toBeVisible();
       await check(page, `profile ${width}/${scale}`);
 
+      await page.getByRole("button", { name: "Изменить" }).click();
+      await expect(page.getByLabel("Код цвета")).toBeVisible();
+      await check(page, `profile appearance ${width}/${scale}`);
+
       await page.getByRole("button", { name: /Моё портфолио/ }).click();
       await expect(page.getByRole("button", { name: /Назад|←/ }).first()).toBeVisible();
       await check(page, `portfolio ${width}/${scale}`);

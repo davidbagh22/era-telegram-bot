@@ -31,10 +31,18 @@ async function getAccent(page: Page, telegramId: number): Promise<string | null>
 const rootVar = (page: Page, name: string) =>
   page.evaluate((n) => document.documentElement.style.getPropertyValue(n).trim(), name);
 
-async function openAppearance(page: Page, telegramId: number) {
+async function openProfile(page: Page, telegramId: number) {
   await installTelegramStub(page);
   await page.goto(`/app/?devTelegramId=${telegramId}#/profile`);
   await expect(page.getByRole("heading", { name: "Оформление" })).toBeVisible();
+}
+
+async function openAppearance(page: Page, telegramId: number) {
+  await openProfile(page, telegramId);
+  const toggle = page.getByRole("button", { name: "Изменить" });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(page.getByRole("button", { name: "Свернуть" })).toHaveAttribute("aria-expanded", "true");
 }
 
 test.describe("personal colour", () => {
@@ -45,6 +53,81 @@ test.describe("personal colour", () => {
   test.afterEach(async ({ page }) => {
     await putAccent(page, USER_A, null);
     await putAccent(page, USER_B, null);
+  });
+
+  test("collapsed by default as one compact row, expands with single-row controls and compact toggle across 320–430px", async ({ page }) => {
+    await installTelegramStub(page);
+    for (const width of [320, 390, 430]) {
+      await page.setViewportSize({ width, height: 844 });
+      if (width === 320) {
+        await page.goto(`/app/?devTelegramId=${USER_A}#/profile`);
+      } else {
+        await page.reload();
+      }
+      await expect(page.getByRole("heading", { name: "Оформление" })).toBeVisible();
+
+      const card = page.getByTestId("appearance-settings");
+      const toggle = page.getByRole("button", { name: "Изменить" });
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await expect(page.getByTestId("appearance-summary")).toHaveText("ЭРА");
+      await expect(page.getByTestId("appearance-preview")).toHaveCount(0);
+      await expect(page.getByLabel("Код цвета")).toHaveCount(0);
+
+      const collapsedBox = await card.boundingBox();
+      expect(collapsedBox, `collapsed box at ${width}px`).not.toBeNull();
+      expect(collapsedBox!.height, `collapsed height at ${width}px`).toBeLessThanOrEqual(80);
+
+      await toggle.click();
+      await expect(page.getByTestId("appearance-preview")).toBeVisible();
+
+      // Palette stays on one single horizontal row.
+      const swatches = page.getByRole("group", { name: "Готовые цвета" }).getByRole("button");
+      const firstSwatch = await swatches.first().boundingBox();
+      const lastSwatch = await swatches.last().boundingBox();
+      expect(firstSwatch).not.toBeNull();
+      expect(lastSwatch).not.toBeNull();
+      expect(Math.abs(firstSwatch!.y - lastSwatch!.y), `single-row palette at ${width}px`).toBeLessThanOrEqual(2);
+
+      // Color picker, hex input, and reset button stay on one row.
+      const pickerBox = await page.getByLabel("Свой цвет").boundingBox();
+      const hexBox = await page.getByLabel("Код цвета").boundingBox();
+      const resetBox = await page.getByRole("button", { name: "Вернуть цвет ЭРА" }).boundingBox();
+      expect(pickerBox && hexBox && resetBox).toBeTruthy();
+      expect(Math.abs(pickerBox!.y - hexBox!.y), `picker+hex row at ${width}px`).toBeLessThanOrEqual(4);
+      expect(Math.abs(hexBox!.y - resetBox!.y), `hex+reset row at ${width}px`).toBeLessThanOrEqual(4);
+
+      // Preview is compact and live-background switch is not a full-width button.
+      const previewBox = await page.getByTestId("appearance-preview").boundingBox();
+      const liveBgSwitch = page.getByRole("switch", { name: "Живой фон" });
+      const switchBox = await liveBgSwitch.boundingBox();
+      const expandedBox = await card.boundingBox();
+      expect(previewBox!.height, `compact preview at ${width}px`).toBeLessThanOrEqual(84);
+      expect(switchBox!.width, `compact switch at ${width}px`).toBeLessThan(expandedBox!.width * 0.45);
+      expect(expandedBox!.height, `expanded height at ${width}px`).toBeLessThanOrEqual(340);
+
+      // No horizontal page overflow while expanded.
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+      expect(overflow, `no overflow at ${width}px`).toBe(false);
+
+      if (width === 390) {
+        const beforeChecked = await liveBgSwitch.getAttribute("aria-checked");
+        await liveBgSwitch.click();
+        await expect(liveBgSwitch).toHaveAttribute("aria-checked", beforeChecked === "true" ? "false" : "true");
+        await liveBgSwitch.click();
+        await expect(liveBgSwitch).toHaveAttribute("aria-checked", beforeChecked!);
+
+        await page.getByRole("button", { name: "Синий", exact: true }).click();
+        await expect(page.getByTestId("appearance-save-status")).toContainText("сохранён");
+        await page.getByRole("button", { name: "Свернуть" }).click();
+        await expect(page.getByTestId("appearance-preview")).toHaveCount(0);
+        await expect(page.getByTestId("appearance-summary")).toHaveText("Синий");
+
+        // Restore default for next viewport iteration.
+        await page.getByRole("button", { name: "Изменить" }).click();
+        await page.getByRole("button", { name: "Вернуть цвет ЭРА" }).click();
+        await expect(page.getByRole("button", { name: "Вернуть цвет ЭРА" })).toBeDisabled();
+      }
+    }
   });
 
   test("preset applies instantly, previews live, persists to the server and survives reload", async ({ page }) => {
