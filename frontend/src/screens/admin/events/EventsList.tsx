@@ -8,6 +8,40 @@ import { StatusBadge } from "../../../components/StatusBadge";
 import { useAsync } from "../../../hooks/useAsync";
 import { projectEventStatusLabel } from "../../projects/statusLabels";
 
+const RU_MONTHS_GENITIVE = [
+  "января",
+  "февраля",
+  "марта",
+  "апреля",
+  "мая",
+  "июня",
+  "июля",
+  "августа",
+  "сентября",
+  "октября",
+  "ноября",
+  "декабря",
+] as const;
+
+function formatEventDateTime(eventDate: string, eventTime?: string | null): string {
+  let dateLabel = eventDate;
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(eventDate.trim());
+  if (dateMatch) {
+    const year = Number(dateMatch[1]);
+    const monthIndex = Number(dateMatch[2]) - 1;
+    const day = Number(dateMatch[3]);
+    const monthName = RU_MONTHS_GENITIVE[monthIndex];
+    if (monthName && day >= 1 && day <= 31) {
+      const currentYear = new Date().getFullYear();
+      dateLabel = year !== currentYear ? `${day} ${monthName} ${year}` : `${day} ${monthName}`;
+    }
+  }
+  const rawTime = (eventTime ?? "").trim();
+  const timeMatch = /^(\d{2}:\d{2})(?::\d{2})?/.exec(rawTime);
+  const timeLabel = timeMatch ? timeMatch[1] : rawTime;
+  return timeLabel ? `${dateLabel}, ${timeLabel}` : dateLabel;
+}
+
 interface EventsListProps {
   onSelect: (eventId: number) => void;
   onEditPoster?: (eventId: number) => void;
@@ -66,46 +100,99 @@ export function EventsList({ onSelect, onEditPoster, onOpenParticipants }: Event
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       <button type="button" onClick={refresh} style={{ alignSelf: "flex-start" }}>Обновить список</button>
       {error && <p role="alert">Не удалось изменить видимость: {error}</p>}
-      {state.data.map((event) => (
-        <Card key={event.id} style={{ padding: "0.75rem 1rem" }}>
-          <button
-            type="button"
-            onClick={() => onSelect(event.id)}
-            style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem" }}>
-              <strong>{event.title}</strong>
-              <StatusBadge label={projectEventStatusLabel(event.status)} tone="violet" />
-            </div>
-            <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
-              {event.event_date} · {event.event_time} · {event.location}
-            </p>
-            <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
-              Записано: {event.registered} · Свободно: {event.free} · За визит: +{event.points_for_visit}
-            </p>
-          </button>
-          {onOpenParticipants && (
-            <button type="button" className="era-btn-primary" onClick={() => onOpenParticipants(event.id)} style={{ marginTop: ".6rem", marginRight: ".6rem" }}>
-              Участники · {event.registered}
+      {state.data.map((event) => {
+        const isListed = overrides[event.id] ?? (event.show_in_public_listing !== false);
+        const dateTimeLabel = formatEventDateTime(event.event_date, event.event_time);
+        return (
+          <Card key={event.id} style={{ padding: "0.875rem 1rem" }}>
+            <button
+              type="button"
+              onClick={() => onSelect(event.id)}
+              style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "0.5rem",
+                  flexWrap: "wrap",
+                  marginBottom: "0.4rem",
+                }}
+              >
+                <StatusBadge label={projectEventStatusLabel(event.status)} tone="violet" />
+                <span style={{ color: "var(--era-text-muted)", fontSize: "0.8125rem", whiteSpace: "nowrap" }}>
+                  {dateTimeLabel}
+                </span>
+              </div>
+              <strong style={{ display: "block", fontSize: "1rem", lineHeight: 1.3, overflowWrap: "anywhere" }}>
+                {event.title}
+              </strong>
+              {event.location && (
+                <p style={{ margin: "0.3rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem", overflowWrap: "anywhere" }}>
+                  {event.location}
+                </p>
+              )}
+              <p style={{ margin: "0.25rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
+                Записано: {event.registered} · Свободно: {event.free} · За визит: +{event.points_for_visit}
+              </p>
             </button>
-          )}
-          {onEditPoster && <button onClick={() => setEditor(event.id)}>Редактировать мероприятие</button>}
-          {onEditPoster && (
-            <>
-              <button type="button" onClick={() => onEditPoster(event.id)} style={{ marginTop: ".6rem" }}>
-                Изменить афишу
-              </button>
-              <button type="button" disabled={busyId !== null}
-                onClick={() => void toggleListing(event.id, overrides[event.id] ?? (event.show_in_public_listing !== false))}
-                style={{ marginTop: ".6rem", marginLeft: ".6rem" }}>
-                {(overrides[event.id] ?? (event.show_in_public_listing !== false)) ? "Скрыть из общей афиши" : "Вернуть в общую афишу"}
-              </button>
-              {(overrides[event.id] ?? (event.show_in_public_listing !== false)) === false &&
-                <p role="status" style={{ color: "var(--era-text-muted)" }}>Скрыто из общей афиши; данные участников сохранены.</p>}
-            </>
-          )}
-        </Card>
-      ))}
+            {(onOpenParticipants || onEditPoster) && (
+              <div
+                data-testid={`event-actions-${event.id}`}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: "0.5rem",
+                  marginTop: "0.75rem",
+                }}
+              >
+                {onOpenParticipants && (
+                  <button
+                    type="button"
+                    className="era-btn-primary"
+                    onClick={() => onOpenParticipants(event.id)}
+                    style={{ gridColumn: "1 / -1", width: "100%", minHeight: "2.625rem" }}
+                  >
+                    Участники · {event.registered}
+                  </button>
+                )}
+                {onEditPoster && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setEditor(event.id)}
+                      style={{ width: "100%", minHeight: "2.625rem", padding: "0.5rem 0.625rem", fontSize: "0.8125rem" }}
+                    >
+                      Редактировать мероприятие
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onEditPoster(event.id)}
+                      style={{ width: "100%", minHeight: "2.625rem", padding: "0.5rem 0.625rem", fontSize: "0.8125rem" }}
+                    >
+                      Изменить афишу
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyId !== null}
+                      onClick={() => void toggleListing(event.id, isListed)}
+                      style={{ gridColumn: "1 / -1", width: "100%", minHeight: "2.625rem", padding: "0.5rem 0.75rem", fontSize: "0.8125rem" }}
+                    >
+                      {isListed ? "Скрыть из общей афиши" : "Вернуть в общую афишу"}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+            {onEditPoster && !isListed && (
+              <p role="status" style={{ margin: "0.5rem 0 0", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
+                Скрыто из общей афиши; данные участников сохранены.
+              </p>
+            )}
+          </Card>
+        );
+      })}
     </div>
   );
 }

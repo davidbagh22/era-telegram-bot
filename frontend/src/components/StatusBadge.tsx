@@ -16,13 +16,20 @@ export function StatusBadge({ label, tone = "neutral" }: StatusBadgeProps) {
   return (
     <span
       style={{
-        display: "inline-block",
+        display: "inline-flex",
+        alignItems: "center",
         fontSize: "0.75rem",
         fontWeight: 600,
-        padding: "0.125rem 0.5rem",
+        lineHeight: 1.35,
+        padding: "0.1875rem 0.5625rem",
         borderRadius: "999px",
         color,
         border: `1px solid ${color}`,
+        whiteSpace: "nowrap",
+        flexShrink: 0,
+        maxWidth: "100%",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
       }}
     >
       {label}

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import {
   createLeaderOpenTask,
@@ -14,7 +14,7 @@ import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
 import { StatusBadge } from "../../components/StatusBadge";
 import { useAsync } from "../../hooks/useAsync";
-import type { TaskDestinationKey } from "../../types/leader";
+import type { LeaderOpenTask, TaskDestinationKey } from "../../types/leader";
 
 const DESTINATION_OPTIONS: { value: TaskDestinationKey; label: string }[] = [
   { value: "general", label: "Общий чат" },
@@ -64,6 +64,40 @@ const APPLICATION_STATUS_LABELS: Record<string, string> = {
   rejected: "отклонён",
 };
 
+const DESCRIPTION_PREVIEW_LIMIT = 110;
+
+function formatTaskDeadline(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const nowYear = new Date().getFullYear();
+  const options: Intl.DateTimeFormatOptions = {
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  };
+  if (date.getFullYear() !== nowYear) options.year = "numeric";
+  return new Intl.DateTimeFormat("ru-RU", options).format(date);
+}
+
+function isTaskExpired(deadline: string): boolean {
+  const parsed = Date.parse(deadline);
+  return !Number.isNaN(parsed) && parsed < Date.now();
+}
+
+function splitTaskDescription(description: string): { preview: string; expandable: boolean } {
+  const normalized = description.trim();
+  if (!normalized) return { preview: "", expandable: false };
+  const paragraphs = normalized.split(/\n{2,}/).map((part) => part.trim()).filter(Boolean);
+  const firstParagraph = (paragraphs[0] ?? normalized).replace(/\s+/g, " ");
+  const hasMoreParagraphs = paragraphs.length > 1;
+  if (firstParagraph.length > DESCRIPTION_PREVIEW_LIMIT) {
+    const cut = firstParagraph.slice(0, DESCRIPTION_PREVIEW_LIMIT).replace(/\s+\S*$/, "");
+    return { preview: `${cut || firstParagraph.slice(0, DESCRIPTION_PREVIEW_LIMIT)}…`, expandable: true };
+  }
+  return { preview: firstParagraph, expandable: hasMoreParagraphs };
+}
+
 export function OpenTasksTab({
   initialOpenCreate = false,
   canRemove = false,
@@ -87,6 +121,23 @@ export function OpenTasksTab({
   const [confirmRemove, setConfirmRemove] = useState<{ id: number; title: string } | null>(null);
   const [removeReason, setRemoveReason] = useState("");
   const [undoTask, setUndoTask] = useState<{ id: number; title: string } | null>(null);
+  const [expandedDescriptions, setExpandedDescriptions] = useState<Record<number, boolean>>({});
+  const [showExpired, setShowExpired] = useState(false);
+
+  const { activeTasks, expiredTasks } = useMemo(() => {
+    const items = state.status === "ready" ? state.data : [];
+    const active: LeaderOpenTask[] = [];
+    const expired: LeaderOpenTask[] = [];
+    for (const item of items) {
+      if (isTaskExpired(item.deadline)) expired.push(item);
+      else active.push(item);
+    }
+    return { activeTasks: active, expiredTasks: expired };
+  }, [state]);
+
+  const toggleDescription = useCallback((taskId: number) => {
+    setExpandedDescriptions((prev) => ({ ...prev, [taskId]: !prev[taskId] }));
+  }, []);
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 
@@ -198,6 +249,174 @@ export function OpenTasksTab({
       setPendingKey(null);
     }
   }, [undoTask, refresh]);
+
+  const renderTaskCard = (task: LeaderOpenTask, expired: boolean) => {
+    const { preview, expandable } = splitTaskDescription(task.description);
+    const expanded = Boolean(expandedDescriptions[task.id]);
+    return (
+      <Card key={task.id} style={expired ? { opacity: 0.92 } : undefined}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "0.5rem",
+            flexWrap: "wrap",
+            marginBottom: "0.35rem",
+          }}
+        >
+          <StatusBadge label={expired ? "Срок прошёл" : "Открыто"} tone={expired ? "red" : "violet"} />
+          <span style={{ color: "var(--era-text-muted)", fontSize: "0.8125rem", whiteSpace: "nowrap" }}>
+            До {formatTaskDeadline(task.deadline)}
+          </span>
+        </div>
+        <strong style={{ display: "block", fontSize: "1rem", lineHeight: 1.3, overflowWrap: "anywhere" }}>
+          {task.title}
+        </strong>
+        <p style={{ margin: "0.25rem 0 0.4rem", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
+          {task.points} баллов · нужно {task.max_participants ?? "без ограничения"}
+        </p>
+        {preview && (
+          <div style={{ margin: "0 0 0.5rem" }}>
+            <p
+              style={{
+                margin: 0,
+                color: "var(--era-text-secondary, var(--era-text-muted))",
+                fontSize: "0.875rem",
+                lineHeight: 1.4,
+                whiteSpace: expanded ? "pre-wrap" : "normal",
+                overflowWrap: "anywhere",
+              }}
+            >
+              {expanded ? task.description : preview}
+            </p>
+            {expandable && (
+              <button
+                type="button"
+                onClick={() => toggleDescription(task.id)}
+                style={{
+                  marginTop: "0.25rem",
+                  padding: "0.15rem 0",
+                  minHeight: "auto",
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--era-accent, var(--era-primary))",
+                  fontSize: "0.8125rem",
+                  fontWeight: 700,
+                }}
+              >
+                {expanded ? "Свернуть" : "Подробнее"}
+              </button>
+            )}
+          </div>
+        )}
+        {task.deliveries.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem", marginBottom: "0.5rem" }}>
+            {task.deliveries.map((delivery) => {
+              const label = DESTINATION_OPTIONS.find((o) => o.value === delivery.chat_key)?.label ?? "Чат";
+              const retryKey = `retry:${task.id}:${delivery.id}`;
+              return (
+                <div key={delivery.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <StatusBadge
+                    label={delivery.status === "sent" ? `${label}: доставлено` : `${label}: не доставлено`}
+                    tone={delivery.status === "sent" ? "violet" : "red"}
+                  />
+                  {delivery.status !== "sent" && (
+                    <button
+                      type="button"
+                      disabled={pendingKey === retryKey}
+                      onClick={() => handleRetry(task.id, delivery.id)}
+                    >
+                      Повторить
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {task.applications.length === 0 ? (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem", marginTop: "0.25rem", flexWrap: "wrap" }}>
+            <span style={{ color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>Откликов пока нет.</span>
+            {canRemove && (
+              <button
+                type="button"
+                data-testid={`open-task-remove-${task.id}`}
+                disabled={pendingKey === `remove:${task.id}`}
+                onClick={() => {
+                  setActionError(null);
+                  setRemoveReason("");
+                  setConfirmRemove({ id: task.id, title: task.title });
+                }}
+              >
+                Убрать
+              </button>
+            )}
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              {task.applications.map((application) => {
+                const key = `${task.id}:${application.user_id}`;
+                return (
+                  <div
+                    key={key}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+                      {application.first_name} {application.last_name ?? ""} —{" "}
+                      {APPLICATION_STATUS_LABELS[application.status] ?? "Статус обновлён"}
+                    </span>
+                    {application.status === "pending" && (
+                      <div style={{ display: "flex", gap: "0.375rem" }}>
+                        <button
+                          type="button"
+                          className="era-btn-primary"
+                          disabled={pendingKey === key}
+                          onClick={() => handleDecide(task.id, application.user_id, "accept")}
+                        >
+                          Принять
+                        </button>
+                        <button
+                          type="button"
+                          disabled={pendingKey === key}
+                          onClick={() => handleDecide(task.id, application.user_id, "reject")}
+                        >
+                          Отклонить
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {canRemove && (
+              <div style={{ marginTop: "0.625rem", display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  data-testid={`open-task-remove-${task.id}`}
+                  disabled={pendingKey === `remove:${task.id}`}
+                  onClick={() => {
+                    setActionError(null);
+                    setRemoveReason("");
+                    setConfirmRemove({ id: task.id, title: task.title });
+                  }}
+                >
+                  Убрать
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </Card>
+    );
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
@@ -335,102 +554,40 @@ export function OpenTasksTab({
       {state.status === "ready" && state.data.length === 0 && (
         <EmptyState text="Открытых задач пока нет." />
       )}
-      {state.status === "ready" &&
-        state.data.map((task) => (
-          <Card key={task.id}>
-            <strong>{task.title}</strong>
-            <p style={{ margin: "0.25rem 0", color: "var(--era-text-muted)" }}>{task.description}</p>
-            <p style={{ margin: "0 0 0.5rem", color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>
-              До {new Date(task.deadline).toLocaleString("ru-RU")} · {task.points} баллов · нужно{" "}
-              {task.max_participants ?? "без ограничения"}
-            </p>
-            {task.deliveries.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.375rem", marginBottom: "0.5rem" }}>
-                {task.deliveries.map((delivery) => {
-                  const label = DESTINATION_OPTIONS.find((o) => o.value === delivery.chat_key)?.label ?? "Чат";
-                  const retryKey = `retry:${task.id}:${delivery.id}`;
-                  return (
-                    <div key={delivery.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <StatusBadge
-                        label={delivery.status === "sent" ? `${label}: доставлено` : `${label}: не доставлено`}
-                        tone={delivery.status === "sent" ? "violet" : "red"}
-                      />
-                      {delivery.status !== "sent" && (
-                        <button
-                          type="button"
-                          disabled={pendingKey === retryKey}
-                          onClick={() => handleRetry(task.id, delivery.id)}
-                        >
-                          Повторить
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {task.applications.length === 0 ? (
-              <EmptyState text="Откликов пока нет." />
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {task.applications.map((application) => {
-                  const key = `${task.id}:${application.user_id}`;
-                  return (
-                    <div
-                      key={key}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                      }}
-                    >
-                      <span>
-                        {application.first_name} {application.last_name ?? ""} —{" "}
-                        {APPLICATION_STATUS_LABELS[application.status] ?? "Статус обновлён"}
-                      </span>
-                      {application.status === "pending" && (
-                        <div style={{ display: "flex", gap: "0.375rem" }}>
-                          <button
-                            type="button"
-                            className="era-btn-primary"
-                            disabled={pendingKey === key}
-                            onClick={() => handleDecide(task.id, application.user_id, "accept")}
-                          >
-                            Принять
-                          </button>
-                          <button
-                            type="button"
-                            disabled={pendingKey === key}
-                            onClick={() => handleDecide(task.id, application.user_id, "reject")}
-                          >
-                            Отклонить
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {canRemove && (
-              <div style={{ marginTop: "0.625rem", display: "flex", justifyContent: "flex-end" }}>
-                <button
-                  type="button"
-                  data-testid={`open-task-remove-${task.id}`}
-                  disabled={pendingKey === `remove:${task.id}`}
-                  onClick={() => {
-                    setActionError(null);
-                    setRemoveReason("");
-                    setConfirmRemove({ id: task.id, title: task.title });
-                  }}
-                >
-                  Убрать
-                </button>
-              </div>
-            )}
-          </Card>
-        ))}
+      {state.status === "ready" && activeTasks.length > 0 && (
+        <div data-testid="active-tasks-section" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          {activeTasks.map((task) => renderTaskCard(task, false))}
+        </div>
+      )}
+      {state.status === "ready" && activeTasks.length === 0 && expiredTasks.length > 0 && (
+        <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.875rem" }}>
+          Активных открытых задач сейчас нет. Ниже задачи, срок которых уже прошёл.
+        </p>
+      )}
+      {state.status === "ready" && expiredTasks.length > 0 && (
+        <div data-testid="expired-tasks-section" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          <button
+            type="button"
+            aria-expanded={activeTasks.length === 0 ? true : showExpired}
+            onClick={() => setShowExpired((open) => !open)}
+            style={{
+              ...secondaryButtonStyle,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              width: "100%",
+              padding: "0.625rem 0.875rem",
+            }}
+          >
+            <span>Срок прошёл · {expiredTasks.length}</span>
+            <span style={{ color: "var(--era-text-muted)", fontSize: "0.8125rem", fontWeight: 600 }}>
+              {activeTasks.length === 0 || showExpired ? "Скрыть" : "Показать"}
+            </span>
+          </button>
+          {(activeTasks.length === 0 || showExpired) &&
+            expiredTasks.map((task) => renderTaskCard(task, true))}
+        </div>
+      )}
 
       <BottomSheet
         open={confirmRemove !== null}

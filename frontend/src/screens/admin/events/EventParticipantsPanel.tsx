@@ -203,11 +203,33 @@ export function EventParticipantsPanel({ eventId, onBack, focusParticipants = fa
       <div ref={listRef} style={{ scrollMarginTop: ".5rem" }}>
         <strong>Участники · {stats.registrations}</strong>
         <p style={{ margin: ".25rem 0 .5rem", color: "var(--era-text-muted)", fontSize: ".8rem" }}>Сначала новые регистрации. Список в Excel автоматически приходит владельцу в Telegram после каждой новой регистрации.</p>
-        <div role="group" aria-label="Группы участников" style={{ display: "flex", flexWrap: "wrap", gap: ".4rem" }}>
+        <div
+          role="group"
+          aria-label="Группы участников"
+          data-testid="participant-filter-chips"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gap: "0.5rem",
+          }}
+        >
           {GROUP_CHIPS.map((chip) => (
-            <button key={chip.value} type="button" aria-pressed={filter === chip.value}
+            <button
+              key={chip.value}
+              type="button"
+              aria-pressed={filter === chip.value}
               className={filter === chip.value ? "era-btn-primary" : undefined}
-              onClick={() => setFilter(chip.value)}>
+              onClick={() => setFilter(chip.value)}
+              style={{
+                width: "100%",
+                minHeight: "2.5rem",
+                padding: "0.45rem 0.625rem",
+                fontSize: "0.8125rem",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
               {chip.label} · {chipCounts[chip.value] ?? 0}
             </button>
           ))}
@@ -236,27 +258,42 @@ export function EventParticipantsPanel({ eventId, onBack, focusParticipants = fa
       {state.status === "ready" && participants.length === 0 && <EmptyState text="Пока никто не зарегистрирован. Как только появится первая регистрация, участник будет здесь." />}
       {state.status === "ready" && participants.length > 0 && filtered.length === 0 && <EmptyState text="По этому поиску участников нет. Измените имя или фильтр." />}
 
-      {filtered.map((participant) => (
-        <Card key={participant.registration_id} style={{ padding: "0.8rem 0.9rem" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "center" }}>
-            <div style={{ minWidth: 0 }}>
-              <strong>{participant.participant_name}</strong>
-              {formatRegisteredAt(participant.registered_at) && (
-                <p style={{ margin: ".15rem 0 0", color: "var(--era-text-muted)", fontSize: ".75rem" }}>
-                  Зарегистрирован {formatRegisteredAt(participant.registered_at)}
+      {filtered.map((participant) => {
+        const contactParts = [participant.organization, participant.phone]
+          .map((part) => (part ?? "").trim())
+          .filter(Boolean);
+        const registeredLabel = formatRegisteredAt(participant.registered_at);
+        return (
+          <Card key={participant.registration_id} style={{ padding: "0.8rem 0.9rem" }}>
+            <div data-testid={`participant-row-${participant.registration_id}`} style={{ display: "flex", flexDirection: "column", gap: "0.3rem", minWidth: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.5rem", flexWrap: "wrap", minWidth: 0 }}>
+                <strong style={{ flex: "1 1 8.5rem", minWidth: 0, lineHeight: 1.3, overflowWrap: "anywhere" }}>
+                  {participant.participant_name}
+                </strong>
+                <StatusBadge
+                  label={STATUS_LABELS[participant.status] ?? "Статус обновлён"}
+                  tone={participant.status === "attended" ? "violet" : "neutral"}
+                />
+              </div>
+              {contactParts.length > 0 && (
+                <p style={{ margin: 0, color: "var(--era-text-secondary, var(--era-text-muted))", fontSize: "0.8125rem", lineHeight: 1.35, overflowWrap: "anywhere" }}>
+                  {contactParts.join(" · ")}
+                </p>
+              )}
+              {registeredLabel && (
+                <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.75rem" }}>
+                  Зарегистрирован {registeredLabel}
                 </p>
               )}
             </div>
-            {participant.organization && <p>{participant.organization} · {participant.phone}</p>}
-            <StatusBadge label={STATUS_LABELS[participant.status] ?? "Статус обновлён"} tone={participant.status === "attended" ? "violet" : "neutral"} />
-          </div>
-          {participant.status === "attended" && (
-            <p style={{ margin: ".45rem 0 0", color: "var(--era-text-muted)", fontSize: ".78rem" }}>
-              Подтверждено через уникальный код мероприятия.
-            </p>
-          )}
-        </Card>
-      ))}
+            {participant.status === "attended" && (
+              <p style={{ margin: ".45rem 0 0", color: "var(--era-text-muted)", fontSize: ".78rem" }}>
+                Подтверждено через уникальный код мероприятия.
+              </p>
+            )}
+          </Card>
+        );
+      })}
     </div>
   );
 }
