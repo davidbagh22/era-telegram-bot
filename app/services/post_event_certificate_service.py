@@ -34,9 +34,10 @@ REVIEW_PREFIX = "post-event-certs:review:"
 NOTICE_PENDING_PREFIX = "post-event-certs:notice-pending:"
 NOTICE_DONE_PREFIX = "post-event-certs:notice-done:"
 NOTICE_TYPE = "post_event_certificate_review"
-# Only freshly ended events are announced one by one; older events are not
-# picked up by the regular scan.
+# Only freshly ended events are announced one by one; older ones get a single
+# one-time summary instead (``BACKFILL_KEY``).
 RECENT_WINDOW = timedelta(days=3)
+BACKFILL_KEY = "post-event-certs:backfill:v1"
 END_GRACE = timedelta(hours=1)
 DEFAULT_DURATION = timedelta(hours=3)
 EXCLUDED_EVENT_STATUSES = (EventStatus.DRAFT, EventStatus.PENDING_APPROVAL, EventStatus.CANCELLED)
@@ -119,20 +120,34 @@ async def configured_owner(session, settings) -> User | None:
     return owner if _active(owner) else None
 
 
-async def can_review(session, actor: User | None, settings, event: Event | None) -> bool:
-    if actor is None or event is None:
-        return False
+_ALL_EVENTS = object()
+
+
+async def _review_scope(session, actor: User | None, settings):
+    """``_ALL_EVENTS``, the actor's id (own events only), or ``None`` (nothing)."""
+    if actor is None:
+        return None
     actor = await session.scalar(select(User).where(User.id == actor.id).execution_options(populate_existing=True))
     if not _active(actor):
-        return False
+        return None
     if is_full_admin(actor, settings, actor.telegram_id) or can_manage_events(actor, settings, actor.telegram_id):
-        return True
+        return _ALL_EVENTS
     if actor.application_status != ApplicationStatus.APPROVED:
-        return False
-    if event.responsible_id == actor.id:
-        return True
+        return None
     owner = await configured_owner(session, settings)
-    return owner is not None and owner.id == actor.id
+    if owner is not None and owner.id == actor.id:
+        return _ALL_EVENTS
+    return actor.id
+
+
+def _in_scope(scope, event: Event) -> bool:
+    return scope is _ALL_EVENTS or (scope is not None and event.responsible_id == scope)
+
+
+async def can_review(session, actor: User | None, settings, event: Event | None) -> bool:
+    if event is None:
+        return False
+    return _in_scope(await _review_scope(session, actor, settings), event)
 
 
 async def notice_recipients(session, settings, event: Event) -> list[User]:
@@ -186,7 +201,8 @@ async def load_review(session, event_id: int, *, for_update: bool = False) -> Ap
     return await session.scalar(query)
 
 
-async def ensure_review(session, event: Event, *, source: str, now: datetime | None = None) -> AppSetting | None:
+async def ensure_review(session, event: Event, *, source: str, now: datetime | None = None,
+                        notify: bool = True) -> AppSetting | None:
     """Create the event's single review request; ``None`` when it exists or nobody qualifies."""
     if await load_review(session, event.id) is not None:
         return None
@@ -197,6 +213,7 @@ async def ensure_review(session, event: Event, *, source: str, now: datetime | N
     value = {
         "state": "open" if selectable else "covered",
         "selected": [c.user_id for c in selectable if c.attended],
+        "waiting": len(selectable),
         "rev": 0,
         "source": source,
         "created_at": (now or datetime.now(timezone.utc)).isoformat(),
@@ -206,7 +223,7 @@ async def ensure_review(session, event: Event, *, source: str, now: datetime | N
     try:
         async with session.begin_nested():
             session.add(row)
-            if selectable:
+            if selectable and notify:
                 session.add(AppSetting(key=f"{NOTICE_PENDING_PREFIX}{event.id}", value={"event_id": event.id}))
     except IntegrityError:
         return None
@@ -324,22 +341,20 @@ async def delivery_summary(session, event_id: int) -> DeliverySummary:
 
 
 async def list_reviews(session, actor, settings, *, hidden: bool = False) -> list[tuple[Event, dict]]:
-    wanted = {"dismissed"} if hidden else {"open"}
-    found = []
-    rows = await session.scalars(select(AppSetting).where(AppSetting.key.like(f"{REVIEW_PREFIX}%"))
-                                 .order_by(AppSetting.id.desc()))
-    for row in rows:
-        if (row.value or {}).get("state") not in wanted:
-            continue
-        try:
-            event_id = int(row.key.removeprefix(REVIEW_PREFIX))
-        except ValueError:
-            continue
-        event = await session.get(Event, event_id)
-        if event is not None and await can_review(session, actor, settings, event):
-            found.append((event, row.value))
-    found.sort(key=lambda pair: (pair[0].event_date, pair[0].id), reverse=True)
-    return found
+    scope = await _review_scope(session, actor, settings)
+    if scope is None:
+        return []
+    wanted = "dismissed" if hidden else "open"
+    values: dict[int, dict] = {}
+    for row in await session.scalars(select(AppSetting).where(AppSetting.key.like(f"{REVIEW_PREFIX}%"))):
+        raw_id = row.key.removeprefix(REVIEW_PREFIX)
+        if raw_id.isdigit() and (row.value or {}).get("state") == wanted:
+            values[int(raw_id)] = row.value
+    if not values:
+        return []
+    events = await session.scalars(select(Event).where(Event.id.in_(list(values)))
+                                   .order_by(Event.event_date.desc(), Event.id.desc()))
+    return [(event, values[event.id]) for event in events if _in_scope(scope, event)]
 
 
 def notice_text(event: Event, people: list[Candidate]) -> str:
@@ -385,8 +400,74 @@ async def scan_ended_events(bot, settings, session_factory, *, now: datetime | N
             ends = event_ends_at(event, await session.get(EventExperience, event.id), settings.timezone)
             if now - RECENT_WINDOW <= ends <= now:
                 await ensure_review(session, event, source="scheduler", now=now)
+        await backfill_past_events(session, settings, now)
         await session.commit()
     await deliver_review_notices(bot, settings, session_factory)
+    await deliver_backfill_digest(bot, settings, session_factory)
+
+
+async def backfill_past_events(session, settings, now: datetime) -> AppSetting | None:
+    """Run once: the same requests for events that ended before the regular window.
+
+    No per-event notices and nothing to participants; the owner gets one summary
+    and confirms each event separately. Events where everyone already has a
+    certificate stay ``covered`` and are not listed.
+    """
+    if await session.scalar(select(AppSetting.id).where(AppSetting.key == BACKFILL_KEY)):
+        return None
+    cutoff = now - RECENT_WINDOW
+    events = await session.scalars(
+        select(Event).where(Event.event_date <= cutoff.astimezone(ZoneInfo(settings.timezone)).date(),
+                            Event.status.not_in(EXCLUDED_EVENT_STATUSES))
+        .order_by(Event.event_date, Event.id))
+    opened, waiting = 0, 0
+    for event in list(events):
+        if event_ends_at(event, await session.get(EventExperience, event.id), settings.timezone) >= cutoff:
+            continue
+        row = await ensure_review(session, event, source="backfill", now=now, notify=False)
+        if row is not None and row.value["state"] == "open":
+            opened += 1
+            waiting += row.value["waiting"]
+    marker = AppSetting(key=BACKFILL_KEY, value={"at": now.isoformat(), "events": opened, "people": waiting,
+                                                 "digest": "pending" if opened else "none"})
+    try:
+        async with session.begin_nested():
+            session.add(marker)
+    except IntegrityError:
+        return None
+    return marker
+
+
+def backfill_text(events: int, people: int) -> str:
+    return ("🎓 Сертификаты за прошедшие мероприятия\n\n"
+            f"Прошедших мероприятий, где сертификаты ещё не выданы: {events}\n"
+            f"Участников без сертификата: {people}\n\n"
+            "Откройте список, по каждому мероприятию отметьте участников и подтвердите выдачу. "
+            "Без вашего подтверждения участникам ничего не отправляется.")
+
+
+async def deliver_backfill_digest(bot, settings, session_factory) -> None:
+    from app.services.notification_service import safe_send_once
+
+    async with session_factory() as session:
+        marker = await session.scalar(select(AppSetting).where(AppSetting.key == BACKFILL_KEY)
+                                      .with_for_update(skip_locked=True))
+        if marker is None or (marker.value or {}).get("digest") != "pending":
+            return
+        owner = await configured_owner(session, settings)
+        outcome = "no_recipient"
+        if owner is not None:
+            result = await safe_send_once(
+                bot, settings, owner.telegram_id, backfill_text(marker.value["events"], marker.value["people"]),
+                delivery_key=f"{BACKFILL_KEY}:digest:{owner.telegram_id}", notification_type=NOTICE_TYPE,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="Открыть список", callback_data="pec:l:0:o")]]),
+                max_attempts=2)
+            outcome = result.status
+        if outcome != "sent":
+            logger.warning("Post-event certificate backfill summary not confirmed outcome=%s", outcome)
+        marker.value = {**marker.value, "digest": "done", "digest_outcome": outcome}
+        await session.commit()
 
 
 async def deliver_review_notices(bot, settings, session_factory) -> None:

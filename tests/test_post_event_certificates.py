@@ -98,16 +98,18 @@ def test_scan_creates_one_request_per_freshly_ended_event_and_notifies_owner_onc
                 assert keys == {
                     f"post-event-certs:review:{d.ended.id}", f"post-event-certs:notice-done:{d.ended.id}",
                     f"post-event-certs:review:{d.late.id}", f"post-event-certs:notice-done:{d.late.id}",
+                    f"post-event-certs:review:{d.old.id}", service.BACKFILL_KEY,
                 }
                 review = await service.load_review(session, d.ended.id)
                 assert review.value["state"] == "open"
                 assert review.value["selected"] == [d.ann.id]  # attendance marks preselect, nobody else
                 assert await session.scalar(select(func.count()).select_from(CertificateIssue)) == 0
-            # Two events, owner + responsible each, and the second scan sent nothing new.
-            assert send.await_count == 4
+            # Two events to owner + responsible, one backfill summary; the second scan sent nothing new.
+            assert send.await_count == 5
             chats = sorted(call.args[2] for call in send.await_args_list)
-            assert chats == [9001, 9001, 9002, 9002]
-            first = next(c for c in send.await_args_list if f":{d.ended.id}:" in c.kwargs["delivery_key"])
+            assert chats == [9001, 9001, 9001, 9002, 9002]
+            first = next(c for c in send.await_args_list
+                         if c.kwargs["delivery_key"].startswith(f"post-event-certs:notice:{d.ended.id}:"))
             assert "Форум лидеров" in first.args[3] and "Зарегистрировались: 3" in first.args[3]
             assert "Отметили присутствие: 1" in first.args[3]
             assert first.kwargs["reply_markup"].inline_keyboard[0][0].callback_data == f"pec:v:{d.ended.id}:0"
@@ -522,6 +524,86 @@ def test_owner_issue_before_attendance_confirmation_does_not_break_it():
                 keys = list(await session.scalars(select(AppSetting.key).where(
                     AppSetting.key.like("event-certificate:%"))))
                 assert keys == [f"event-certificate:pending:{issue.id}"]
+        finally:
+            await engine.dispose()
+    run(scenario())
+
+
+def test_one_time_backfill_asks_owner_once_and_sends_nothing_to_participants():
+    async def scenario():
+        engine, factory = await make_db()
+        try:
+            async with factory() as session:
+                d = await seed(session)
+                covered = Event(title="Уже с сертификатами", description="Тест", event_date=date(2026, 11, 1),
+                                event_time=time(10), location="Ереван", format="offline", created_by=d.owner.id,
+                                status=EventStatus.COMPLETED)
+                session.add(covered)
+                await session.flush()
+                session.add(EventRegistration(event_id=covered.id, user_id=d.ann.id, status=RegistrationStatus.ATTENDED))
+                await session.flush()
+                await certificate_service.issue_post_event_certificate(
+                    session, d.owner, user_id=d.ann.id, event_id=covered.id)
+                await session.commit()
+                covered_id = covered.id
+            send = AsyncMock(return_value=sent())
+            with patch("app.services.notification_service.safe_send_once", send):
+                for _ in range(3):
+                    await service.scan_ended_events(SimpleNamespace(), d.settings, factory, now=NOW)
+            digests = [c for c in send.await_args_list if c.kwargs["delivery_key"].startswith(service.BACKFILL_KEY)]
+            assert len(digests) == 1 and digests[0].args[2] == 9001
+            assert "мероприятий, где сертификаты ещё не выданы: 1" in digests[0].args[3]
+            assert digests[0].kwargs["reply_markup"].inline_keyboard[0][0].callback_data == "pec:l:0:o"
+            # Only the owner and the responsible person were ever messaged.
+            assert {c.args[2] for c in send.await_args_list} == {9001, 9002}
+            async with factory() as session:
+                marker = await session.scalar(select(AppSetting).where(AppSetting.key == service.BACKFILL_KEY))
+                assert marker.value["digest"] == "done" and marker.value["events"] == 1
+                old = await service.load_review(session, d.old.id)
+                assert old.value["source"] == "backfill" and old.value["state"] == "open"
+                assert old.value["selected"] == []  # registered but no attendance mark: nobody preselected
+                assert (await service.load_review(session, covered_id)).value["state"] == "covered"
+                assert await service.load_review(session, d.cancelled.id) is None
+                assert f"post-event-certs:notice-done:{d.old.id}" not in await review_keys(session)
+                assert await session.scalar(select(func.count()).select_from(AppSetting).where(
+                    AppSetting.key.like("event-certificate:pending:%"))) == 1  # only the pre-existing one
+                listed = [e.id for e, _ in await service.list_reviews(session, d.owner, d.settings)]
+                assert listed == [d.ended.id, d.late.id, d.old.id]
+                assert [e.id for e, _ in await service.list_reviews(session, d.lead, d.settings)] == listed
+                assert await service.list_reviews(session, d.outsider, d.settings) == []
+        finally:
+            await engine.dispose()
+    run(scenario())
+
+
+def test_backfill_respects_flag_and_runs_only_once_even_with_new_old_events():
+    async def scenario():
+        engine, factory = await make_db()
+        try:
+            async with factory() as session:
+                d = await seed(session)
+            off = d.settings.model_copy(update={"post_event_certificate_review_enabled": False})
+            send = AsyncMock(return_value=sent())
+            with patch("app.services.notification_service.safe_send_once", send):
+                await service.scan_ended_events(SimpleNamespace(), off, factory, now=NOW)
+                send.assert_not_awaited()
+                async with factory() as session:
+                    assert await review_keys(session) == set()
+                await service.scan_ended_events(SimpleNamespace(), d.settings, factory, now=NOW)
+                async with factory() as session:
+                    late_import = Event(title="Импорт задним числом", description="Тест", event_date=date(2026, 10, 1),
+                                        event_time=time(10), location="Ереван", format="offline",
+                                        created_by=d.owner.id, status=EventStatus.COMPLETED)
+                    session.add(late_import)
+                    await session.flush()
+                    session.add(EventRegistration(event_id=late_import.id, user_id=d.boris.id,
+                                                  status=RegistrationStatus.REGISTERED))
+                    await session.commit()
+                    late_id = late_import.id
+                await service.scan_ended_events(SimpleNamespace(), d.settings, factory, now=NOW)
+            async with factory() as session:
+                assert await service.load_review(session, late_id) is None
+            assert sum(c.kwargs["delivery_key"].startswith(service.BACKFILL_KEY) for c in send.await_args_list) == 1
         finally:
             await engine.dispose()
     run(scenario())
