@@ -2,6 +2,10 @@ import { expect, test } from "@playwright/test";
 
 const VIEWPORTS = [320, 390, 430] as const;
 
+test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-11-28T08:00:00Z"));
+});
+
 async function enterAdminWorkspace(page: import("@playwright/test").Page) {
   await page.goto("/app/?devTelegramId=900003");
   await page
