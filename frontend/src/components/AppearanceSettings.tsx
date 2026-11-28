@@ -217,9 +217,31 @@ export function AppearanceSettings() {
           {saveState === "offline" && "Цвет применён здесь, на других устройствах появится при следующем подключении"}
         </p>
 
-        <button type="button" aria-pressed={motion.liveBackground} onClick={motion.toggleLiveBackground} style={{ width: "100%", textAlign: "left" }}>
-          Живой фон · {motion.liveBackground ? "Включён" : "Выключен"}
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+          <button
+            type="button"
+            aria-pressed={motion.motionAllowed}
+            aria-describedby={motion.reducedMotion ? "appearance-reduced-motion-note" : undefined}
+            data-motion-state={motion.reducedMotion ? "reduced-motion" : motion.liveBackground ? "playing" : "paused"}
+            onClick={motion.toggleLiveBackground}
+            disabled={motion.reducedMotion}
+            style={{ width: "100%", textAlign: "left" }}
+          >
+            {motion.reducedMotion
+              ? "Живой фон · Остановлен системой"
+              : `Живой фон · ${motion.liveBackground ? "Включён" : "На паузе"}`}
+          </button>
+          {motion.reducedMotion && (
+            <p
+              id="appearance-reduced-motion-note"
+              role="status"
+              data-testid="appearance-reduced-motion-note"
+              style={{ margin: 0, color: "var(--era-text-secondary)", fontSize: "var(--era-text-sm)", lineHeight: 1.45 }}
+            >
+              На устройстве включено системное «Уменьшение движения», поэтому анимации отключены. Отключите его в настройках телефона, чтобы вернуть живой фон.
+            </p>
+          )}
+        </div>
       </section>
     </Card>
   );

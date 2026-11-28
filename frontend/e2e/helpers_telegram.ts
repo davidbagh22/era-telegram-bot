@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 
 export interface TelegramStubOptions {
   safeArea?: { top: number; bottom: number; left?: number; right?: number };
+  initialActive?: boolean;
 }
 
 /** Minimal Telegram WebApp double with an event bus the test can fire. Never touches the network. */
@@ -14,7 +15,7 @@ export async function installTelegramStub(page: Page, options: TelegramStubOptio
       : undefined;
     const webApp = {
       initData: "",
-      isActive: true,
+      isActive: opts.initialActive ?? true,
       colorScheme: "light",
       themeParams: {},
       ready() {},

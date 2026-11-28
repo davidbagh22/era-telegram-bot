@@ -7,6 +7,7 @@ import { MonoLabel } from "../components/MonoLabel";
 import { OrbitNavigator, type OrbitNodeKey } from "../components/OrbitNavigator";
 import { LoadingRegion, Skeleton, SkeletonCard } from "../components/Skeleton";
 import { StatusBanner } from "../components/StatusBanner";
+import { useToast } from "../components/Toast";
 import { TypographyFeedCard } from "../components/TypographyFeedCard";
 import { useHome } from "../hooks/useHome";
 import { useMotionPreference } from "../motion/MotionPreference";
@@ -63,7 +64,8 @@ export function HomeScreen({
   void _onOpenCommunity;
   void _onOpenProjects;
   const home = useHome();
-  const { liveBackground, toggleLiveBackground } = useMotionPreference();
+  const { liveBackground, motionAllowed, reducedMotion, setLiveBackground, toggleLiveBackground } = useMotionPreference();
+  const toast = useToast();
   const [viewMode, setViewMode] = useState<"orbit" | "list">(() => {
     try { return localStorage.getItem("era.orbit.view") === "list" ? "list" : "orbit"; } catch { return "orbit"; }
   });
@@ -186,32 +188,72 @@ export function HomeScreen({
         gap: "1.5rem",
       }}
     >
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
-        <div style={{ minWidth: 0 }}>
+      <header style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "0.6rem 0.75rem" }}>
+        <div style={{ minWidth: 0, flex: "1 1 130px" }}>
           <MonoLabel tone="violet">ЭРА</MonoLabel>
-          <h1 style={{ margin: "0.35rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "1.55rem", lineHeight: 1.08 }}>
+          <h1 style={{ margin: "0.35rem 0 0", fontFamily: "var(--era-font-display)", fontSize: "1.55rem", lineHeight: 1.08, overflowWrap: "anywhere" }}>
             {greeting()}, {user.first_name}
           </h1>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.45rem", flexShrink: 0 }}>
           <button
             type="button"
-            onClick={toggleLiveBackground}
-            aria-pressed={liveBackground}
-            aria-label={liveBackground ? "Пауза живого фона" : "Включить живой фон"}
+            onClick={() => {
+              if (reducedMotion) {
+                toast.show(
+                  "Анимация отключена системной настройкой «Уменьшение движения». Отключите её в настройках телефона, чтобы включить живой фон.",
+                  "system",
+                );
+                return;
+              }
+              if (liveBackground && !motionAllowed) {
+                setLiveBackground(true);
+                return;
+              }
+              toggleLiveBackground();
+            }}
+            aria-pressed={motionAllowed}
+            aria-label={
+              reducedMotion
+                ? "Живой фон остановлен: включено уменьшение движения"
+                : motionAllowed
+                  ? "Живой фон играет — пауза живого фона"
+                  : "Живой фон на паузе — включить живой фон"
+            }
+            data-motion-state={reducedMotion ? "reduced-motion" : motionAllowed ? "playing" : "paused"}
             style={{
               minHeight: 44,
               minWidth: 44,
-              padding: "0.35rem 0.55rem",
+              padding: "0.35rem 0.7rem",
               borderRadius: "var(--era-radius-pill)",
-              fontSize: "0.72rem",
+              fontSize: "12px",
               fontWeight: 700,
-              border: "1px solid var(--era-border)",
-              background: "var(--era-glass)",
-              color: "var(--era-text-secondary)",
+              lineHeight: 1,
+              whiteSpace: "nowrap",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.35rem",
+              border: `1px solid ${motionAllowed ? "var(--era-border-strong)" : "var(--era-border)"}`,
+              background: motionAllowed ? "var(--era-selected)" : "var(--era-glass)",
+              color: motionAllowed ? "var(--era-cyan)" : "var(--era-text-secondary)",
             }}
           >
-            {liveBackground ? "⏸" : "▶"}
+            {reducedMotion ? (
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.5" />
+                <line x1="3" y1="9" x2="9" y2="3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            ) : motionAllowed ? (
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+                <rect x="2" y="1.75" width="3" height="8.5" rx="1" />
+                <rect x="7" y="1.75" width="3" height="8.5" rx="1" />
+              </svg>
+            ) : (
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+                <path d="M3 1.8L10 6L3 10.2V1.8Z" />
+              </svg>
+            )}
+            <span>{reducedMotion ? "Статика" : motionAllowed ? "Играет" : "Пауза"}</span>
           </button>
           <button
             type="button"
@@ -273,6 +315,25 @@ export function HomeScreen({
             ))}
           </div>
         </div>
+
+        {reducedMotion && (
+          <p
+            role="status"
+            data-testid="reduced-motion-notice"
+            style={{
+              margin: 0,
+              padding: "0.55rem 0.75rem",
+              borderRadius: "var(--era-radius-md)",
+              border: "1px solid var(--era-border)",
+              background: "var(--era-glass)",
+              color: "var(--era-text-secondary)",
+              fontSize: "var(--era-text-xs)",
+              lineHeight: 1.45,
+            }}
+          >
+            Анимация остановлена: на устройстве включено «Уменьшение движения» (Настройки → Универсальный доступ → Движение).
+          </p>
+        )}
 
         {viewMode === "orbit" ? (
           <OrbitNavigator onSelect={handleOrbitNode} />

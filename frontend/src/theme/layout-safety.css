@@ -123,7 +123,7 @@ svg {
 .era-reader-archive summary { cursor:pointer; padding:16px 0; font-weight:700; }
 .era-reader-archive button { display:flex; gap:14px; width:100%; text-align:left; align-items:baseline; margin-bottom:8px; }
 .era-reader-archive button span { color:var(--era-cyan); min-width:20px; }
-@supports not (backdrop-filter:blur(1px)) { .era-bottom-nav,.era-orbit-node__shell { background:var(--era-surface) !important; } }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .era-bottom-nav,.era-orbit-node__shell { background:var(--era-surface) !important; } }
 @media(max-width:360px) { .era-discover-page { padding-left:16px; padding-right:16px; } }
 
 
