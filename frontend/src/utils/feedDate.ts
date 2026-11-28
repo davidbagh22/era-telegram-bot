@@ -59,6 +59,39 @@ export function isEventDatePast(eventDate: string, now: Date = new Date()): bool
   return eventDate.trim() < yerevanTodayIso(now);
 }
 
+/**
+ * True when an event's start date is in the past in Asia/Yerevan AND any
+ * overnight end_time (e.g. 23:00–02:00 crossing midnight into the next day)
+ * has also elapsed. Asia/Yerevan is fixed UTC+4 without DST.
+ */
+export function isEventPastInYerevan(
+  eventDate: string,
+  eventTime?: string | null,
+  endTime?: string | null,
+  now: Date = new Date(),
+): boolean {
+  const parts = parseDateOnlyParts(eventDate);
+  if (!parts) return false;
+  if (eventDate.trim() >= yerevanTodayIso(now)) return false;
+  const startMatch = /^(\d{1,2}):(\d{2})/.exec((eventTime ?? "").trim());
+  const endMatch = /^(\d{1,2}):(\d{2})/.exec((endTime ?? "").trim());
+  if (startMatch && endMatch) {
+    const startMinutes = Number(startMatch[1]) * 60 + Number(startMatch[2]);
+    const endMinutes = Number(endMatch[1]) * 60 + Number(endMatch[2]);
+    if (endMinutes <= startMinutes) {
+      const overnightEndMs = Date.UTC(
+        parts.year,
+        parts.month - 1,
+        parts.day + 1,
+        Number(endMatch[1]) - 4,
+        Number(endMatch[2]),
+      );
+      if (now.getTime() < overnightEndMs) return false;
+    }
+  }
+  return true;
+}
+
 function formatDateOnlyParts(parts: { year: number; month: number; day: number }, withYear: boolean): string {
   const label = `${parts.day} ${MONTHS_RU[parts.month - 1]}`;
   return withYear ? `${label} ${parts.year}` : label;

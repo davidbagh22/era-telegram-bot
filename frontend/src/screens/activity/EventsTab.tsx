@@ -20,7 +20,7 @@ import { TypographyFeedCard } from "../../components/TypographyFeedCard";
 import { useToast } from "../../components/Toast";
 import { useAsync } from "../../hooks/useAsync";
 import { safeEvidenceUrl } from "../../utils/safeEvidenceUrl";
-import { formatFeedDateLine, isEventDatePast } from "../../utils/feedDate";
+import { formatFeedDateLine, isEventPastInYerevan } from "../../utils/feedDate";
 import { getTelegramWebApp, successHaptic } from "../../telegram/webApp";
 import type { EventActivity, EventItem, EventScope, EventSignup } from "../../types/activity";
 import { AnniversaryRegistration } from "./AnniversaryRegistration";
@@ -470,10 +470,11 @@ function EventDetail({ event, openSignup, pending, actionError, onRegister, onCa
       ? safeEvidenceUrl(event.contact) : null
   );
   const contactUrl = !externalSignupUrl ? safeEvidenceUrl(event.contact) : null;
+  const isActive = event.status === "active";
   const isCancelled = event.status === "cancelled";
   const isCompleted = event.status === "completed" || event.status === "report_submitted";
-  const isPastByDate = isEventDatePast(event.event_date);
-  const isPast = isCompleted || isCancelled || (isPastByDate && !event.can_register && !externalSignupUrl && !anniversary);
+  const isPastBySchedule = isEventPastInYerevan(event.event_date, event.event_time, event.end_time);
+  const isPast = isCompleted || isCancelled || (!isActive && isPastBySchedule && !event.can_register && !externalSignupUrl && !anniversary);
   const canCancelRegistration = (event.registration_status === "registered" || event.registration_status === "will_come") && !isPast;
   const canLeaveWaitlist = waitlisted && !isPast;
   const showDock = canCancelRegistration || canLeaveWaitlist || (!isPast && !registered && !waitlisted);

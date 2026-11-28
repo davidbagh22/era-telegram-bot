@@ -244,6 +244,33 @@ test("state 4: event day reveals photo proof and code confirmation when availabl
   await expect(page.getByLabel("Код подтверждения участия")).toBeVisible();
 });
 
+test("state 4b: overnight active event stays live after midnight in Yerevan", async ({ page }) => {
+  await mountMockEvent(
+    page,
+    makeEvent({
+      event_date: yerevanDateOffset(-1),
+      event_time: "23:00",
+      end_time: "02:00",
+      status: "active",
+      registration_status: "registered",
+      display_status: "Вы зарегистрированы",
+      can_register: false,
+    }),
+    {
+      attendance: {
+        can_submit_proof: true,
+        confirmation_open: false,
+      },
+    },
+  );
+
+  await expect(page.getByText("Идёт сейчас")).toBeVisible();
+  await expect(page.getByText("Завершено")).toHaveCount(0);
+  await expect(page.getByText("✓ Вы участвуете")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Отказаться", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Прикрепить фото с места" })).toBeVisible();
+});
+
 test("state 5: past completed/attended event hides sticky cancel dock and calendar button", async ({ page }) => {
   await mountMockEvent(
     page,
