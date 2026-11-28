@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_bot, get_current_user, get_session, get_settings
+from app.api.deps import get_bot, get_current_user, get_session, get_settings, require_approved_user
 from app.config import Settings
 from app.database.models import User
 from app.database.partners import Partner, PartnerInitiative
@@ -358,6 +358,7 @@ async def apply_opportunity(
     settings: Settings = Depends(get_settings),
     bot: Bot | None = Depends(get_bot),
 ) -> OpportunityOut:
+    require_approved_user(user)
     offer = await session.get(PartnerInitiative, offer_id)
     if offer is None:
         raise HTTPException(status_code=404, detail="opportunity_not_found")

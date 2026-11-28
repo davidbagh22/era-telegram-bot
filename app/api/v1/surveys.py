@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_session
+from app.api.deps import get_current_user, get_session, require_approved_user
 from app.database.management_models import AdminSurvey
 from app.database.models import User
 from app.services import survey_service
@@ -84,6 +84,7 @@ async def submit_survey(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> SurveyOut:
+    require_approved_user(user)
     survey = await _get_visible_survey(session, survey_id)
     try:
         answers = survey_service.validate_answers(survey, payload.answers)

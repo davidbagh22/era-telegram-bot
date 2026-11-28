@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_session
+from app.api.deps import get_current_user, get_session, require_approved_user
 from app.database.models import Auction, User
 from app.services import auction_service
 
@@ -79,6 +79,7 @@ async def place_bid(
     user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> AuctionOut:
+    require_approved_user(user)
     if payload.amount <= 0:
         raise HTTPException(status_code=422, detail="invalid_amount")
     auction = await session.get(Auction, auction_id)
