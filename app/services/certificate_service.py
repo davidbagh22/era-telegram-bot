@@ -26,7 +26,8 @@ async def _lock(session, key):
         await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock})
 
 
-async def certificate_snapshot(session, user_id, event_id, signatory):
+async def certificate_snapshot(session, user_id, event_id, signatory, *,
+                               allowed_statuses=(RegistrationStatus.ATTENDED,)):
     signatory = (signatory or "").strip()
     if not 3 <= len(signatory) <= 150 or "\n" in signatory or "\r" in signatory:
         raise ValueError("Укажите подписанта одной строкой, от 3 до 150 символов.")
@@ -36,7 +37,7 @@ async def certificate_snapshot(session, user_id, event_id, signatory):
                                                              EventRegistration.event_id == event_id))
     if (not target or target.is_blocked or target.is_archived
             or target.application_status != ApplicationStatus.APPROVED
-            or not event or not reg or reg.status != RegistrationStatus.ATTENDED):
+            or not event or not reg or reg.status not in allowed_statuses):
         raise ValueError("Выдача доступна только одобренному участнику с подтверждённым посещением.")
     return dict(full_name=(reg.signup or {}).get("full_name") or f"{target.first_name} {target.last_name or ''}".strip(),
                 event_title=event.title, event_date=event.event_date.isoformat(),
@@ -154,6 +155,63 @@ async def auto_issue_participation_certificate(session, actor, *, user_id: int, 
         new_value={"number": issue.document_number, "template": TEMPLATE_VERSION},
     )
     return issue
+
+
+DELIVERY_STATES = ("pending", "sent", "needs_attention", "skipped")
+# Explicit owner confirmation after the event is the basis here, so a participant
+# whose attendance was never marked can still be chosen. Waitlist and cancelled
+# registrations never qualify.
+POST_EVENT_STATUSES = (RegistrationStatus.REGISTERED, RegistrationStatus.WILL_COME,
+                       RegistrationStatus.ATTENDED, RegistrationStatus.NO_SHOW)
+
+
+def delivery_keys(issue_id):
+    return [f"event-certificate:{state}:{issue_id}" for state in DELIVERY_STATES]
+
+
+async def enqueue_certificate_delivery(session, issue_id) -> bool:
+    """Queue one Telegram delivery per certificate, whatever its earlier outcome was."""
+    from app.database.models import AppSetting
+
+    if await session.scalar(select(AppSetting.id).where(AppSetting.key.in_(delivery_keys(issue_id))).limit(1)):
+        return False
+    session.add(AppSetting(key=f"event-certificate:pending:{issue_id}", value={"issue_id": issue_id}))
+    return True
+
+
+async def issue_post_event_certificate(session, actor, *, user_id: int, event_id: int):
+    """Issue after the owner's post-event confirmation; returns ``(issue, created)``.
+
+    Any earlier document for the same event and person wins, including a revoked
+    one: a revocation is a human decision that a batch must not silently undo.
+    """
+    basis = f"event:{event_id}:user:{user_id}"
+    await _lock(session, basis)
+    latest = await session.scalar(
+        select(CertificateIssue).where(CertificateIssue.basis_key == basis)
+        .order_by(CertificateIssue.revision.desc()).limit(1)
+    )
+    if latest is not None:
+        return latest, False
+    snapshot = await certificate_snapshot(session, user_id, event_id, DEFAULT_PARTICIPATION_SIGNATORY,
+                                          allowed_statuses=POST_EVENT_STATUSES)
+    now = datetime.now(timezone.utc)
+    item = PortfolioItem(user_id=user_id, title=f"Сертификат участника: {snapshot['event_title']}",
+                         item_type="certificate", description="Выдан организатором после мероприятия",
+                         related_event_id=event_id, issued_by=actor.id, verified_by=actor.id,
+                         status="verified", issued_at=now.date())
+    session.add(item)
+    await session.flush()
+    issue = CertificateIssue(user_id=user_id, event_id=event_id, portfolio_item_id=item.id, basis_key=basis,
+                             revision=1, request_key=f"post-event:{event_id}:{user_id}"[:64], snapshot=snapshot,
+                             issued_by=actor.id, issued_at=now, status="issued")
+    session.add(issue)
+    await session.flush()
+    item.description = f"{issue.document_number}. Сертификат участника ЭРА."
+    await audit(session, actor_id=actor.id, action="certificate.post_event_issued", entity_type="certificate",
+                entity_id=issue.id, new_value={"number": issue.document_number, "template": TEMPLATE_VERSION})
+    await enqueue_certificate_delivery(session, issue.id)
+    return issue, True
 
 
 async def revoke_certificate(session, actor, settings, issue_id, reason):
