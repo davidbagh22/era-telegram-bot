@@ -126,6 +126,14 @@ def _extract_source_title_from_body(body: str | None) -> str | None:
     return None
 
 
+def _is_truncated_label_of(label: str, full: str) -> bool:
+    """True when a stored title label is the shortened form of the full source title."""
+    if not label.endswith("…"):
+        return False
+    prefix = label[:-1].rstrip()
+    return bool(prefix) and full.startswith(prefix) and len(full) > len(prefix)
+
+
 def _parse_media_template_title(title: str) -> tuple[str | None, str | None, bool]:
     """Return (task_kind, target_label, is_formulaic) if title is a template media title."""
     cleaned = (title or "").strip()
@@ -334,8 +342,11 @@ async def resolve_task_contexts(
 
         display_title = raw_title
         short_title = raw_title
+        truncated_target = bool(
+            group_title and parsed_target and _is_truncated_label_of(parsed_target, group_title)
+        )
         if media_kind and media_kind in MEDIA_TASK_SHORT_ACTIONS and (parsed_kind or is_formulaic):
-            if group_title and (parsed_target in GENERIC_MEDIA_RUBRICS or is_formulaic):
+            if group_title and (parsed_target in GENERIC_MEDIA_RUBRICS or is_formulaic or truncated_target):
                 display_title = media_task_display_title(media_kind, group_title)
             elif is_formulaic:
                 display_title = media_task_display_title(media_kind, parsed_target)
@@ -343,6 +354,7 @@ async def resolve_task_contexts(
                 parsed_target in GENERIC_MEDIA_RUBRICS
                 or parsed_target == group_title
                 or is_formulaic
+                or truncated_target
             ):
                 short_title = MEDIA_TASK_SHORT_ACTIONS[media_kind]
 

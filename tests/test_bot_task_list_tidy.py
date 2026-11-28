@@ -16,7 +16,7 @@ from app.database.media_models import MediaContentItem, MediaContentTask
 from app.database.models import Department, Direction, Event, Project, Task, TaskParticipant, User, UserDirection
 from app.handlers.participant.cabinet import my_tasks
 from app.handlers.participant.task_block2 import task_view, tasks_list, tasks_list_page
-from app.services import home_service, media_service, task_service
+from app.services import home_service, media_service, task_presentation_service, task_service
 from app.utils.constants import ApplicationStatus, TaskStatus
 
 
@@ -374,6 +374,63 @@ class BotTaskListTidyTests(unittest.IsolatedAsyncioTestCase):
             assert all("События ЭРА" not in task.title for task in ev_tasks)
             assert all("«Школа волонтёров»" in task.title for task in pr_tasks)
             assert all("Проекты ЭРА" not in task.title for task in pr_tasks)
+
+    async def test_long_source_title_keeps_stored_media_task_titles_within_column_limit(self):
+        settings = Settings(bot_token="1234567890:test-token", bot_username="ERA_1bot")
+        long_title = ("Большой городской фестиваль ЭРА «Весна» " * 10).strip()[:255]
+        self.assertEqual(len(long_title), 255)
+        for kind in media_service.MEDIA_TASK_KINDS:
+            stored = media_service.media_task_storage_title(kind, long_title)
+            self.assertLessEqual(len(stored), media_service.MEDIA_TASK_TITLE_MAX_LENGTH)
+            self.assertTrue(stored.endswith("…»"))
+        short = media_service.media_task_storage_title("text", "Вечер")
+        self.assertEqual(short, "Написать текст для «Вечер»")
+
+        async with self.session_factory() as session:
+            admin = await self._make_user(session, 601, role="admin")
+            event = Event(
+                title=long_title,
+                description="Фестиваль",
+                event_date=date(2026, 12, 25),
+                event_time=time(10, 0),
+                location="Ереван",
+                format="offline",
+                points_for_visit=30,
+                created_by=admin.id,
+            )
+            session.add(event)
+            await session.flush()
+
+            request = await media_service.request_media_package(
+                session,
+                source_type="event",
+                source_id=event.id,
+                package_type="full",
+                requester=admin,
+                settings=settings,
+                due_at=datetime.now(timezone.utc) + timedelta(days=10),
+            )
+            await session.commit()
+
+            content = await session.get(MediaContentItem, request.content_id)
+            tasks = list(
+                (
+                    await session.scalars(
+                        select(Task)
+                        .join(MediaContentTask, MediaContentTask.task_id == Task.id)
+                        .where(MediaContentTask.content_id == content.id)
+                    )
+                ).all()
+            )
+            self.assertEqual(len(tasks), 6)
+            for task in tasks:
+                self.assertLessEqual(len(task.title), media_service.MEDIA_TASK_TITLE_MAX_LENGTH)
+                self.assertEqual(task.reward_json["source_title"], long_title)
+
+            contexts = await task_presentation_service.resolve_task_contexts(session, tasks)
+            for task in tasks:
+                self.assertEqual(contexts[task.id].group_title, long_title)
+                self.assertIn(long_title, contexts[task.id].display_title)
 
     async def test_bot_task_list_pagination_buttons_and_empty_state(self):
         now = datetime.now(timezone.utc)

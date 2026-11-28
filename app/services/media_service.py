@@ -611,6 +611,25 @@ def media_task_display_title(task_kind: str, rubric: str | None) -> str:
     return template.format(rubric=label)
 
 
+MEDIA_TASK_TITLE_MAX_LENGTH = 255
+
+
+def media_task_storage_title(task_kind: str, rubric: str | None) -> str:
+    """Title persisted on Task.title, bounded to the column limit.
+
+    Only the stored title is shortened; the full source title stays in
+    reward_json["source_title"] and is shown in full by read-time presentation.
+    """
+    title = media_task_display_title(task_kind, rubric)
+    if len(title) <= MEDIA_TASK_TITLE_MAX_LENGTH:
+        return title
+    template = _MEDIA_TASK_TITLE_TEMPLATES[task_kind]
+    base_length = len(template.format(rubric=""))
+    keep = MEDIA_TASK_TITLE_MAX_LENGTH - base_length - 1
+    label = ((rubric or "").strip() or "публикации ЭРА")[:keep].rstrip()
+    return template.format(rubric=f"{label}…")
+
+
 def rewrite_formulaic_media_title(title: str) -> str | None:
     """Rewrite only unambiguous auto titles. Author titles stay untouched."""
     match = _FORMULAIC_MEDIA_TITLE.match((title or "").strip())
@@ -714,7 +733,7 @@ async def create_content_tasks(
         if target_title and target_title not in {"События ЭРА", "Проекты ЭРА"}:
             reward["source_title"] = target_title
         task = Task(
-            title=media_task_display_title(task_kind, target_title),
+            title=media_task_storage_title(task_kind, target_title),
             description=(
                 "Подготовь материал для редакции ЭРА. Результат отправляется "
                 "через стандартную сдачу задачи и после проверки учитывается в Медиа."
