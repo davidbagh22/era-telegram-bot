@@ -1,4 +1,3 @@
-from app.services.leaders_workspace import deadline_label
 from datetime import date
 
 from aiogram import F, Router
@@ -7,7 +6,7 @@ import logging
 
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
-from sqlalchemy import desc, or_, select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -20,7 +19,6 @@ from app.database.models import (
     PortfolioItem,
     Project,
     Task,
-    TaskParticipant,
     User,
 )
 from app.keyboards.common import back_keyboard
@@ -28,7 +26,6 @@ from app.keyboards.participant import (
     journey_keyboard,
     portfolio_keyboard,
     profile_sections_keyboard,
-    tasks_keyboard,
 )
 from app.repositories.users import rating, user_stats
 from app.services.event_activity_service import REVIEWABLE_STATUSES
@@ -41,13 +38,13 @@ from app.services.resume_export_service import (
     attachments_caption,
     telegram_file_fetcher,
 )
+from app.services.task_presentation_service import render_user_tasks_view
 from app.utils import texts
 from app.utils.constants import (
     ApplicationStatus,
     PROJECT_STATUS_LABELS,
     REGISTRATION_STATUS_LABELS,
     STATUS_LABELS,
-    TASK_STATUS_LABELS,
 )
 from app.utils.telegram import send_long_text
 
@@ -408,45 +405,8 @@ async def my_tasks(
 ) -> None:
     if not await _guard(call, user):
         return
-    tasks = (
-        await session.scalars(
-            select(Task)
-            .where(
-                or_(
-                    Task.assignee_id == user.id,
-                    Task.status == "published",
-                    Task.task_type == "challenge",
-                )
-            )
-            .order_by(Task.deadline)
-        )
-    ).all()
-    tasks = [
-        task
-        for task in tasks
-        if task.assignee_id == user.id
-        or not (task.audience_filter_json or {}).get("role")
-        or (task.audience_filter_json or {}).get("role") == user.role
-    ]
-    participants = (
-        await session.scalars(
-            select(TaskParticipant).where(
-                TaskParticipant.user_id == user.id,
-                TaskParticipant.task_id.in_([task.id for task in tasks] or [-1]),
-            )
-        )
-    ).all()
-    joined_ids = {item.task_id for item in participants}
-    joined_ids.update(task.id for task in tasks if task.assignee_id == user.id)
-    body = (
-        "\n".join(
-            f"• {task.title} — {TASK_STATUS_LABELS.get(task.status, 'Открыто')}, "
-            f"до {deadline_label(task.deadline, '%d.%m.%Y')} · {task.points} баллов"
-            for task in tasks
-        )
-        or "Задач пока нет."
-    )
-    await call.message.answer(body, reply_markup=tasks_keyboard(tasks, joined_ids))
+    body, markup = await render_user_tasks_view(session, user, mode="open", page=0)
+    await call.message.answer(body, reply_markup=markup)
 
 
 @router.callback_query(F.data.regexp(r"^task:(start|submit):\d+$"))

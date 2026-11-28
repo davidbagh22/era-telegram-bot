@@ -28,6 +28,7 @@ from app.services.opportunity_service import (
     evaluate_eligibility,
 )
 from app.services.progression_service import RANK_ORDER
+from app.services.task_presentation_service import resolve_task_contexts
 from app.utils.constants import (
     STATUS_LABELS,
     ParticipationStatus,
@@ -437,23 +438,25 @@ async def _recognition_progress(
 def _build_next_step(
     *,
     active_task: Task | None,
+    active_task_title: str | None = None,
     nearest_event_row: tuple[Event, EventRegistration] | None,
     active_project: Project | None,
     growth: GrowthProgress,
     opportunities: list[PartnerInitiative],
 ) -> NextStep | None:
     if active_task is not None:
+        task_label = active_task_title or active_task.title
         needs_revision = bool(getattr(active_task, "_home_needs_revision", False))
         if needs_revision:
-            title = f"Доработать: {active_task.title}"
+            title = f"Доработать: {task_label}"
             description = "Есть замечания — доработайте результат и отправьте снова."
         elif active_task.deadline:
-            title = f"Задача: {active_task.title}"
+            title = f"Задача: {task_label}"
             description = (
                 f"Срок: {active_task.deadline.astimezone(ERA_TIMEZONE):%d.%m %H:%M}."
             )
         else:
-            title = f"Задача: {active_task.title}"
+            title = f"Задача: {task_label}"
             description = (
                 "Без жёсткого срока — откройте и отправьте результат, когда готовы."
             )
@@ -535,8 +538,13 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
     tasks_in_progress_count = len(await list_tasks(session, user, "mine"))
     vector = await vector_home_summary(session, user.id)
 
+    active_task_ctx = None
+    if active_task is not None:
+        active_task_ctx = (await resolve_task_contexts(session, [active_task])).get(active_task.id)
+
     next_step = _build_next_step(
         active_task=active_task,
+        active_task_title=active_task_ctx.display_title if active_task_ctx else None,
         nearest_event_row=nearest_event_row,
         active_project=active_project,
         growth=growth,
@@ -558,10 +566,10 @@ async def build_home_snapshot(session: AsyncSession, user: User) -> HomeSnapshot
     if active_task is not None:
         active_task_summary = TaskSummary(
             id=active_task.id,
-            title=active_task.title,
+            title=active_task_ctx.display_title if active_task_ctx else active_task.title,
             deadline=active_task.deadline.isoformat() if active_task.deadline else "",
             points=active_task.points,
-            status=active_task.status,
+            status=active_task_ctx.effective_status if active_task_ctx else active_task.status,
         )
 
     active_project_summary = None

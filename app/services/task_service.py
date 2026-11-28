@@ -1,13 +1,48 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Direction, Task, TaskParticipant, User, UserDirection
+from app.utils.constants import TaskStatus
 
 ARCHIVE_STATUSES = {"completed", "cancelled", "rejected"}
 ACTIVE_MEMBERSHIP_STATUSES = {"pending", "accepted", "joined"}
 ACCEPTED_MEMBERSHIP_STATUSES = {"accepted", "joined"}
+_EXPIRABLE_STATUSES = {TaskStatus.NEW, TaskStatus.PUBLISHED, TaskStatus.IN_PROGRESS}
+
+
+def _utc_deadline(deadline: datetime | None) -> datetime | None:
+    if deadline is None:
+        return None
+    if deadline.tzinfo is None:
+        return deadline.replace(tzinfo=timezone.utc)
+    return deadline.astimezone(timezone.utc)
+
+
+def is_task_expired(task: Task, *, now: datetime | None = None) -> bool:
+    deadline = _utc_deadline(getattr(task, "deadline", None))
+    if deadline is None:
+        return False
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return deadline < current
+
+
+def effective_task_status(
+    task: Task, *, completed: bool = False, now: datetime | None = None
+) -> str:
+    if completed:
+        return TaskStatus.COMPLETED.value
+    status = str(getattr(task, "status", "") or "")
+    if status in ARCHIVE_STATUSES or status == TaskStatus.OVERDUE:
+        return status
+    if status in _EXPIRABLE_STATUSES and is_task_expired(task, now=now):
+        return TaskStatus.OVERDUE.value
+    return status
 
 
 def matches_task_audience(task: Task, user: User) -> bool:
@@ -67,10 +102,17 @@ def is_joined_or_assigned(task: Task, joined_ids: set[int], user: User) -> bool:
     return task.assignee_id == user.id or task.id in joined_ids
 
 
-def is_open_public_task(task: Task, joined_ids: set[int], user: User) -> bool:
+def is_open_public_task(
+    task: Task,
+    joined_ids: set[int],
+    user: User,
+    *,
+    now: datetime | None = None,
+) -> bool:
     return (
         task.task_type == "challenge"
         and task.status == "published"
+        and not is_task_expired(task, now=now)
         and not is_joined_or_assigned(task, joined_ids, user)
         and matches_task_audience(task, user)
     )
@@ -204,6 +246,7 @@ async def claim(
         task is None
         or task.task_type != "challenge"
         or task.status != "published"
+        or is_task_expired(task)
         or not matches_task_audience(task, user)
     ):
         return None, "closed"

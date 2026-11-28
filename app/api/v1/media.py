@@ -13,6 +13,11 @@ from app.config import Settings
 from app.database.media_models import MediaContentItem, MediaLibraryItem, MediaRequest
 from app.database.models import Task, User
 from app.services import media_service
+from app.services.task_presentation_service import (
+    TaskContext,
+    resolve_task_contexts,
+    sort_tasks_for_display,
+)
 from app.utils.constants import ApplicationStatus
 
 router = APIRouter(prefix="/media", tags=["media"])
@@ -21,6 +26,11 @@ router = APIRouter(prefix="/media", tags=["media"])
 class MediaTaskOut(BaseModel):
     id: int
     title: str
+    short_title: str | None = None
+    group_key: str | None = None
+    group_kind: str | None = None
+    group_title: str | None = None
+    group_date: str | None = None
     description: str
     deadline: str
     points: int
@@ -179,14 +189,19 @@ class MediaRequestOut(BaseModel):
     status: str
 
 
-def _task_out(task: Task) -> MediaTaskOut:
+def _task_out(task: Task, ctx: TaskContext | None = None) -> MediaTaskOut:
     return MediaTaskOut(
         id=task.id,
-        title=task.title,
+        title=ctx.display_title if ctx else task.title,
+        short_title=ctx.short_title if ctx else None,
+        group_key=ctx.group_key if ctx else None,
+        group_kind=ctx.group_kind if ctx else None,
+        group_title=ctx.group_title if ctx else None,
+        group_date=ctx.group_date if ctx else None,
         description=task.description,
         deadline=(task.deadline.isoformat() if task.deadline else ""),
         points=task.points,
-        status=task.status,
+        status=ctx.effective_status if ctx else task.status,
     )
 
 
@@ -281,6 +296,10 @@ async def read_media_hub(
     open_tasks = await media_service.media_tasks_for_user(session, user.id, mine=False)
     my_tasks = await media_service.media_tasks_for_user(session, user.id, mine=True)
     my_ids = {task.id for task in my_tasks}
+    visible_open = [task for task in open_tasks if task.id not in my_ids]
+    contexts = await resolve_task_contexts(session, [*visible_open, *my_tasks])
+    ordered_open = sort_tasks_for_display(visible_open, contexts)
+    ordered_mine = sort_tasks_for_display(my_tasks, contexts)
     from app.services.media_topics_service import topic_links
     return MediaHubOut(
         access_level=level,
@@ -289,8 +308,8 @@ async def read_media_hub(
         chat_topics=await topic_links(session, settings.media_chat_id),
         media_role="media_leader" if level == "leader" else "media_member" if level == "member" else None,
         channel_url=settings.era_channel_url,
-        open_tasks=[_task_out(task) for task in open_tasks if task.id not in my_ids],
-        my_tasks=[_task_out(task) for task in my_tasks],
+        open_tasks=[_task_out(task, contexts.get(task.id)) for task in ordered_open],
+        my_tasks=[_task_out(task, contexts.get(task.id)) for task in ordered_mine],
         can_manage=level in ("leader", "admin"),
     )
 
@@ -504,8 +523,9 @@ async def create_media_content_tasks(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    tasks = [await session.get(Task, link.task_id) for link in links]
-    return [_task_out(task) for task in tasks if task is not None]
+    tasks = [task for link in links if (task := await session.get(Task, link.task_id)) is not None]
+    contexts = await resolve_task_contexts(session, tasks)
+    return [_task_out(task, contexts.get(task.id)) for task in tasks]
 
 
 @router.post("/desk/auto", response_model=MediaConfigOut)

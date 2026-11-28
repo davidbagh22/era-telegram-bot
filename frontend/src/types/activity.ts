@@ -81,6 +81,11 @@ export type TaskScope = "available" | "for_you" | "team" | "mine" | "review" | "
 export interface TaskItem {
   id: number;
   title: string;
+  short_title?: string | null;
+  group_key?: string | null;
+  group_kind?: string | null;
+  group_title?: string | null;
+  group_date?: string | null;
   description: string;
   deadline: string;
   points: number;
