@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.database.models import (
+    AuditLog,
     LeadershipAttentionItem,
     LeadershipGoal,
     LeadershipReport,
@@ -270,15 +271,13 @@ async def dismiss_attention_item(
         "status": str(item.status),
         "responsible_id": item.responsible_id,
         "resolution": item.resolution,
+        "resolved_at": item.resolved_at.isoformat() if item.resolved_at else None,
         "scope_type": item.scope_type,
         "scope_id": item.scope_id,
         "type": item.type,
     }
     item.status = AttentionItemStatus.DISMISSED
     item.resolved_at = datetime.now(timezone.utc)
-    if clean_reason:
-        prefix = f"{item.resolution}\n" if item.resolution else ""
-        item.resolution = f"{prefix}Удалено: {clean_reason}"[:1000]
     await audit(
         session,
         actor_id=actor_id,
@@ -297,9 +296,28 @@ async def restore_attention_item(
     *,
     actor_id: int,
 ) -> LeadershipAttentionItem:
+    snapshot = await session.scalar(
+        select(AuditLog)
+        .where(
+            AuditLog.entity_type == "leadership_attention_item",
+            AuditLog.entity_id == item.id,
+            AuditLog.action == "leadership_attention_item.deleted",
+        )
+        .order_by(AuditLog.id.desc())
+        .limit(1)
+    )
+    old_data = snapshot.old_value if snapshot and isinstance(snapshot.old_value, dict) else {}
+    restored_status = str(old_data.get("status") or AttentionItemStatus.OPEN)
+    if restored_status in (AttentionItemStatus.DISMISSED, ""):
+        restored_status = AttentionItemStatus.OPEN
+    restored_resolved_at = None
+    raw_resolved_at = old_data.get("resolved_at")
+    if isinstance(raw_resolved_at, str):
+        restored_resolved_at = datetime.fromisoformat(raw_resolved_at)
+
     old_status = str(item.status)
-    item.status = AttentionItemStatus.OPEN
-    item.resolved_at = None
+    item.status = restored_status
+    item.resolved_at = restored_resolved_at
     await audit(
         session,
         actor_id=actor_id,

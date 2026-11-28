@@ -231,6 +231,51 @@ class AdminDecisionQueueApiTests(unittest.IsolatedAsyncioTestCase):
         relisted = await asyncio.to_thread(client.get, "/api/v1/admin/decision-queue")
         self.assertIn(item_id, [d["id"] for d in relisted.json()["decisions"]])
 
+    async def test_restore_returns_decision_to_pre_deletion_status_and_text(self) -> None:
+        data = await self._seed()
+        client = self._client(data["admin"])
+        deferred_resolved_at = datetime(2026, 11, 20, 9, 30, tzinfo=timezone.utc)
+        original_text = "Согласовать бюджет мероприятия"
+        async with self.factory() as session:
+            deferred = LeadershipAttentionItem(
+                type="pulse_help",
+                severity="medium",
+                scope_type="pulse",
+                scope_id=77,
+                owner_id=data["leader"].id,
+                status="deferred",
+                resolution=original_text,
+                resolved_at=deferred_resolved_at,
+            )
+            session.add(deferred)
+            await session.commit()
+            item_id = deferred.id
+
+        long_reason = "х" * 500
+        deleted = await asyncio.to_thread(
+            client.request,
+            "DELETE",
+            f"/api/v1/admin/decision-queue/decisions/{item_id}",
+            json={"reason": long_reason},
+        )
+        self.assertEqual(deleted.status_code, 200)
+
+        async with self.factory() as session:
+            item = await session.get(LeadershipAttentionItem, item_id)
+            self.assertEqual(item.resolution, original_text)
+
+        restored = await asyncio.to_thread(
+            client.post, f"/api/v1/admin/decision-queue/decisions/{item_id}/restore"
+        )
+        self.assertEqual(restored.status_code, 200)
+        self.assertEqual(restored.json()["status"], "deferred")
+
+        async with self.factory() as session:
+            item = await session.get(LeadershipAttentionItem, item_id)
+            self.assertEqual(str(item.status), "deferred")
+            self.assertEqual(item.resolution, original_text)
+            self.assertEqual(item.resolved_at.replace(tzinfo=timezone.utc), deferred_resolved_at)
+
     async def test_delete_task_soft_cancels_closes_linked_blocker_and_guards_pending_submission(self) -> None:
         data = await self._seed()
         client = self._client(data["admin"])
