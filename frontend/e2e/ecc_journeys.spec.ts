@@ -55,14 +55,14 @@ test("full event → waitlist CTA → queue copy → cancel from waitlist", asyn
   await expect(waitlistSheet.getByText(/если оно освободится/i)).toBeVisible();
   await waitlistSheet.getByRole("button", { name: "Понятно" }).click();
 
-  await expect(page.getByText("Вы в листе ожидания").first()).toBeVisible();
-  await expect(page.getByText(/Лист ожидания/)).toBeVisible();
+  await expect(page.getByText("Вы в листе ожидания")).toHaveCount(1);
+  await expect(page.getByText("Вы в листе ожидания")).toBeVisible();
 
   // Dock CTA for waitlist is «Покинуть», not «Отказаться».
   await page.getByRole("button", { name: "Покинуть", exact: true }).click();
   await expect(page.getByText("Покинуть лист ожидания?")).toBeVisible();
   await page.getByRole("button", { name: "Остаться в очереди" }).click();
-  await expect(page.getByText("Вы в листе ожидания").first()).toBeVisible();
+  await expect(page.getByText("Вы в листе ожидания")).toHaveCount(1);
 
   await page.getByRole("button", { name: "Покинуть", exact: true }).click();
   await page.getByRole("button", { name: "Покинуть", exact: true }).last().click();

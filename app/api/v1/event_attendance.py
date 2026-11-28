@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from aiogram.types import BufferedInputFile
@@ -16,12 +17,28 @@ from app.database.models import AttendanceProof, Event, EventRegistration, User
 from app.services import event_attendance_service
 from app.services.notification_service import notify_admins
 from app.services.referral_service import award_first_event_referral
-from app.utils.constants import ApplicationStatus, RegistrationStatus
+from app.utils.constants import ApplicationStatus, EventStatus, RegistrationStatus
 
 router = APIRouter(prefix="/events", tags=["events"])
 
 _PROOF_TYPES = {"image/jpeg", "image/png", "image/webp"}
 _PROOF_MAX_BYTES = 5 * 1024 * 1024
+_YEREVAN_TZ = ZoneInfo("Asia/Yerevan")
+
+
+_PROOF_OPEN_STATUSES = {
+    EventStatus.ACTIVE,
+    EventStatus.COMPLETED,
+    EventStatus.REPORT_SUBMITTED,
+}
+
+
+def _yerevan_today() -> date:
+    return datetime.now(_YEREVAN_TZ).date()
+
+
+def _proof_window_reached(event: Event) -> bool:
+    return event.status in _PROOF_OPEN_STATUSES or event.event_date <= _yerevan_today()
 
 
 class EventAttendanceStateOut(BaseModel):
@@ -64,8 +81,10 @@ def _state_out(
     can_submit = (
         registered
         and not state.confirmed
+        and not state.confirmation_closed
+        and state.event.status != EventStatus.CANCELLED
         and (proof is None or proof.status in {"pending", "rejected"})
-        and state.event.event_date <= date.today()
+        and _proof_window_reached(state.event)
     )
     return EventAttendanceStateOut(
         event_id=state.event.id,
@@ -134,7 +153,12 @@ async def submit_attendance_proof(
     )
     if registration is None:
         raise HTTPException(status_code=409, detail="not_registered")
-    if event.event_date > date.today():
+    if event.status == EventStatus.CANCELLED:
+        raise HTTPException(status_code=409, detail="attendance_not_open")
+    current_state = await event_attendance_service.participant_state(session, event_id, user.id)
+    if current_state.confirmation_closed:
+        raise HTTPException(status_code=409, detail="attendance_not_open")
+    if not _proof_window_reached(event):
         raise HTTPException(status_code=409, detail="event_not_started")
     if upload.content_type not in _PROOF_TYPES:
         raise HTTPException(status_code=415, detail="proof_must_be_image")

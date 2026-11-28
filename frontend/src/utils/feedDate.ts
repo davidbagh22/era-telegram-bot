@@ -32,6 +32,33 @@ function currentYerevanYear(): number {
   return Number(parts.find((part) => part.type === "year")?.value ?? new Date().getFullYear());
 }
 
+/** Current calendar date YYYY-MM-DD in Asia/Yerevan, independent of device TZ. */
+export function yerevanTodayIso(now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Yerevan",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  if (year && month && day) return `${year}-${month}-${day}`;
+  return now.toISOString().slice(0, 10);
+}
+
+/** True when a YYYY-MM-DD event date is today or earlier in Asia/Yerevan. */
+export function isEventDateTodayOrPast(eventDate: string, now: Date = new Date()): boolean {
+  if (!parseDateOnlyParts(eventDate)) return false;
+  return eventDate.trim() <= yerevanTodayIso(now);
+}
+
+/** True when a YYYY-MM-DD event date is strictly before today in Asia/Yerevan. */
+export function isEventDatePast(eventDate: string, now: Date = new Date()): boolean {
+  if (!parseDateOnlyParts(eventDate)) return false;
+  return eventDate.trim() < yerevanTodayIso(now);
+}
+
 function formatDateOnlyParts(parts: { year: number; month: number; day: number }, withYear: boolean): string {
   const label = `${parts.day} ${MONTHS_RU[parts.month - 1]}`;
   return withYear ? `${label} ${parts.year}` : label;

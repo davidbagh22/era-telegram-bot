@@ -20,7 +20,7 @@ import { TypographyFeedCard } from "../../components/TypographyFeedCard";
 import { useToast } from "../../components/Toast";
 import { useAsync } from "../../hooks/useAsync";
 import { safeEvidenceUrl } from "../../utils/safeEvidenceUrl";
-import { formatFeedDateLine } from "../../utils/feedDate";
+import { formatFeedDateLine, isEventDatePast } from "../../utils/feedDate";
 import { getTelegramWebApp, successHaptic } from "../../telegram/webApp";
 import type { EventActivity, EventItem, EventScope, EventSignup } from "../../types/activity";
 import { AnniversaryRegistration } from "./AnniversaryRegistration";
@@ -134,22 +134,33 @@ function isIosDevice(): boolean {
     || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 }
 
-function EventCalendarButton({ event }: { event: EventItem }) {
+function EventCalendarButton({
+  event,
+  mode = "sheet",
+}: {
+  event: EventItem;
+  mode?: "sheet" | "inline";
+}) {
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [preparedFile, setPreparedFile] = useState<File | null>(null);
-  const [preparingShare, setPreparingShare] = useState(isIosDevice());
+  const [preparingShare, setPreparingShare] = useState(false);
   const toast = useToast();
   const googleUrl = googleCalendarUrl(event);
   const ios = isIosDevice();
 
   useEffect(() => {
-    if (!ios) return;
-    let active = true;
+    setOpen(false);
     setPreparedFile(null);
-    setPreparingShare(true);
-    // Web Share must be called directly from a tap. Fetching the protected ICS
-    // inside that tap can lose transient user activation on iOS Telegram, so
-    // prepare the file read-only while the event detail is already visible.
+    setPreparingShare(false);
+  }, [event.id]);
+
+  useEffect(() => {
+    if (!ios || !open || preparedFile) return;
+    let active = true;
+    // Web Share must be called directly from a tap. Prepare the protected ICS
+    // read-only as soon as the calendar picker opens so tapping Apple (.ics)
+    // preserves transient user activation on iOS Telegram.
     const probe = new File([""], "ERA.ics", { type: "text/calendar" });
     let canShareFile = false;
     try {
@@ -161,6 +172,7 @@ function EventCalendarButton({ event }: { event: EventItem }) {
       setPreparingShare(false);
       return () => { active = false; };
     }
+    setPreparingShare(true);
     void downloadEventCalendar(event.id)
       .then((blob) => {
         if (active) setPreparedFile(new File([blob], `ERA-${event.id}.ics`, { type: "text/calendar" }));
@@ -168,22 +180,23 @@ function EventCalendarButton({ event }: { event: EventItem }) {
       .catch(() => { /* explain unavailable import on explicit tap */ })
       .finally(() => { if (active) setPreparingShare(false); });
     return () => { active = false; };
-  }, [event.id, ios]);
+  }, [event.id, ios, open, preparedFile]);
 
   async function shareAppleCalendar() {
     if (busy || preparingShare) return;
     if (ios) {
       if (!preparedFile || typeof navigator.share !== "function") {
-        toast.show("Telegram на iPhone не поддерживает передачу .ics. Используйте Google Календарь или откройте ЭРА в Safari.", "error");
+        toast.show("Telegram на iPhone не поддерживает передачу .ics. Выберите Google Календарь или отправьте файл в чат ЭРА.", "error");
         return;
       }
       try {
         // No await before share: preserve the user gesture on iOS.
         await navigator.share({ files: [preparedFile], title: event.title });
+        setOpen(false);
         toast.show("Выберите Календарь или «Сохранить в Файлы» в меню «Поделиться».");
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        toast.show("Не удалось открыть меню «Поделиться». Используйте Google Календарь.", "error");
+        toast.show("Не удалось открыть меню «Поделиться». Выберите Google Календарь или файл в чат ЭРА.", "error");
       }
       return;
     }
@@ -199,7 +212,8 @@ function EventCalendarButton({ event }: { event: EventItem }) {
       anchor.click();
       anchor.remove();
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      toast.show("Скачан .ics. Откройте файл в календаре; после изменения события скачайте новую версию.");
+      setOpen(false);
+      toast.show("Скачан файл .ics — откройте его в календаре.");
     } catch {
       toast.show("Не удалось скачать календарь. Попробуйте Google Календарь.", "error");
     } finally {
@@ -212,9 +226,10 @@ function EventCalendarButton({ event }: { event: EventItem }) {
     setBusy(true);
     try {
       await sendEventCalendarToChat(event.id);
+      setOpen(false);
       toast.show("Файл календаря отправлен вам в чат с ботом ЭРА.");
     } catch {
-      toast.show("Отправка не подтверждена. Проверьте чат с ботом; альтернативно используйте Google Календарь.", "error");
+      toast.show("Отправка не подтверждена. Проверьте чат с ботом или используйте Google Календарь.", "error");
     } finally {
       setBusy(false);
     }
@@ -222,6 +237,7 @@ function EventCalendarButton({ event }: { event: EventItem }) {
 
   function openGoogle(eventClick: React.MouseEvent<HTMLAnchorElement>) {
     if (!googleUrl) return;
+    setOpen(false);
     const telegram = getTelegramWebApp();
     if (telegram?.openLink) {
       try {
@@ -231,77 +247,117 @@ function EventCalendarButton({ event }: { event: EventItem }) {
     }
   }
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
-      {googleUrl && <a href={googleUrl} target="_blank" rel="noopener noreferrer" onClick={openGoogle}
-        className="era-btn-primary" style={{ textAlign: "center", textDecoration: "none", padding: ".75rem", borderRadius: "var(--era-radius-control)" }}>
-        Google Календарь
-      </a>}
-      <button type="button" disabled={busy || preparingShare} onClick={() => void shareAppleCalendar()}>
+  const options = (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+      {googleUrl && (
+        <a
+          href={googleUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={openGoogle}
+          className="era-btn-secondary"
+          style={{ width: "100%", textAlign: "center", textDecoration: "none", fontWeight: 700 }}
+        >
+          Google Календарь
+        </a>
+      )}
+      <button type="button" disabled={busy || preparingShare} onClick={() => void shareAppleCalendar()} style={{ width: "100%" }}>
         {busy || preparingShare ? "Готовим файл…" : "Календарь Apple (.ics)"}
       </button>
-      {ios && <button type="button" disabled={busy} onClick={() => void sendToChat()}>
-        {busy ? "Отправляем…" : "Получить файл календаря в чате ЭРА"}
-      </button>}
-      <small style={{ color: "var(--era-text-muted)" }}>
-        На iPhone используйте системное меню «Поделиться». Если оно недоступно, выберите Google Календарь.
-        {event.end_time ? "" : " Если время окончания не указано, Google предложит длительность 1 час."}
-      </small>
+      <button type="button" disabled={busy} onClick={() => void sendToChat()} style={{ width: "100%" }}>
+        {busy ? "Отправляем…" : "Файл в чат ЭРА"}
+      </button>
     </div>
+  );
+
+  if (mode === "inline") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        <button
+          type="button"
+          className="era-btn-secondary"
+          aria-expanded={open}
+          onClick={() => setOpen((prev) => !prev)}
+          style={{ width: "100%", minHeight: 44 }}
+        >
+          Добавить в календарь
+        </button>
+        {open && options}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="era-btn-secondary"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => setOpen(true)}
+        style={{
+          flex: "1 1 10.5rem",
+          minWidth: 0,
+          minHeight: 44,
+          padding: "0.55rem 0.85rem",
+          fontSize: "var(--era-text-sm)",
+          fontWeight: 700,
+        }}
+      >
+        Добавить в календарь
+      </button>
+      <BottomSheet open={open} onClose={() => setOpen(false)} title="Добавить в календарь">
+        {options}
+      </BottomSheet>
+    </>
   );
 }
 
 function EventActivitiesPanel({ eventId }: { eventId: number }) {
   const state = useAsync(() => fetchEventActivities(eventId), [eventId]);
 
-  if (state.status === "loading") {
-    return <p style={{ color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>Загружаем задания…</p>;
-  }
-  if (state.status === "error") {
-    return <p style={{ color: "var(--era-error)", fontSize: "0.8125rem" }}>Не удалось загрузить задания мероприятия.</p>;
-  }
-  if (state.data.length === 0) {
-    return <p style={{ color: "var(--era-text-muted)", fontSize: "0.8125rem" }}>Дополнительных заданий пока нет.</p>;
+  if (state.status !== "ready" || state.data.length === 0) {
+    return null;
   }
 
   return (
-    <div className="era-stagger" style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
-      {state.data.map((activity: EventActivity) => {
-        const submitUrl = safeEvidenceUrl(activity.submit_deep_link);
-        return (
-          <div
-          key={activity.id}
-          style={{
-            border: "1px solid var(--era-border)",
-            background: "var(--era-surface-2)",
-            borderRadius: "0.9rem",
-            padding: "0.8rem",
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.35rem",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "flex-start" }}>
-            <strong>{activity.title}</strong>
-            {activity.my_status && <StatusBadge label={ACTIVITY_STATUS_LABELS[activity.my_status] ?? "В работе"} tone="violet" />}
-          </div>
-          <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.85rem" }}>{activity.description}</p>
-          <strong style={{ fontSize: "0.82rem" }}>+{activity.points} баллов</strong>
-          {submitUrl && (
-            <a
-              href={submitUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="era-btn-primary"
-              style={{ textAlign: "center", textDecoration: "none", marginTop: "0.35rem", minHeight: 44, display: "grid", placeItems: "center", borderRadius: "var(--era-radius-control)" }}
+    <section>
+      <h3 style={{ margin: "0 0 0.55rem", fontSize: "1.02rem" }}>Задания мероприятия</h3>
+      <div className="era-stagger" style={{ display: "flex", flexDirection: "column", gap: "0.55rem" }}>
+        {state.data.map((activity: EventActivity) => {
+          const submitUrl = safeEvidenceUrl(activity.submit_deep_link);
+          return (
+            <Card
+              key={activity.id}
+              style={{
+                padding: "0.85rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.35rem",
+              }}
             >
-              Отправить результат
-            </a>
-          )}
-        </div>
-        );
-      })}
-    </div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", alignItems: "flex-start" }}>
+                <strong>{activity.title}</strong>
+                {activity.my_status && <StatusBadge label={ACTIVITY_STATUS_LABELS[activity.my_status] ?? "В работе"} tone="violet" />}
+              </div>
+              <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.85rem" }}>{activity.description}</p>
+              {activity.points > 0 && <strong style={{ fontSize: "0.82rem", color: "var(--era-gold-ink)" }}>+{activity.points} баллов</strong>}
+              {submitUrl && (
+                <a
+                  href={submitUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="era-btn-primary"
+                  style={{ textAlign: "center", textDecoration: "none", marginTop: "0.35rem", minHeight: 44, display: "grid", placeItems: "center", borderRadius: "var(--era-radius-control)" }}
+                >
+                  Отправить результат
+                </a>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -413,6 +469,40 @@ function EventDetail({ event, openSignup, pending, actionError, onRegister, onCa
     !event.registration_required && event.contact?.startsWith("https://t.me/")
       ? safeEvidenceUrl(event.contact) : null
   );
+  const contactUrl = !externalSignupUrl ? safeEvidenceUrl(event.contact) : null;
+  const isCancelled = event.status === "cancelled";
+  const isCompleted = event.status === "completed" || event.status === "report_submitted";
+  const isPastByDate = isEventDatePast(event.event_date);
+  const isPast = isCompleted || isCancelled || (isPastByDate && !event.can_register && !externalSignupUrl && !anniversary);
+  const canCancelRegistration = (event.registration_status === "registered" || event.registration_status === "will_come") && !isPast;
+  const canLeaveWaitlist = waitlisted && !isPast;
+  const showDock = canCancelRegistration || canLeaveWaitlist || (!isPast && !registered && !waitlisted);
+
+  const showHeaderBadge = isCancelled || isCompleted || isPast || event.status === "active"
+    ? true
+    : (registered || waitlisted || Boolean(event.anniversary_registered))
+      ? false
+      : Boolean(event.display_status);
+
+  const headerBadgeLabel = isCancelled
+    ? "Отменено"
+    : isCompleted || isPast
+      ? "Завершено"
+      : event.status === "active"
+        ? "Идёт сейчас"
+        : event.display_status;
+
+  const headerBadgeTone: "violet" | "gold" | "neutral" | "red" = isCancelled
+    ? "red"
+    : isCompleted || isPast
+      ? "neutral"
+      : event.status === "active"
+        ? "violet"
+        : registrationBadgeTone(event.registration_status);
+
+  const showCalendar = !isCompleted && !isCancelled;
+  const hasQuickActions = showCalendar || Boolean(chatUrl) || Boolean(contactUrl);
+
   const rawDescription = (event.full_description || event.description || event.short_description || "").trim();
   const summary = event.short_description?.trim() || "";
   const cleanedBody = cleanEventDescriptionBody(rawDescription, event);
@@ -420,12 +510,24 @@ function EventDetail({ event, openSignup, pending, actionError, onRegister, onCa
   const bodyText = cleanedBody || summary;
 
   return (
-    <div className="era-page" style={{ display: "flex", flexDirection: "column", gap: "0.75rem", paddingBottom: "calc(10.25rem + var(--era-safe-bottom))" }}>
+    <div
+      className="era-page"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.75rem",
+        paddingBottom: showDock ? "calc(10.25rem + var(--era-safe-bottom))" : "var(--era-page-bottom-safe)",
+      }}
+    >
       <button type="button" onClick={onBack} style={{ alignSelf: "flex-start" }}>← К событиям</button>
       <EventPoster event={event} />
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-        <StatusBadge label={event.display_status} tone={registrationBadgeTone(event.registration_status)} />
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.45rem" }}>
+        {showHeaderBadge && (
+          <div>
+            <StatusBadge label={headerBadgeLabel} tone={headerBadgeTone} />
+          </div>
+        )}
         <h2 style={{ fontSize: "clamp(1.65rem, 7vw, 2.35rem)", lineHeight: 1.05, margin: 0, overflowWrap: "anywhere", textWrap: "balance" }}>{event.title}</h2>
       </div>
 
@@ -500,89 +602,215 @@ function EventDetail({ event, openSignup, pending, actionError, onRegister, onCa
 
       {!externalSignupUrl && (
         <Card>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.7rem" }}>
-            <div><span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>УЧАСТНИКИ</span><div style={{ fontSize: "1.25rem", fontWeight: 900 }}>{capacityText(event)}</div>{event.remaining_count !== null && <div style={{ color: "var(--era-text-muted)", fontSize: "0.82rem" }}>Осталось {event.remaining_count}</div>}</div>
-            <div><span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>ЗА ПОСЕЩЕНИЕ</span><div style={{ fontSize: "1.25rem", fontWeight: 900 }}>{event.points_for_visit > 0 ? `+${event.points_for_visit}` : "—"}</div><div style={{ color: "var(--era-text-muted)", fontSize: "0.82rem" }}>баллов</div></div>
+          <div style={{ display: "grid", gridTemplateColumns: event.points_for_visit > 0 ? "1fr 1fr" : "1fr", gap: "0.7rem" }}>
+            <div>
+              <span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>УЧАСТНИКИ</span>
+              <div style={{ fontSize: "1.25rem", fontWeight: 900 }}>{capacityText(event)}</div>
+              {event.remaining_count !== null && <div style={{ color: "var(--era-text-muted)", fontSize: "0.82rem" }}>Осталось {event.remaining_count}</div>}
+            </div>
+            {event.points_for_visit > 0 && (
+              <div>
+                <span style={{ color: "var(--era-text-muted)", fontSize: "0.78rem" }}>ЗА ПОСЕЩЕНИЕ</span>
+                <div style={{ fontSize: "1.25rem", fontWeight: 900 }}>+{event.points_for_visit}</div>
+                <div style={{ color: "var(--era-text-muted)", fontSize: "0.82rem" }}>баллов</div>
+              </div>
+            )}
           </div>
         </Card>
       )}
 
-      {(registered || waitlisted) && (
-        <Card style={registered ? { borderColor: "rgba(85,189,130,.18)" } : undefined}>
-          <strong>{waitlisted ? "Вы в листе ожидания" : "✓ Вы участвуете"}</strong>
-          <p style={{ margin: "0.35rem 0 0", color: "var(--era-text-muted)", fontSize: "0.86rem" }}>
-            {waitlisted ? "Если место освободится, бот сообщит вам автоматически." : "Подробности и напоминания придут в бот. Если планы изменятся — освободите место заранее."}
-          </p>
-          {registered && <div style={{ marginTop: "0.75rem" }}><EventActivitiesPanel eventId={event.id} /></div>}
-        </Card>
+      {registered && !isCancelled && <EventActivitiesPanel eventId={event.id} />}
+      {registered && !isCancelled && (
+        <EventAttendancePanel eventId={event.id} eventDate={event.event_date} eventStatus={event.status} />
       )}
 
-      {registered && <EventAttendancePanel eventId={event.id} />}
+      {hasQuickActions && (
+        <div
+          data-testid="event-quick-actions"
+          style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", minWidth: 0 }}
+        >
+          {showCalendar && <EventCalendarButton event={event} />}
+          {chatUrl && (
+            <a
+              href={chatUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="era-btn-secondary"
+              style={{
+                flex: "1 1 8.5rem",
+                minWidth: 0,
+                minHeight: 44,
+                padding: "0.55rem 0.85rem",
+                fontSize: "var(--era-text-sm)",
+                fontWeight: 700,
+                textAlign: "center",
+                textDecoration: "none",
+              }}
+            >
+              Открыть чат
+            </a>
+          )}
+          {contactUrl && (
+            <a
+              href={contactUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="era-btn-secondary"
+              style={{
+                flex: "1 1 8.5rem",
+                minWidth: 0,
+                minHeight: 44,
+                padding: "0.55rem 0.85rem",
+                fontSize: "var(--era-text-sm)",
+                fontWeight: 700,
+                textAlign: "center",
+                textDecoration: "none",
+              }}
+            >
+              Открыть ссылку
+            </a>
+          )}
+        </div>
+      )}
 
-      {event.project_id && <button type="button" onClick={() => { window.location.hash = `#/projects/${event.project_id}`; }}>Открыть связанный проект →</button>}
-      <EventCalendarButton event={event} />
-      {chatUrl && <a href={chatUrl} target="_blank" rel="noopener noreferrer" className="era-btn-secondary" style={{ textAlign: "center", textDecoration: "none" }}>Открыть чат</a>}
-      {!externalSignupUrl && safeEvidenceUrl(event.contact) ? (
-        <a href={safeEvidenceUrl(event.contact)!} target="_blank" rel="noopener noreferrer" className="era-btn-secondary" style={{ textAlign: "center", textDecoration: "none" }}>Открыть ссылку</a>
-      ) : !externalSignupUrl && event.contact ? <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.86rem" }}>Связь: {event.contact}</p> : null}
+      {event.project_id && (
+        <button type="button" onClick={() => { window.location.hash = `#/projects/${event.project_id}`; }}>
+          Открыть связанный проект →
+        </button>
+      )}
+      {!externalSignupUrl && !contactUrl && event.contact && (
+        <p style={{ margin: 0, color: "var(--era-text-muted)", fontSize: "0.86rem" }}>Связь: {event.contact}</p>
+      )}
       <MediaRequestButton sourceType="event" sourceId={event.id} />
       {actionError && <p style={{ color: "var(--era-error)", margin: 0 }}>{actionError}</p>}
 
-      <div
-        data-era-hide-on-keyboard
-        style={{
-          position: "fixed",
-          left: "max(1rem, var(--era-safe-left))",
-          right: "max(1rem, var(--era-safe-right))",
-          bottom: "calc(5.4rem + var(--era-safe-bottom))",
-          zIndex: 20,
-          padding: "0.55rem",
-          border: "1px solid var(--era-nav-border, var(--era-border))",
-          borderRadius: "1.25rem",
-          background: "var(--era-nav-glass, var(--era-glass))",
-          backdropFilter: "blur(20px) saturate(140%)",
-          WebkitBackdropFilter: "blur(20px) saturate(140%)",
-          boxShadow: "var(--era-shadow-dock)",
-        }}
-      >
-        {registered ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: ".5rem" }}>
+      {showDock && (
+        <div
+          data-era-hide-on-keyboard
+          style={{
+            position: "fixed",
+            left: "max(1rem, var(--era-safe-left))",
+            right: "max(1rem, var(--era-safe-right))",
+            bottom: "calc(5.4rem + var(--era-safe-bottom))",
+            zIndex: 20,
+            padding: "0.5rem",
+            border: "1px solid var(--era-nav-border, var(--era-border))",
+            borderRadius: "1.25rem",
+            background: "var(--era-nav-glass, var(--era-glass))",
+            backdropFilter: "blur(20px) saturate(140%)",
+            WebkitBackdropFilter: "blur(20px) saturate(140%)",
+            boxShadow: "var(--era-shadow-dock)",
+          }}
+        >
+          {canCancelRegistration ? (
             <div
-              className="era-success-state"
-              style={{ minHeight: 44, borderRadius: "var(--era-radius-control)", display: "grid", placeItems: "center", background: "var(--era-success-bg)", color: "var(--era-success)", fontWeight: 850 }}
+              data-testid="event-participation-bar"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "0.25rem 0.5rem",
+                minWidth: 0,
+                padding: "0 0.2rem 0 0.65rem",
+              }}
             >
-              ✓ Вы участвуете
+              <div
+                className="era-success-state"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  minHeight: 40,
+                  color: "var(--era-success)",
+                  fontWeight: 800,
+                  fontSize: "var(--era-text-sm)",
+                  minWidth: 0,
+                  overflowWrap: "anywhere",
+                }}
+              >
+                ✓ Вы участвуете
+              </div>
+              <button
+                type="button"
+                className="era-btn-ghost"
+                disabled={pending}
+                onClick={onCancelRequest}
+                style={{
+                  minHeight: 44,
+                  padding: "0.45rem 0.75rem",
+                  fontSize: "var(--era-text-sm)",
+                  fontWeight: 600,
+                  color: "var(--era-text-secondary)",
+                  flexShrink: 0,
+                }}
+              >
+                {pending ? "…" : "Отказаться"}
+              </button>
             </div>
-            <button type="button" disabled={pending} onClick={onCancelRequest} style={{ minWidth: 106 }}>
-              {pending ? "…" : "Отказаться"}
+          ) : canLeaveWaitlist ? (
+            <div
+              data-testid="event-participation-bar"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: "0.25rem 0.5rem",
+                minWidth: 0,
+                padding: "0 0.2rem 0 0.65rem",
+              }}
+            >
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  minHeight: 40,
+                  color: "var(--era-gold-ink)",
+                  fontWeight: 800,
+                  fontSize: "var(--era-text-sm)",
+                  minWidth: 0,
+                  overflowWrap: "anywhere",
+                }}
+              >
+                Вы в листе ожидания
+              </div>
+              <button
+                type="button"
+                className="era-btn-ghost"
+                disabled={pending}
+                onClick={onCancelRequest}
+                style={{
+                  minHeight: 44,
+                  padding: "0.45rem 0.75rem",
+                  fontSize: "var(--era-text-sm)",
+                  fontWeight: 600,
+                  color: "var(--era-text-secondary)",
+                  flexShrink: 0,
+                }}
+              >
+                {pending ? "…" : "Покинуть"}
+              </button>
+            </div>
+          ) : externalSignupUrl ? (
+            <a href={externalSignupUrl} target="_blank" rel="noopener noreferrer" className="era-btn-primary"
+              style={{ display: "grid", placeItems: "center", minHeight: 48, textDecoration: "none" }}>
+              Записаться по ссылке ↗
+            </a>
+          ) : anniversary ? (
+            <AnniversaryRegistration key={event.id} event={event} />
+          ) : event.can_register ? (
+            <button type="button" className="era-btn-primary" disabled={pending} onClick={() => event.signup_defaults ? setShowForm(true) : onRegister()} style={{ width: "100%" }}>
+              {pending ? "● Сохраняем…" : event.remaining_count === 0 && event.waitlist_enabled ? "Встать в лист ожидания" : "Участвовать"}
             </button>
-          </div>
-        ) : waitlisted ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: ".5rem" }}>
-            <div style={{ minHeight: 44, borderRadius: "var(--era-radius-control)", display: "grid", placeItems: "center", background: "var(--era-tint-gold)", color: "var(--era-gold-ink)", fontWeight: 850 }}>
-              Лист ожидания · место не закреплено
-            </div>
-            <button type="button" disabled={pending} onClick={onCancelRequest} style={{ minWidth: 106 }}>Покинуть</button>
-          </div>
-        ) : externalSignupUrl ? (
-          <a href={externalSignupUrl} target="_blank" rel="noopener noreferrer" className="era-btn-primary"
-            style={{ display: "grid", placeItems: "center", minHeight: 48, textDecoration: "none" }}>
-            Записаться по ссылке ↗
-          </a>
-        ) : anniversary ? (
-          <AnniversaryRegistration key={event.id} event={event} />
-        ) : event.can_register ? (
-          <button type="button" className="era-btn-primary" disabled={pending} onClick={() => event.signup_defaults ? setShowForm(true) : onRegister()} style={{ width: "100%" }}>
-            {pending ? "● Сохраняем…" : event.remaining_count === 0 && event.waitlist_enabled ? "Встать в лист ожидания" : "Участвовать"}
-          </button>
-        ) : (
-          <button type="button" disabled style={{ width: "100%" }}>
-            {!event.registration_required
-              ? "Регистрация не нужна"
-              : event.display_status || "Регистрация недоступна"}
-          </button>
-        )}
-      </div>
+          ) : (
+            <button type="button" disabled style={{ width: "100%" }}>
+              {!event.registration_required
+                ? "Регистрация не нужна"
+                : event.display_status || "Регистрация недоступна"}
+            </button>
+          )}
+        </div>
+      )}
       {event.can_register && event.signup_defaults && (
         <BottomSheet open={showForm} title="Регистрация на мероприятие"
           onClose={() => { if (!pending) { setFormError(null); setShowForm(false); } }}>
@@ -753,7 +981,7 @@ export function EventsTab({ initialItemId, initialScope, canEdit }: EventsTabPro
               <span style={{ color: "var(--era-text-muted)" }}>{formatDate(registrationSuccess.event_date)} · {registrationSuccess.event_time}</span>
               <span style={{ color: "var(--era-text-muted)" }}>{registrationSuccess.location}</span>
             </div>
-            <EventCalendarButton event={registrationSuccess} />
+            <EventCalendarButton event={registrationSuccess} mode="inline" />
             <a href="#/events/mine" onClick={() => setRegistrationSuccess(null)}>Мои мероприятия</a>
             <button type="button" onClick={() => setRegistrationSuccess(null)}>Готово</button>
           </div>

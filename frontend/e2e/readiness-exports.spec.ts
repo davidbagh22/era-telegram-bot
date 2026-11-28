@@ -22,7 +22,8 @@ test("event calendar download uses UTC rather than the device timezone", async (
   expect(event).toBeTruthy();
   await page.goto("/app/?devTelegramId=900001#/events");
   await page.getByRole("button", { name: new RegExp(event.title) }).first().click();
-  // The UI now offers explicit Google and .ics paths; desktop keeps file download.
+  // Calendar actions live in a single compact picker; desktop keeps file download.
+  await page.getByRole("button", { name: "Добавить в календарь" }).click();
   const google = page.getByRole("link", { name: "Google Календарь" });
   await expect(google).toBeVisible();
   const googleUrl = new URL((await google.getAttribute("href"))!);
