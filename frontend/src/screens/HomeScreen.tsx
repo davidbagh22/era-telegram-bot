@@ -220,6 +220,7 @@ export function HomeScreen({
                   ? "Живой фон играет — пауза живого фона"
                   : "Живой фон на паузе — включить живой фон"
             }
+            data-motion-control="true"
             data-motion-state={reducedMotion ? "reduced-motion" : motionAllowed ? "playing" : "paused"}
             style={{
               minHeight: 44,

@@ -104,6 +104,19 @@ export function MotionPreferenceProvider({ children }: { children: ReactNode }) 
       setDocumentVisible(true);
       setTelegramActive(true);
     };
+    const onUserInteraction = (event: Event) => {
+      if (document.visibilityState === "hidden") return;
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-motion-control='true']")) {
+        if (event.type === "pointerdown") return;
+        if (event.type === "keydown") {
+          const key = (event as KeyboardEvent).key;
+          if (key === "Enter" || key === " ") return;
+        }
+      }
+      setDocumentVisible(true);
+      setTelegramActive(true);
+    };
     const onDeactivated = () => setTelegramActive(false);
     const onActivated = () => setTelegramActive(true);
     const onViewportChanged = () => {
@@ -118,8 +131,8 @@ export function MotionPreferenceProvider({ children }: { children: ReactNode }) 
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("focus", onForegroundSignal);
     window.addEventListener("pageshow", onForegroundSignal);
-    document.addEventListener("pointerdown", onForegroundSignal, { passive: true, capture: true });
-    document.addEventListener("keydown", onForegroundSignal, { passive: true, capture: true });
+    document.addEventListener("pointerdown", onUserInteraction, { passive: true, capture: true });
+    document.addEventListener("keydown", onUserInteraction, { passive: true, capture: true });
     try {
       webApp?.onEvent?.("deactivated", onDeactivated);
       webApp?.onEvent?.("activated", onActivated);
@@ -132,8 +145,8 @@ export function MotionPreferenceProvider({ children }: { children: ReactNode }) 
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("focus", onForegroundSignal);
       window.removeEventListener("pageshow", onForegroundSignal);
-      document.removeEventListener("pointerdown", onForegroundSignal, true);
-      document.removeEventListener("keydown", onForegroundSignal, true);
+      document.removeEventListener("pointerdown", onUserInteraction, true);
+      document.removeEventListener("keydown", onUserInteraction, true);
       webApp?.offEvent?.("deactivated", onDeactivated);
       webApp?.offEvent?.("activated", onActivated);
       webApp?.offEvent?.("viewportChanged", onViewportChanged);

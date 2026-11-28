@@ -126,6 +126,20 @@ test.describe("iOS WebKit & Chromium home orbit motion", () => {
     expect(sample.shell?.animationName).toBe("none");
     expect(sample.content?.animationName).toBe("none");
 
+    // Orbit ring stays centered around "ЭРА" even with animations disabled.
+    const ringGeometry = await page.evaluate(() => {
+      const ring = document.querySelector(".era-orbit-navigator__ring")!.getBoundingClientRect();
+      const center = document.querySelector(".era-orbit-navigator__center")!.getBoundingClientRect();
+      return {
+        dx: Math.abs((ring.left + ring.width / 2) - (center.left + center.width / 2)),
+        dy: Math.abs((ring.top + ring.height / 2) - (center.top + center.height / 2)),
+        overflowX: document.documentElement.scrollWidth > window.innerWidth,
+      };
+    });
+    expect(ringGeometry.dx).toBeLessThanOrEqual(2);
+    expect(ringGeometry.dy).toBeLessThanOrEqual(2);
+    expect(ringGeometry.overflowX).toBe(false);
+
     // Tapping the button explains the OS setting via toast instead of pretending to toggle.
     await toggle.click();
     await expect(page.locator(".era-toast")).toContainText("Уменьшение движения");
@@ -149,16 +163,43 @@ test.describe("iOS WebKit & Chromium home orbit motion", () => {
     await expect(page.locator("header button[data-motion-state]")).toHaveAttribute("data-motion-state", "playing");
 
     // Simulate iOS transient deactivated event (e.g., notification banner) with no matching activated event.
+    const toggle = page.locator("header button[data-motion-state]");
     await page.evaluate(() => {
       const emit = (window as unknown as { __tgEmit: (name: string, patch?: Record<string, unknown>) => void }).__tgEmit;
       emit("deactivated", { isActive: false });
     });
     await expect(page.locator(".era-orbit-ambient")).toHaveAttribute("data-paused", "true");
+    await expect(toggle).toHaveAttribute("data-motion-state", "paused");
+    await expect(toggle).toContainText("Пауза");
 
-    // User interacts with visible screen (pointerdown) -> animations recover automatically.
+    // Direct tap on the paused Home button must resume motion rather than persisting paused=false.
+    await toggle.click();
+    await expect(page.locator(".era-orbit-ambient")).toHaveAttribute("data-paused", "false");
+    await expect(toggle).toHaveAttribute("data-motion-state", "playing");
+    await expect(toggle).toContainText("Играет");
+    expect(await page.evaluate(() => localStorage.getItem("era.orbit.liveBackground"))).toBe("1");
+
+    // Keyboard activation (Enter) on the paused button after another deactivated event must also resume.
+    await toggle.focus();
+    await page.evaluate(() => {
+      const emit = (window as unknown as { __tgEmit: (name: string, patch?: Record<string, unknown>) => void }).__tgEmit;
+      emit("deactivated", { isActive: false });
+    });
+    await expect(toggle).toHaveAttribute("data-motion-state", "paused");
+    await page.keyboard.press("Enter");
+    await expect(page.locator(".era-orbit-ambient")).toHaveAttribute("data-paused", "false");
+    await expect(toggle).toHaveAttribute("data-motion-state", "playing");
+    expect(await page.evaluate(() => localStorage.getItem("era.orbit.liveBackground"))).toBe("1");
+
+    // Interacting anywhere else on the visible screen (pointerdown) also recovers automatically.
+    await page.evaluate(() => {
+      const emit = (window as unknown as { __tgEmit: (name: string, patch?: Record<string, unknown>) => void }).__tgEmit;
+      emit("deactivated", { isActive: false });
+    });
+    await expect(page.locator(".era-orbit-ambient")).toHaveAttribute("data-paused", "true");
     await page.locator("h2", { hasText: "Твоя орбита" }).dispatchEvent("pointerdown");
     await expect(page.locator(".era-orbit-ambient")).toHaveAttribute("data-paused", "false");
-    await expect(page.locator("header button[data-motion-state]")).toHaveAttribute("data-motion-state", "playing");
+    await expect(toggle).toHaveAttribute("data-motion-state", "playing");
 
     // True backgrounding (hidden + deactivated) still pauses cleanly and resumes on re-activation.
     await setAppActive(page, false);
