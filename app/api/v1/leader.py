@@ -16,7 +16,7 @@ from app.keyboards.participant import open_app_button
 from app.services import event_activity_service, leader_service
 from app.utils.deep_links import miniapp_task_url
 from app.services.notification_service import notify_admins, safe_send
-from app.utils.constants import PRIVILEGED_ROLES
+from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES
 
 router = APIRouter(prefix="/leader", tags=["leader"])
 
@@ -37,7 +37,13 @@ async def enforce_leader_action_rate_limit(request: Request) -> None:
 
 
 async def require_leader(user: User = Depends(get_current_user)) -> User:
-    if user.role not in PRIVILEGED_ROLES:
+    app_status = getattr(user, "application_status", None)
+    if (
+        getattr(user, "is_blocked", False)
+        or getattr(user, "is_archived", False)
+        or user.role not in PRIVILEGED_ROLES
+        or (app_status is not None and app_status != ApplicationStatus.APPROVED)
+    ):
         raise HTTPException(status_code=403, detail="leader_access_required")
     return user
 
@@ -418,9 +424,12 @@ async def decide_leader_activity(
     submission = await session.get(EventActivitySubmission, submission_id)
     if submission is None:
         raise HTTPException(status_code=404, detail="submission_not_found")
-    activity = await event_activity_service.leader_decide(
-        session, submission, approve=payload.action == "approve", reviewer_id=leader.id
-    )
+    try:
+        activity = await event_activity_service.leader_decide(
+            session, submission, approve=payload.action == "approve", reviewer_id=leader.id
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="forbidden") from exc
     if activity is None:
         raise HTTPException(status_code=409, detail="already_reviewed")
     target = await session.get(User, submission.user_id)

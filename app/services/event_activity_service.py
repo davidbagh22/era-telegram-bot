@@ -232,9 +232,14 @@ async def leader_decide(
     approve: bool,
     reviewer_id: int,
 ) -> EventActivity | None:
+    activity = await session.get(EventActivity, submission.activity_id)
+    if activity is None:
+        return None
+    event = await session.get(Event, activity.event_id)
+    if event is None or event.responsible_id != reviewer_id:
+        raise PermissionError("not_event_responsible")
     if submission.status != "pending":
         return None
-    activity = await session.get(EventActivity, submission.activity_id)
     submission.status = "leader_approved" if approve else "rejected"
     submission.reviewed_by = reviewer_id
     await session.flush()

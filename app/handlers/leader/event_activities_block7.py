@@ -7,13 +7,21 @@ from app.config import Settings
 from app.database.models import Event, EventActivity, EventActivitySubmission, User
 from app.services.notification_service import notify_admins, safe_answer_media, safe_send
 from app.utils import texts
-from app.utils.constants import PRIVILEGED_ROLES
+from app.utils.callback_ids import positive_pg_int_callback
+from app.utils.constants import ApplicationStatus, PRIVILEGED_ROLES
 
 router = Router(name="leader_event_activities_block7")
 
 
 def is_leader(user: User | None) -> bool:
-    return bool(user and not user.is_blocked and user.role in PRIVILEGED_ROLES)
+    app_status = getattr(user, "application_status", None)
+    return bool(
+        user
+        and not getattr(user, "is_blocked", False)
+        and not getattr(user, "is_archived", False)
+        and (app_status is None or app_status == ApplicationStatus.APPROVED)
+        and user.role in PRIVILEGED_ROLES
+    )
 
 
 def review_buttons(sub_id: int) -> InlineKeyboardMarkup:
@@ -82,15 +90,39 @@ async def list_for_leader(call: CallbackQuery, user: User | None, session: Async
         await send_card(call, session, sub)
 
 
+async def _owned_submission(
+    call: CallbackQuery,
+    user: User,
+    session: AsyncSession,
+    prefix: str,
+) -> tuple[EventActivitySubmission, EventActivity | None] | None:
+    sub_id = positive_pg_int_callback(call.data, prefix)
+    if sub_id is None:
+        await call.message.answer("Ответ не найден")
+        return None
+    sub = await session.get(EventActivitySubmission, sub_id)
+    if not sub:
+        await call.message.answer("Ответ не найден")
+        return None
+    activity = await session.get(EventActivity, sub.activity_id)
+    event = await session.get(Event, activity.event_id) if activity else None
+    if event is None or event.responsible_id != user.id:
+        await call.message.answer(texts.NO_ACCESS)
+        return None
+    if sub.status != "pending":
+        await call.message.answer("Ответ уже проверен")
+        return None
+    return sub, activity
+
+
 @router.callback_query(F.data.startswith("leader:activity:approve:"))
 async def leader_approve(call: CallbackQuery, user: User | None, settings: Settings, session: AsyncSession, bot: Bot) -> None:
     if not await guard(call, user):
         return
-    sub = await session.get(EventActivitySubmission, int(call.data.rsplit(":", 1)[-1]))
-    if not sub or sub.status != "pending":
-        await call.message.answer("Ответ уже проверен")
+    resolved = await _owned_submission(call, user, session, "leader:activity:approve:")
+    if resolved is None:
         return
-    activity = await session.get(EventActivity, sub.activity_id)
+    sub, activity = resolved
     target = await session.get(User, sub.user_id)
     sub.status = "leader_approved"
     sub.reviewed_by = user.id
@@ -105,11 +137,10 @@ async def leader_approve(call: CallbackQuery, user: User | None, settings: Setti
 async def leader_reject(call: CallbackQuery, user: User | None, session: AsyncSession, bot: Bot) -> None:
     if not await guard(call, user):
         return
-    sub = await session.get(EventActivitySubmission, int(call.data.rsplit(":", 1)[-1]))
-    if not sub or sub.status != "pending":
-        await call.message.answer("Ответ уже проверен")
+    resolved = await _owned_submission(call, user, session, "leader:activity:reject:")
+    if resolved is None:
         return
-    activity = await session.get(EventActivity, sub.activity_id)
+    sub, activity = resolved
     target = await session.get(User, sub.user_id)
     sub.status = "rejected"
     sub.reviewed_by = user.id

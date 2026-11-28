@@ -198,6 +198,13 @@ async def claim(
     Existing membership is resolved before capacity so repeated opens/claims
     remain idempotent even for SOLO/max=1 work.
     """
+    app_status = getattr(user, "application_status", None)
+    if (
+        getattr(user, "is_blocked", False)
+        or getattr(user, "is_archived", False)
+        or (app_status is not None and app_status != "approved")
+    ):
+        return None, "closed"
     if task is not None:
         task = await session.scalar(select(Task).where(Task.id == task.id).with_for_update().execution_options(populate_existing=True))
     if (
