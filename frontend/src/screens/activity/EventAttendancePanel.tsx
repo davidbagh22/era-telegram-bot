@@ -9,6 +9,9 @@ import { Card } from "../../components/Card";
 import { useToast } from "../../components/Toast";
 import { useAsync } from "../../hooks/useAsync";
 import { successHaptic } from "../../telegram/webApp";
+import { isEventDateTodayOrPast } from "../../utils/feedDate";
+
+const ATTENDANCE_READY_STATUSES = new Set(["active", "completed", "report_submitted"]);
 
 function confirmationError(error: unknown): string {
   if (error instanceof ApiError) {
@@ -23,7 +26,13 @@ function confirmationError(error: unknown): string {
   return "Не удалось подтвердить участие. Проверьте соединение и попробуйте снова.";
 }
 
-export function EventAttendancePanel({ eventId }: { eventId: number }) {
+interface EventAttendancePanelProps {
+  eventId: number;
+  eventDate?: string;
+  eventStatus?: string;
+}
+
+export function EventAttendancePanel({ eventId, eventDate, eventStatus }: EventAttendancePanelProps) {
   const [refreshKey, setRefreshKey] = useState(0);
   const state = useAsync(() => fetchEventAttendanceState(eventId), [eventId, refreshKey]);
   const [code, setCode] = useState("");
@@ -76,16 +85,17 @@ export function EventAttendancePanel({ eventId }: { eventId: number }) {
     }
   }, [eventId, toast]);
 
+  if (eventStatus === "cancelled") return null;
   if (state.status === "loading" || state.status === "error") return null;
   if (!state.data.eligible) return null;
 
   if (state.data.confirmed) {
     return (
-      <Card style={{ borderColor: "rgba(85,189,130,.28)", background: "rgba(85,189,130,.055)" }}>
+      <Card style={{ borderColor: "rgba(85,189,130,.28)", background: "rgba(85,189,130,.055)", padding: "0.85rem 0.95rem" }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: ".75rem", alignItems: "center" }}>
           <div>
             <strong>✓ Посещение подтверждено</strong>
-            <p style={{ margin: ".3rem 0 0", color: "var(--era-text-muted)", fontSize: ".84rem" }}>
+            <p style={{ margin: ".25rem 0 0", color: "var(--era-text-muted)", fontSize: ".82rem" }}>
               Баллы начислены. Сертификат участника появится после проверки / автовыдачи.
             </p>
           </div>
@@ -97,29 +107,46 @@ export function EventAttendancePanel({ eventId }: { eventId: number }) {
     );
   }
 
+  const effectiveStatus = eventStatus ?? state.data.event_status;
+  if (effectiveStatus === "cancelled") return null;
+
+  const dayReached = ATTENDANCE_READY_STATUSES.has(effectiveStatus)
+    || (eventDate ? isEventDateTodayOrPast(eventDate) : true);
   const proofPending = state.data.proof_status === "pending";
-  const showProof = Boolean(state.data.can_submit_proof) || proofPending;
-  const showCode = state.data.confirmation_open;
+  const showCode = Boolean(state.data.confirmation_open);
+  const showProof = Boolean(state.data.can_submit_proof && !state.data.confirmation_closed && dayReached) || proofPending;
 
   if (!showProof && !showCode) {
-    if (state.data.confirmation_closed) {
+    if (state.data.confirmation_closed && dayReached) {
       return (
-        <Card style={{ borderColor: "var(--era-border)", background: "var(--era-surface-2)" }}>
-          <strong>Подтверждение участия закрыто</strong>
+        <Card style={{ borderColor: "var(--era-border)", background: "var(--era-surface-2)", padding: "0.8rem 0.95rem" }}>
+          <span style={{ color: "var(--era-text-muted)", fontSize: ".88rem", fontWeight: 700 }}>
+            Подтверждение участия закрыто
+          </span>
         </Card>
       );
     }
     return null;
   }
 
+  const helperText = proofPending && !showCode
+    ? null
+    : showProof && showCode
+      ? "Прикрепите фото с места или введите код ведущих."
+      : showProof
+        ? "Прикрепите фото с места — после проверки начислятся баллы."
+        : "Введите код ведущих, чтобы подтвердить посещение.";
+
   return (
     <Card style={{ borderColor: "var(--era-border-strong)", background: "linear-gradient(145deg, rgba(var(--era-accent-rgb), .12), rgba(var(--era-accent-text-rgb), .06))" }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: ".7rem" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
         <div>
-          <strong style={{ fontSize: "1.03rem" }}>Подтвердить участие</strong>
-          <p style={{ margin: ".3rem 0 0", color: "var(--era-text-muted)", fontSize: ".86rem", lineHeight: 1.45 }}>
-            Пришлите фото с места — админ проверит и начислит баллы. Можно также ввести код ведущих, если он открыт.
-          </p>
+          <strong style={{ fontSize: "1rem" }}>Подтвердить участие</strong>
+          {helperText && (
+            <p style={{ margin: ".25rem 0 0", color: "var(--era-text-muted)", fontSize: ".84rem", lineHeight: 1.4 }}>
+              {helperText}
+            </p>
+          )}
         </div>
 
         {showProof && (
@@ -132,12 +159,12 @@ export function EventAttendancePanel({ eventId }: { eventId: number }) {
               onChange={(event) => void onFile(event.target.files?.[0])}
             />
             {proofPending ? (
-              <div style={{ padding: ".7rem .8rem", borderRadius: ".85rem", background: "var(--era-surface-2)", fontSize: ".84rem", fontWeight: 750 }}>
+              <div style={{ padding: ".65rem .8rem", borderRadius: ".85rem", background: "var(--era-surface-2)", fontSize: ".84rem", fontWeight: 700 }}>
                 Фото на проверке у админа
               </div>
             ) : (
               <button type="button" className="era-btn-primary" disabled={uploading} onClick={() => fileRef.current?.click()}>
-                {uploading ? "Отправляем…" : "📎 Прикрепить фото с места"}
+                {uploading ? "Отправляем…" : "Прикрепить фото с места"}
               </button>
             )}
           </div>

@@ -25,7 +25,13 @@ async function openCalendarChoices(page: Page) {
   });
   await page.goto("/app/?devTelegramId=900001#/events");
   await page.getByRole("button", { name: /Встреча ЭРА/ }).first().click();
+  // Calendar choices are collapsed under a single button until tapped.
+  await expect(page.getByRole("link", { name: "Google Календарь" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Добавить в календарь" }).click();
+  await expect(page.getByRole("dialog", { name: "Добавить в календарь" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Google Календарь" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Календарь Apple (.ics)" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Файл в чат ЭРА" })).toBeVisible();
 }
 
 test("Google Calendar uses correct Yerevan UTC times and Unicode without opening ICS", async ({ page }) => {
