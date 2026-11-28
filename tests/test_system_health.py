@@ -134,6 +134,7 @@ class SystemSchedulerTests(unittest.TestCase):
                 "support-answer-delivery",
                 "system-heartbeat",
                 "system-full-diagnostic",
+                "render-live-stale-monitor",
                 "system-daily-summary",
                 "project-review-notices",
                 "application-notices",

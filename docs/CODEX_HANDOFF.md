@@ -12,3 +12,4 @@
 - #582: owner-approved shared-read for media-hub; writes area-scoped (documented + tests).
 - Still blocked for full VERIFIED: E14 device/role evidence, E13 #364 legal human, #616 expert platform, GCal credentials. Do not invent legal or device acceptance.
 - Campaign/media DM flags remain off unless separately enabled.
+- #565 Render LIVE stale monitor: CODE COMPLETE — schedule-only GH workflow + in-app classifier reuse `render_release_lag`; admin DM gated by `FEATURE_RENDER_LIVE_STALE_ALERTS` (default OFF) via `safe_send_once`. Not a checksPass gate; exact LIVE still needs Render API secret on the Actions job.
